@@ -330,44 +330,44 @@ function App() {
                 smAdjustment: transmissionSmAdjustment,
                 rsdAdjustment: transmissionRsdAdjustment,
                 finalForecast: transmissionFinalForecast,
-                children: [
-                  { 
-                    id: 'product-1', 
-                    name: 'TRN-750-A', 
-                    hasChildren: false,
-                    ...productASums
-                  },
-                  { 
-                    id: 'product-2', 
-                    name: 'TRN-850-M', 
-                    hasChildren: false,
-                    ...productBSums
-                  },
-                  { 
-                    id: 'product-3', 
-                    name: 'TRN-850-M', 
-                    hasChildren: false,
-                    ...productCSums
-                  },
-                  { 
-                    id: 'product-4', 
-                    name: 'TRN-850-M', 
-                    hasChildren: false,
-                    ...productDSums
-                  },
-                  { 
-                    id: 'product-5', 
-                    name: 'TRN-750-A', 
-                    hasChildren: false,
-                    ...productESums
-                  },
-                  { 
-                    id: 'product-6', 
-                    name: 'TRN-750-A', 
-                    hasChildren: false,
-                    ...productFSums
-                  },
-                ],
+              children: [
+                { 
+                  id: 'product-1', 
+                  name: 'TRN-750-A', 
+                  hasChildren: false,
+                  ...productASums
+                },
+                { 
+                  id: 'product-2', 
+                  name: 'TRN-850-M', 
+                  hasChildren: false,
+                  ...productBSums
+                },
+                { 
+                  id: 'product-3', 
+                  name: 'TRN-850-P', 
+                  hasChildren: false,
+                  ...productCSums
+                },
+                { 
+                  id: 'product-4', 
+                  name: 'TRN-850-T', 
+                  hasChildren: false,
+                  ...productDSums
+                },
+                { 
+                  id: 'product-5', 
+                  name: 'TRN-750-M', 
+                  hasChildren: false,
+                  ...productESums
+                },
+                { 
+                  id: 'product-6', 
+                  name: 'TRN-750-X', 
+                  hasChildren: false,
+                  ...productFSums
+                },
+              ],
               },
               {
                 id: 'chassis',
@@ -478,7 +478,7 @@ function App() {
                 },
                 { 
                   id: 'product-3', 
-                  name: 'TRN-850-M', 
+                  name: 'TRN-850-P', 
                   hasChildren: false,
                   baseline: Math.round(750000 * seasonalMultiplier),
                   amAdjusted: Math.round(830000 * seasonalMultiplier),
@@ -488,7 +488,7 @@ function App() {
                 },
                 { 
                   id: 'product-4', 
-                  name: 'TRN-850-M', 
+                  name: 'TRN-850-T', 
                   hasChildren: false,
                   baseline: Math.round(680000 * seasonalMultiplier),
                   amAdjusted: Math.round(750000 * seasonalMultiplier),
@@ -498,7 +498,7 @@ function App() {
                 },
                 { 
                   id: 'product-5', 
-                  name: 'TRN-750-A', 
+                  name: 'TRN-750-M', 
                   hasChildren: false,
                   baseline: Math.round(500000 * seasonalMultiplier),
                   amAdjusted: Math.round(580000 * seasonalMultiplier),
@@ -508,7 +508,7 @@ function App() {
                 },
                 { 
                   id: 'product-6', 
-                  name: 'TRN-750-A', 
+                  name: 'TRN-750-X', 
                   hasChildren: false,
                   baseline: Math.round(400000 * seasonalMultiplier),
                   amAdjusted: Math.round(420000 * seasonalMultiplier),
