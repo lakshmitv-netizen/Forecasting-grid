@@ -92,10 +92,10 @@ body {
   border: 1px solid #c9c9c9;
   border-radius: 8px;
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: auto;
   max-height: calc(100vh - 150px);
-  display: flex;
-  flex-direction: column;
+  display: block;
+  position: relative;
 }
 
 .table-header {
@@ -103,24 +103,23 @@ body {
   grid-template-columns: 280px 200px 200px 200px 200px 200px;
   background-color: #f3f3f3;
   border-bottom: 2px solid #c9c9c9;
-  flex-shrink: 0;
   position: sticky;
   top: 0;
   z-index: 30;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+  min-width: fit-content;
 }
 
-/* Time series view - dynamically change grid columns when there are 13 columns */
+/* Time series view - dynamically change grid columns when there are 14 columns */
 .simple-grid.grid-timeseries .table-header,
 .simple-grid.grid-timeseries .table-row,
 .simple-grid.grid-timeseries .month-selector-header {
-  grid-template-columns: 280px repeat(12, 120px);
+  grid-template-columns: 280px 150px repeat(12, 120px);
+  min-width: fit-content;
 }
 
 .table-content {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
+  min-width: fit-content;
 }
 
 .header-fixed-section {
@@ -171,6 +170,7 @@ body {
   min-height: 42px;
   align-items: center;
   background-color: #ffffff;
+  min-width: fit-content;
 }
 
 .row-fixed-section {
@@ -295,10 +295,33 @@ body {
   font-size: 12px;
   font-weight: 600;
   color: #03234d;
+  position: sticky;
+  top: 0;
+  z-index: 31;
+  min-width: fit-content;
 }
 
 .month-selector-header .cell {
   background-color: transparent !important;
+}
+
+/* Time series header centered on screen */
+.grid-timeseries .month-selector-header {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 12px 12px;
+  min-height: 50px;
+}
+
+.timeseries-header-center {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  background-color: transparent;
+  display: flex;
+  align-items: center;
 }
 
 .month-selector {
@@ -389,5 +412,90 @@ body {
 .cell.selected {
   border: 2px solid black;
   box-sizing: border-box;
+}
+
+/* Searchable Dropdown Styles */
+.searchable-dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.searchable-dropdown-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.searchable-dropdown-input {
+  border: none;
+  background: transparent;
+  font-weight: 600;
+  font-size: 16px;
+  font-family: 'SF Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #5C5C5C;
+  cursor: pointer;
+  outline: none;
+  padding: 4px 8px;
+  min-width: 200px;
+  width: auto;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.searchable-dropdown-input:focus {
+  background: white;
+  border: 1px solid #0250d9;
+  border-radius: 4px;
+  cursor: text;
+}
+
+.searchable-dropdown-icon {
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+  cursor: pointer;
+}
+
+.searchable-dropdown-container:hover .searchable-dropdown-icon {
+  transform: translateY(2px);
+}
+
+.searchable-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: white;
+  border: 1px solid #c9c9c9;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 1000;
+  min-width: 250px;
+  max-width: 400px;
+}
+
+.searchable-dropdown-option {
+  padding: 10px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: 'SF Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #111827;
+  border-bottom: 1px solid #f3f3f3;
+}
+
+.searchable-dropdown-option:last-child {
+  border-bottom: none;
+}
+
+.searchable-dropdown-option:hover {
+  background-color: #f3f4f6;
+}
+
+.searchable-dropdown-option.selected {
+  background-color: #e8f0fe;
+  font-weight: 600;
 }
 
