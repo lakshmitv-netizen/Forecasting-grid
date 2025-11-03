@@ -530,13 +530,33 @@ body {
   width: 100% !important;
 }
 
-.account-director-timeseries .headers-wrapper .first-column-header input.hierarchy-filter-input {
+.account-director-timeseries .headers-wrapper .first-column-header input.hierarchy-filter-input,
+.account-director-timeseries .headers-wrapper .first-column-header input[id="hierarchy-filter-input"],
+.account-director-timeseries .headers-wrapper .first-column-header input[name="hierarchy-filter-input"] {
   display: block !important;
   visibility: visible !important;
   opacity: 1 !important;
   width: 100% !important;
   position: relative !important;
-  z-index: 1 !important;
+  z-index: 10 !important;
+  height: auto !important;
+  min-height: 24px !important;
+}
+
+.account-director-timeseries .headers-wrapper .first-column-header > div {
+  min-height: 24px !important;
+}
+
+/* Ensure hierarchy filter is visible in Account Manager Time Series */
+.grid-timeseries .first-column-header input.hierarchy-filter-input,
+.grid-timeseries .first-column-header input[id="hierarchy-filter-input"],
+.grid-timeseries .first-column-header input[name="hierarchy-filter-input"] {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  width: 100% !important;
+  height: auto !important;
+  min-height: 24px !important;
 }
 
 /* Time series header centered on screen */
