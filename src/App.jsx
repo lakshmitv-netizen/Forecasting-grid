@@ -7399,7 +7399,7 @@ function App() {
               >
                 Name{renderSortIndicator('hierarchy:name')}
               </div>
-              <div style={{ position: 'relative', marginTop: '4px', width: '100%', marginBottom: '8px', display: 'block', visibility: 'visible', opacity: 1 }}>
+              <div style={{ position: 'relative', marginTop: '4px', width: '100%', marginBottom: '8px', display: 'block', visibility: 'visible', opacity: 1, minHeight: '24px' }}>
                 <input
                   type="text"
                   id="hierarchy-filter-input"
@@ -7418,7 +7418,12 @@ function App() {
                     backgroundColor: hierarchyFilter ? '#f0f8ff' : '#ffffff',
                     display: 'block',
                     visibility: 'visible',
-                    opacity: 1
+                    opacity: 1,
+                    position: 'relative',
+                    zIndex: 10,
+                    height: '24px',
+                    minHeight: '24px',
+                    lineHeight: '24px'
                   }}
                 />
                 {hierarchyFilter && (
@@ -8792,7 +8797,7 @@ function App() {
                   >
                     Name{renderSortIndicator('hierarchy:name')}
                   </div>
-                  <div style={{ position: 'relative', marginTop: '4px', width: '100%', marginBottom: '8px' }}>
+                  <div style={{ position: 'relative', marginTop: '4px', width: '100%', marginBottom: '8px', display: 'block', visibility: 'visible', opacity: 1, minHeight: '24px' }}>
                     <input
                       type="text"
                       id="hierarchy-filter-input"
@@ -8808,7 +8813,15 @@ function App() {
                         border: hierarchyFilter ? '1px solid #0176d3' : '1px solid #c9c9c9',
                         borderRadius: '4px',
                         boxSizing: 'border-box',
-                        backgroundColor: hierarchyFilter ? '#f0f8ff' : '#ffffff'
+                        backgroundColor: hierarchyFilter ? '#f0f8ff' : '#ffffff',
+                        display: 'block',
+                        visibility: 'visible',
+                        opacity: 1,
+                        position: 'relative',
+                        zIndex: 10,
+                        height: '24px',
+                        minHeight: '24px',
+                        lineHeight: '24px'
                       }}
                     />
                     {hierarchyFilter && (
@@ -9047,7 +9060,7 @@ function App() {
                   >
                     Name{renderSortIndicator('hierarchy:name')}
                   </div>
-                  <div style={{ position: 'relative', marginTop: '4px', width: '100%', marginBottom: '8px', display: 'block', visibility: 'visible', opacity: 1, zIndex: 10 }}>
+                  <div style={{ position: 'relative', marginTop: '4px', width: '100%', marginBottom: '8px', display: 'block', visibility: 'visible', opacity: 1, zIndex: 10, minHeight: '24px' }}>
                     <input
                       type="text"
                       id="hierarchy-filter-input"
@@ -9068,7 +9081,10 @@ function App() {
                         visibility: 'visible',
                         opacity: 1,
                         position: 'relative',
-                        zIndex: 10
+                        zIndex: 10,
+                        height: '24px',
+                        minHeight: '24px',
+                        lineHeight: '24px'
                       }}
                     />
                     {hierarchyFilter && (
