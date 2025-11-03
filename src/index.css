@@ -378,6 +378,20 @@ body {
   width: 280px;
   min-width: 280px;
   max-width: 280px;
+  overflow: visible;
+}
+
+.first-column-header > div {
+  display: block !important;
+  visibility: visible !important;
+  width: 100%;
+}
+
+.first-column-header input.hierarchy-filter-input {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  width: 100% !important;
 }
 
 .headers-wrapper .month-selector-header {
@@ -493,6 +507,36 @@ body {
   min-width: 120px !important;
   max-width: 120px !important;
   box-sizing: border-box !important;
+}
+
+/* Ensure first column header and hierarchy filter are visible in Account Director Time Series */
+.account-director-timeseries .headers-wrapper .first-column-header {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  justify-content: flex-end !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  height: auto !important;
+  min-height: 100px !important;
+  overflow: visible !important;
+  padding: 8px 12px !important;
+}
+
+.account-director-timeseries .headers-wrapper .first-column-header > div {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  width: 100% !important;
+}
+
+.account-director-timeseries .headers-wrapper .first-column-header input.hierarchy-filter-input {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  width: 100% !important;
+  position: relative !important;
+  z-index: 1 !important;
 }
 
 /* Time series header centered on screen */

@@ -10,6 +10,7 @@ function SearchableDropdown({ value, options, onChange, placeholder = "Search...
   const dropdownRef = useRef(null);
   const inputRef = useRef(null);
   const menuRef = useRef(null);
+  const inputIdRef = useRef(style.id || `searchable-dropdown-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
 
   // Get display text for current value
   const getDisplayText = () => {
@@ -97,6 +98,8 @@ function SearchableDropdown({ value, options, onChange, placeholder = "Search...
         <input
           ref={inputRef}
           type="text"
+          id={inputIdRef.current}
+          name={style.name || inputIdRef.current}
           className="searchable-dropdown-input"
           value={isOpen ? searchTerm : getDisplayText()}
           onChange={(e) => setSearchTerm(e.target.value)}
@@ -159,7 +162,15 @@ function App() {
   const [manuallyToggledTimePeriods, setManuallyToggledTimePeriods] = useState(new Map()); // Track time periods manually toggled by user: Map<periodId, isExpanded>
   const [sortColumn, setSortColumn] = useState(null); // Track which column is sorted: 'kpi:Baseline...' or 'time:0' (month index) or 'time:-1' (FY)
   const [sortDirection, setSortDirection] = useState('asc'); // 'asc' or 'desc'
-  const [columnFilters, setColumnFilters] = useState({}); // Track filter values for each column: { 'kpi:Baseline...': '1000', 'time:0': '500' }
+  const [preserveHierarchyOnSort, setPreserveHierarchyOnSort] = useState(true); // Whether to preserve hierarchy structure when sorting (default: true)
+  const [sortPopoverOpen, setSortPopoverOpen] = useState(false); // Whether the sort options popover is open
+  const sortPopoverRef = useRef(null); // Ref for sort popover positioning
+  const sortIndicatorButtonRef = useRef(null); // Ref for sort indicator button
+  const [globalSearch, setGlobalSearch] = useState(''); // Global search term to search across all data
+  const [editedCellValues, setEditedCellValues] = useState({}); // Track edited cell values: { 'rowId-kpi-timeIndex': editedValue }
+  const [editingCell, setEditingCell] = useState(null); // Currently editing cell: { rowId, kpi, timeIndex }
+  const clickTimeoutRef = useRef(null); // Ref to track click timeout for double-click detection
+  const [columnFilters, setColumnFilters] = useState({}); // Track filter criteria for each column: { 'kpi:Baseline...': { operator: '>=', value: '1000' }, 'time:0': { operator: '=', value: '500' } }
   const [hierarchyFilter, setHierarchyFilter] = useState(''); // Filter for hierarchy/name column (product/category/account names)
   const [timeHierarchyFilter, setTimeHierarchyFilter] = useState(''); // Filter for time hierarchy in Time Roll-up view (FY, Quarters, Months)
   const [groupedComboboxValue, setGroupedComboboxValue] = useState('Account, Product'); // Value for the grouped combobox in Account Director view
@@ -170,6 +181,14 @@ function App() {
   const [timeLevelFilterOpen, setTimeLevelFilterOpen] = useState(false); // Whether the time level filter dropdown is open
   const [productPopoverOpen, setProductPopoverOpen] = useState(null); // Track which product's popover is open (row ID)
   const productPopoverRef = useRef(null); // Ref for product popover positioning
+  const [childFilterOpen, setChildFilterOpen] = useState(null); // Track which parent's child filter is open (row ID)
+  const childFilterPopoverRef = useRef(null); // Ref for child filter popover positioning
+  const [childFilterSelections, setChildFilterSelections] = useState({}); // Track which children are selected: { parentId: Set(childIds) }
+  const [globalFilterPanelOpen, setGlobalFilterPanelOpen] = useState(false); // Whether global filter panel is open
+  const [globalFilters, setGlobalFilters] = useState([]); // Array of filter objects: [{ field, operator, value, id }]
+  const [selectedKPISet, setSelectedKPISet] = useState('Forecasting KPIs'); // Selected KPI set: 'Forecasting KPIs' or 'Planning KPIs'
+  const [kpiSetDropdownOpen, setKpiSetDropdownOpen] = useState(false); // Whether the KPI set dropdown is open
+  const kpiSetDropdownRef = useRef(null); // Ref for KPI set dropdown
   const prevViewRef = useRef(selectedView);
   const prevViewForScrollRef = useRef(selectedView); // Track previous view for auto-scroll detection
   const manualToggleTimestampRef = useRef(0); // Track when a manual toggle happened
@@ -378,6 +397,8 @@ function App() {
         if (targetButton && productPopoverRef.current) {
           const buttonRect = targetButton.getBoundingClientRect();
           const popover = productPopoverRef.current;
+          const arrowEl = document.getElementById('product-popover-arrow');
+          const arrowInnerEl = document.getElementById('product-popover-arrow-inner');
           
           // First set display to block temporarily to get accurate height
           popover.style.display = 'block';
@@ -386,29 +407,74 @@ function App() {
           const popoverHeight = popover.offsetHeight || 100; // Fallback height
           const popoverWidth = 300;
           
-          // Position above the button
-          let top = buttonRect.top - popoverHeight - 4;
-          let left = buttonRect.left;
+          // Determine if popover should be above or below
+          let isAbove = true;
+          let top = buttonRect.top - popoverHeight - 10; // 10px gap including arrow
+          let left = buttonRect.left + (buttonRect.width / 2) - (popoverWidth / 2);
           
           // If popover would go off-screen to the right, align to right edge
           if (left + popoverWidth > window.innerWidth) {
             left = window.innerWidth - popoverWidth - 8;
           }
           
+          // If popover would go off-screen to the left
+          if (left < 8) {
+            left = 8;
+          }
+          
           // If popover would go off-screen to the top, show below instead
           if (top < 0) {
-            top = buttonRect.bottom + 4;
+            isAbove = false;
+            top = buttonRect.bottom + 10;
           }
           
           // Ensure it doesn't go off-screen at the bottom
           if (top + popoverHeight > window.innerHeight) {
+            isAbove = true;
             top = window.innerHeight - popoverHeight - 8;
+            if (top < 0) {
+              top = 8;
+            }
           }
           
           popover.style.top = `${top}px`;
           popover.style.left = `${left}px`;
           popover.style.visibility = 'visible';
           popover.style.display = 'block';
+          
+          // Position the arrow
+          if (arrowEl && arrowInnerEl) {
+            const arrowCenterX = buttonRect.left + (buttonRect.width / 2);
+            const arrowLeft = arrowCenterX - 6; // Half of arrow width (12px)
+            
+            if (isAbove) {
+              // Arrow pointing down (below popover)
+              arrowEl.style.top = `${top + popoverHeight}px`;
+              arrowEl.style.left = `${arrowLeft}px`;
+              arrowEl.style.borderTop = '6px solid #c9c9c9';
+              arrowEl.style.borderBottom = 'none';
+              arrowEl.style.display = 'block';
+              
+              arrowInnerEl.style.top = `${top + popoverHeight}px`;
+              arrowInnerEl.style.left = `${arrowCenterX - 5}px`;
+              arrowInnerEl.style.borderTop = '5px solid #ffffff';
+              arrowInnerEl.style.borderBottom = 'none';
+              arrowInnerEl.style.display = 'block';
+            } else {
+              // Arrow pointing up (above popover)
+              arrowEl.style.top = `${top - 6}px`;
+              arrowEl.style.left = `${arrowLeft}px`;
+              arrowEl.style.borderBottom = '6px solid #c9c9c9';
+              arrowEl.style.borderTop = 'none';
+              arrowEl.style.display = 'block';
+              
+              arrowInnerEl.style.top = `${top - 5}px`;
+              arrowInnerEl.style.left = `${arrowCenterX - 5}px`;
+              arrowInnerEl.style.borderBottom = '5px solid #ffffff';
+              arrowInnerEl.style.borderTop = 'none';
+              arrowInnerEl.style.display = 'block';
+            }
+          }
         }
       };
       
@@ -438,24 +504,122 @@ function App() {
         window.removeEventListener('resize', updatePosition);
         document.removeEventListener('mousedown', handleClickOutside);
       };
-    } else if (productPopoverRef.current) {
-      productPopoverRef.current.style.display = 'none';
+    } else {
+      // Hide popover and arrow when closed
+      if (productPopoverRef.current) {
+        productPopoverRef.current.style.display = 'none';
+      }
+      const arrowEl = document.getElementById('product-popover-arrow');
+      const arrowInnerEl = document.getElementById('product-popover-arrow-inner');
+      if (arrowEl) arrowEl.style.display = 'none';
+      if (arrowInnerEl) arrowInnerEl.style.display = 'none';
     }
   }, [productPopoverOpen]);
 
-  // Handle click outside for grouped combobox, level filter, and time level filter
+  // Handle click outside and position for child filter popover
   useEffect(() => {
-    if (!groupedComboboxOpen && !levelFilterOpen && !timeLevelFilterOpen) return;
+    if (childFilterOpen && childFilterPopoverRef.current) {
+      const updatePosition = () => {
+        // Find the filter button that opened this popover
+        const buttons = document.querySelectorAll('button[title="Filter children"]');
+        let targetButton = null;
+        buttons.forEach(btn => {
+          const rowId = btn.closest('.table-row')?.querySelector('[data-selected-hierarchy]')?.getAttribute('data-selected-hierarchy');
+          if (rowId === childFilterOpen) {
+            targetButton = btn;
+          }
+        });
+        
+        if (targetButton && childFilterPopoverRef.current) {
+          const buttonRect = targetButton.getBoundingClientRect();
+          const popover = childFilterPopoverRef.current;
+          
+          // First set display to block temporarily to get accurate dimensions
+          popover.style.display = 'block';
+          popover.style.visibility = 'hidden';
+          
+          const popoverHeight = popover.offsetHeight || 200;
+          const popoverWidth = popover.offsetWidth || 250;
+          
+          // Position below the button
+          let top = buttonRect.bottom + 4;
+          let left = buttonRect.left;
+          
+          // If popover would go off-screen to the right, align to right edge
+          if (left + popoverWidth > window.innerWidth) {
+            left = window.innerWidth - popoverWidth - 8;
+          }
+          
+          // If popover would go off-screen to the left
+          if (left < 8) {
+            left = 8;
+          }
+          
+          // If popover would go off-screen at the bottom, show above instead
+          if (top + popoverHeight > window.innerHeight) {
+            top = buttonRect.top - popoverHeight - 4;
+          }
+          
+          // Ensure it doesn't go off-screen at the top
+          if (top < 0) {
+            top = 8;
+          }
+          
+          popover.style.top = `${top}px`;
+          popover.style.left = `${left}px`;
+          popover.style.visibility = 'visible';
+          popover.style.display = 'block';
+        }
+      };
+      
+      // Use setTimeout to ensure DOM is fully rendered
+      const timeoutId = setTimeout(() => {
+        updatePosition();
+      }, 0);
+      
+      // Update on scroll/resize
+      window.addEventListener('scroll', updatePosition, true);
+      window.addEventListener('resize', updatePosition);
+      
+      const handleClickOutside = (event) => {
+        if (childFilterOpen && 
+            childFilterPopoverRef.current && 
+            !childFilterPopoverRef.current.contains(event.target) &&
+            !event.target.closest('button[title="Filter children"]')) {
+          setChildFilterOpen(null);
+        }
+      };
+
+      document.addEventListener('mousedown', handleClickOutside);
+      
+      return () => {
+        clearTimeout(timeoutId);
+        window.removeEventListener('scroll', updatePosition, true);
+        window.removeEventListener('resize', updatePosition);
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    } else if (childFilterPopoverRef.current) {
+      childFilterPopoverRef.current.style.display = 'none';
+    }
+  }, [childFilterOpen]);
+
+  // Handle click outside for grouped combobox, level filter, time level filter, KPI set dropdown, and sort popover
+  useEffect(() => {
+    if (!groupedComboboxOpen && !levelFilterOpen && !timeLevelFilterOpen && !kpiSetDropdownOpen && !sortPopoverOpen) return;
 
     const handleClickOutside = (event) => {
-      // Don't close if clicking inside the combobox area, level filter, or time level filter
+      // Don't close if clicking inside the combobox area, level filter, time level filter, or KPI set dropdown
       const clickedInsideCombobox = groupedComboboxRef.current && groupedComboboxRef.current.contains(event.target);
       const clickedInsideLevelFilter = (levelFilterDropdownRef.current && levelFilterDropdownRef.current.contains(event.target)) ||
                                        event.target.closest('.level-filter-dropdown') || 
                                        (event.target.id === 'level-filter-input');
       const clickedInsideTimeLevelFilter = timeLevelFilterRef.current && timeLevelFilterRef.current.contains(event.target);
+      const clickedInsideKPISetDropdown = kpiSetDropdownRef.current && kpiSetDropdownRef.current.contains(event.target);
       
-      if (clickedInsideCombobox || clickedInsideLevelFilter || clickedInsideTimeLevelFilter) {
+      const clickedInsideSortPopover = sortPopoverRef.current && sortPopoverRef.current.contains(event.target);
+      const clickedOnSortButton = sortIndicatorButtonRef.current && sortIndicatorButtonRef.current.contains(event.target);
+      
+      if (clickedInsideCombobox || clickedInsideLevelFilter || clickedInsideTimeLevelFilter || clickedInsideKPISetDropdown || clickedInsideSortPopover || clickedOnSortButton) {
         return;
       }
 
@@ -463,14 +627,17 @@ function App() {
       const clickedElement = event.target;
       const isDropdownItem = clickedElement.closest('.slds-dropdown') || 
                              clickedElement.closest('.slds-listbox__option') ||
-                             clickedElement.closest('[role="option"]') ||
-                             clickedElement.closest('[role="listbox"]') ||
-                             clickedElement.closest('.time-level-filter-dropdown');
+                              clickedElement.closest('[role="option"]') ||
+                              clickedElement.closest('[role="listbox"]') ||
+                              clickedElement.closest('.time-level-filter-dropdown') ||
+                              clickedElement.closest('.kpi-set-dropdown');
       
       if (!isDropdownItem) {
         setGroupedComboboxOpen(false);
         setLevelFilterOpen(false);
         setTimeLevelFilterOpen(false);
+        setKpiSetDropdownOpen(false);
+        setSortPopoverOpen(false);
       }
     };
 
@@ -483,7 +650,7 @@ function App() {
       clearTimeout(timeoutId);
       document.removeEventListener('click', handleClickOutside, true);
     };
-  }, [groupedComboboxOpen, levelFilterOpen, timeLevelFilterOpen]);
+   }, [groupedComboboxOpen, levelFilterOpen, timeLevelFilterOpen, kpiSetDropdownOpen, sortPopoverOpen]);
 
   // Preserve selected cell when switching between hierarchy views (Account, Product vs Product, Account)
   const prevGroupedComboboxValueRef = useRef(groupedComboboxValue);
@@ -1284,13 +1451,9 @@ function App() {
             });
           }
           
-          // Trigger auto-scroll BEFORE updating selected cell
-          // This ensures the flag is set when the effect runs
-          shouldAutoScrollRef.current = true;
-          
           // Update selected cell with new hierarchy ID while preserving KPI and time
           // This ensures the exact same cell (same KPI, same time, equivalent hierarchy) is shown
-          // The auto-scroll effect will run when selectedCell.hierarchy changes
+          // Do NOT trigger auto-scroll here - only scroll when view changes via button group or dropdown
           // Ensure we have a valid ID before updating
           if (selectedRowNew && selectedRowNew.id) {
             setSelectedCell(prev => ({
@@ -1323,16 +1486,6 @@ function App() {
               }));
             }
           }
-          
-          // Also trigger auto-scroll after DOM updates (rows expanding)
-          // This is a backup in case the first scroll didn't work due to timing
-          // Use a longer delay for hierarchy switches since structure changes dramatically
-          setTimeout(() => {
-            shouldAutoScrollRef.current = true;
-            // Force a re-render by updating a dummy state to trigger the effect
-            // The effect will check shouldAutoScrollRef and scroll if needed
-            setSelectedCell(prev => ({ ...prev }));
-          }, 400);
         } else {
           // No matching cell found - reset selection to default
           // This happens when the semantic matching fails (rare edge case)
@@ -1357,7 +1510,7 @@ function App() {
               time: prev.time, // Preserve time period
               hierarchy: firstLeaf.id // Update to first available hierarchy
             }));
-            shouldAutoScrollRef.current = true;
+            // Do NOT trigger auto-scroll - only scroll when view changes
           }
         }
       } else {
@@ -1381,7 +1534,7 @@ function App() {
             time: prev.time, // Preserve time period
             hierarchy: firstLeaf.id // Update to first available hierarchy
           }));
-          shouldAutoScrollRef.current = true;
+          // Do NOT trigger auto-scroll - only scroll when view changes
         }
       }
     }
@@ -1417,12 +1570,16 @@ function App() {
     // This will be defined after data is created, so we need to check if it exists
     if (!selectedCell || !selectedCell.hierarchy) return;
     
-    // Check if view changed - use prevViewForScrollRef to detect changes before prevViewRef is updated
+    // Only check if view changed - auto-scroll should ONLY happen on view changes via button group or dropdown
+    // Do NOT trigger auto-scroll on cell clicks or hierarchy switches
     const prevView = prevViewForScrollRef.current;
     const validViews = ['Time series', 'Time Roll-up', 'Specific Time'];
     const viewChanged = prevView !== selectedView;
     if (viewChanged && validViews.includes(prevView) && validViews.includes(selectedView)) {
       shouldAutoScrollRef.current = true;
+    } else {
+      // If view didn't change, ensure auto-scroll is disabled (prevents scrolling on cell clicks)
+      shouldAutoScrollRef.current = false;
     }
     
     // We'll compute data here to ensure it's available when this effect runs
@@ -1802,17 +1959,15 @@ function App() {
       requestAnimationFrame(() => {
         setTimeout(() => {
           scrollToCell();
-          // Reset the auto-scroll flag and update prevViewForScrollRef after scroll completes
+          // Reset the auto-scroll flag after scroll completes
           setTimeout(() => {
             shouldAutoScrollRef.current = false;
-            prevViewForScrollRef.current = selectedView; // Update after scroll completes
           }, 800 + 500 + delay); // Wait for scroll animations to complete
         }, delay);
       });
     } else {
-      // Reset the flag if we're not scrolling, and update the ref
+      // Reset auto-scroll flag if scrolling didn't happen
       shouldAutoScrollRef.current = false;
-      prevViewForScrollRef.current = selectedView; // Update even if not scrolling
     }
   }, [selectedCell.hierarchy, selectedCell.time, selectedCell.kpi, selectedMonth, selectedKAMView, selectedView, manuallyExpandedRows]);
   
@@ -1841,10 +1996,16 @@ function App() {
     const prevView = prevViewRef.current;
     
     // Check if view changed between Time Series, Time Roll-up, or Specific Time - if so, enable auto-scroll
+    // This is the ONLY place where auto-scroll should be triggered (when switching views via button group or dropdown)
     const validViews = ['Time series', 'Time Roll-up', 'Specific Time'];
     const viewChanged = prevView !== selectedView;
     if (viewChanged && validViews.includes(prevView) && validViews.includes(selectedView)) {
       shouldAutoScrollRef.current = true;
+      // Update prevViewForScrollRef to track this view change
+      prevViewForScrollRef.current = selectedView;
+    } else {
+      // If view didn't change, ensure auto-scroll is disabled (prevents scrolling on cell clicks)
+      shouldAutoScrollRef.current = false;
     }
     
     // Switching from Time Series → Specific Time
@@ -4196,7 +4357,11 @@ function App() {
     if (!sortColumn) return 0;
     
     // Parse sortColumn: 'kpi:Baseline...' or 'time:0' or 'time:-1' (FY) or 'hierarchy:name'
-    const [type, identifier] = sortColumn.split(':');
+    // Handle splitting correctly even if there are colons in the identifier part
+    const colonIndex = sortColumn.indexOf(':');
+    if (colonIndex === -1) return 0;
+    const type = sortColumn.substring(0, colonIndex);
+    const identifier = sortColumn.substring(colonIndex + 1);
     
     if (type === 'hierarchy' && identifier === 'name') {
       // Hierarchy name sorting (alphabetical)
@@ -4210,13 +4375,15 @@ function App() {
       
       if (timeIndex === -1) {
         // FY 25 total
-        if (!lastSelectedCell) return 0;
+        // Use lastSelectedCell if available, otherwise default to 'Baseline (Revenue) [Read-Only]'
+        const kpiToUse = lastSelectedCell || 'Baseline (Revenue) [Read-Only]';
         let total = 0;
         months.forEach((month, idx) => {
           const monthData = allMonthsData[idx];
+          if (!monthData) return;
           const rowData = findRowById(monthData, row.id);
           if (rowData) {
-            const value = getMetricValue(rowData, lastSelectedCell);
+            const value = getMetricValue(rowData, kpiToUse);
             if (value !== undefined) {
               total += value;
             }
@@ -4225,7 +4392,8 @@ function App() {
         return total;
       } else if (timeIndex >= -5 && timeIndex <= -2) {
         // Quarter totals (-2 to -5 for Q1-Q4)
-        if (!lastSelectedCell) return 0;
+        // Use lastSelectedCell if available, otherwise default to 'Baseline (Revenue) [Read-Only]'
+        const kpiToUse = lastSelectedCell || 'Baseline (Revenue) [Read-Only]';
         const quarterMonths = timeIndex === -2 ? [0, 1, 2] : // Q1
                              timeIndex === -3 ? [3, 4, 5] : // Q2
                              timeIndex === -4 ? [6, 7, 8] : // Q3
@@ -4233,9 +4401,10 @@ function App() {
         let total = 0;
         quarterMonths.forEach((monthIdx) => {
           const monthData = allMonthsData[monthIdx];
+          if (!monthData) return;
           const rowData = findRowById(monthData, row.id);
           if (rowData) {
-            const value = getMetricValue(rowData, lastSelectedCell);
+            const value = getMetricValue(rowData, kpiToUse);
             if (value !== undefined) {
               total += value;
             }
@@ -4244,21 +4413,77 @@ function App() {
         return total;
       } else if (timeIndex >= 0 && timeIndex <= 11) {
         // Month column
-        if (!lastSelectedCell) return 0;
+        // Use lastSelectedCell if available, otherwise default to 'Baseline (Revenue) [Read-Only]'
+        const kpiToUse = lastSelectedCell || 'Baseline (Revenue) [Read-Only]';
         const monthData = allMonthsData[timeIndex];
+        if (!monthData) return 0;
         const rowData = findRowById(monthData, row.id);
         if (!rowData) return 0;
-        return getMetricValue(rowData, lastSelectedCell) || 0;
+        return getMetricValue(rowData, kpiToUse) || 0;
       }
     }
     
     return 0;
   };
 
+  // Flatten hierarchical data into a flat array with parent references
+  const flattenHierarchy = (dataArray, parent = null, level = 0) => {
+    const result = [];
+    dataArray.forEach(row => {
+      result.push({
+        ...row,
+        _parent: parent,
+        _level: level,
+        _originalChildren: row.children ? [...row.children] : undefined
+      });
+      if (row.children && row.children.length > 0) {
+        result.push(...flattenHierarchy(row.children, row.id, level + 1));
+      }
+    });
+    return result;
+  };
+
   // Sort hierarchical data structure
-  const sortDataRecursive = (dataArray, sortColumn, sortDirection, view) => {
+  const sortDataRecursive = (dataArray, sortColumn, sortDirection, view, preserveHierarchy = true) => {
     if (!sortColumn || !dataArray) return dataArray;
     
+    // If not preserving hierarchy, flatten, sort, and return flat list
+    if (!preserveHierarchy) {
+      const flatArray = flattenHierarchy(dataArray);
+      const sorted = flatArray.sort((a, b) => {
+        const aValue = getCellValueForSorting(a, sortColumn, view);
+        const bValue = getCellValueForSorting(b, sortColumn, view);
+        
+        // Parse sortColumn type
+        const [type] = sortColumn.split(':');
+        
+        // Handle string comparison (for hierarchy names)
+        if (type === 'hierarchy') {
+          if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+          if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+          return 0;
+        }
+        
+        // Handle numeric comparison (for KPI and time columns)
+        if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+        if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+        
+        // If values are equal, maintain original order (by name)
+        return a.name.localeCompare(b.name);
+      });
+      
+      // Return flat sorted list (remove hierarchy metadata and children)
+      return sorted.map(item => ({
+        ...item,
+        _parent: undefined,
+        _level: undefined,
+        _originalChildren: undefined,
+        hasChildren: false,
+        children: undefined
+      }));
+    }
+    
+    // Original recursive sorting (preserves hierarchy)
     // Sort the array
     const sorted = [...dataArray].sort((a, b) => {
       const aValue = getCellValueForSorting(a, sortColumn, view);
@@ -4285,7 +4510,7 @@ function App() {
     // Recursively sort children
     return sorted.map(row => ({
       ...row,
-      children: row.children ? sortDataRecursive(row.children, sortColumn, sortDirection, view) : undefined
+      children: row.children ? sortDataRecursive(row.children, sortColumn, sortDirection, view, preserveHierarchy) : undefined
     }));
   };
 
@@ -4314,50 +4539,254 @@ function App() {
     }));
   };
 
+  // Global search - searches across all fields (names and values)
+  const globalSearchFilter = (dataArray, searchValue, view) => {
+    if (!searchValue || searchValue.trim() === '') return dataArray;
+    
+    const searchLower = searchValue.toLowerCase().trim();
+    
+    return dataArray.filter(row => {
+      if (!row) return false;
+      
+      // Check row name
+      const nameMatches = row.name && row.name.toLowerCase().includes(searchLower);
+      
+      // Check all metric values (baseline, amAdjusted, etc.)
+      const baselineMatches = row.baseline !== undefined && String(row.baseline).toLowerCase().includes(searchLower);
+      const amAdjustedMatches = row.amAdjusted !== undefined && String(row.amAdjusted).toLowerCase().includes(searchLower);
+      const smAdjustmentMatches = row.smAdjustment !== undefined && String(row.smAdjustment).toLowerCase().includes(searchLower);
+      const rsdAdjustmentMatches = row.rsdAdjustment !== undefined && String(row.rsdAdjustment).toLowerCase().includes(searchLower);
+      const finalForecastMatches = row.finalForecast !== undefined && String(row.finalForecast).toLowerCase().includes(searchLower);
+      
+      // Check if any value matches
+      const valueMatches = baselineMatches || amAdjustedMatches || smAdjustmentMatches || rsdAdjustmentMatches || finalForecastMatches;
+      
+      // Check children recursively
+      let childMatches = false;
+      if (row.children && row.children.length > 0) {
+        const filteredChildren = globalSearchFilter(row.children, searchValue, view);
+        childMatches = filteredChildren.length > 0;
+      }
+      
+      // Include row if name matches, any value matches, or any child matches
+      return nameMatches || valueMatches || childMatches;
+    }).map(row => ({
+      ...row,
+      children: row.children ? globalSearchFilter(row.children, searchValue, view) : undefined
+    }));
+  };
+
   // Filter data based on column filters
   const filterDataRecursive = (dataArray, filters, view) => {
     if (!filters || Object.keys(filters).length === 0) return dataArray;
     
-    return dataArray.filter(row => {
+    return dataArray.map(row => {
+      // First, recursively filter children
+      const filteredChildren = row.children ? filterDataRecursive(row.children, filters, view) : undefined;
+      const hasMatchingChildren = filteredChildren && filteredChildren.length > 0;
+      
       // Check if row matches all active filters
       let matchesAllFilters = true;
       
-      for (const [columnIdentifier, filterValue] of Object.entries(filters)) {
+      for (const [columnIdentifier, filterCriteria] of Object.entries(filters)) {
+        // Support both old format (string) and new format (object with operator and value)
+        let operator = '>=';
+        let filterValue = '';
+        
+        if (typeof filterCriteria === 'string') {
+          // Legacy format: just a string value, default to >= for backward compatibility
+          filterValue = filterCriteria;
+          operator = '>=';
+        } else if (filterCriteria && typeof filterCriteria === 'object') {
+          // New format: object with operator and value
+          operator = filterCriteria.operator || '>=';
+          filterValue = filterCriteria.value || '';
+        }
+        
         if (!filterValue || filterValue.trim() === '') {
           continue; // Skip empty filters
         }
         
         const cellValue = getCellValueForSorting(row, columnIdentifier, view);
         
+        // Determine if this column is numeric (time-based columns and KPI columns are numeric)
+        const isNumericColumn = columnIdentifier.startsWith('time:') || columnIdentifier.startsWith('kpi:');
+        
+        let matches = false;
+        
         // Try to parse filter as number for numeric comparison
         // Remove currency symbols, commas, and other non-numeric characters (except minus sign)
         const cleanFilter = filterValue.replace(/[$,\s]/g, '').replace(/[^0-9.-]/g, '');
         const filterNum = parseFloat(cleanFilter);
-        const cellNum = typeof cellValue === 'number' ? cellValue : (parseFloat(cellValue) || 0);
+        // Check if filter is numeric: must parse to a number and cleanFilter must be numeric (allows integers, decimals, and negative)
+        // Regex: optional minus, followed by one or more digits, optionally followed by decimal point and more digits
+        const isNumericFilter = !isNaN(filterNum) && cleanFilter !== '' && cleanFilter !== '-' && /^-?\d+(\.\d*)?$/.test(cleanFilter);
         
-        // If filter is a number, do numeric comparison (greater than or equal)
-        if (!isNaN(filterNum) && cleanFilter !== '') {
-          // For numeric filters, check if cell value is >= filter value
-          if (cellNum < filterNum) {
-            matchesAllFilters = false;
-            break;
+        // For numeric columns, always try numeric comparison (even if filter looks like text)
+        // For text columns, use numeric comparison only if filter is clearly numeric
+        if (isNumericColumn) {
+          // Numeric column - always do numeric comparison
+          // Handle cellValue: it might be number, string, undefined, or null
+          let cellNum = 0;
+          if (typeof cellValue === 'number' && !isNaN(cellValue)) {
+            // cellValue is a valid number
+            cellNum = cellValue;
+          } else if (cellValue === undefined || cellValue === null || cellValue === '') {
+            // Explicitly undefined/null/empty - treat as 0
+            cellNum = 0;
+          } else {
+            // Try to parse as number, removing currency symbols and commas
+            const cleanedCellValue = String(cellValue).replace(/[$,\s]/g, '').replace(/[^0-9.-]/g, '');
+            const parsed = parseFloat(cleanedCellValue);
+            cellNum = !isNaN(parsed) ? parsed : 0;
+          }
+          
+          // If filter can be parsed as number, use numeric comparison
+          if (isNumericFilter) {
+            switch (operator) {
+              case '=':
+              case 'equals':
+                // Exact match for equals
+                // For integers, use strict equality
+                // For floating point, use very tight tolerance
+                if (Number.isInteger(filterNum) && Number.isInteger(cellNum)) {
+                  // Both are integers - exact match
+                  matches = cellNum === filterNum;
+                } else {
+                  // Use tolerance for floating point comparison (covers both integer and decimal cases)
+                  const tolerance = 0.0001;
+                  matches = Math.abs(cellNum - filterNum) < tolerance;
+                }
+                
+                // Debug logging for equals operator (remove after debugging)
+                if (!matches && row.id && Math.random() < 0.05) {
+                  console.log('Equals filter - no match:', {
+                    rowId: row.id,
+                    rowName: row.name,
+                    columnIdentifier,
+                    filterValue,
+                    filterNum,
+                    cellValue,
+                    cellNum,
+                    isIntegerFilter: Number.isInteger(filterNum),
+                    isIntegerCell: Number.isInteger(cellNum),
+                    diff: Math.abs(cellNum - filterNum),
+                    cellValueType: typeof cellValue,
+                    rowBaseline: row.baseline
+                  });
+                }
+                
+                break;
+              case '>=':
+              case 'greaterThanOrEqual':
+                matches = cellNum >= filterNum;
+                break;
+              case '<=':
+              case 'lessThanOrEqual':
+                matches = cellNum <= filterNum;
+                break;
+              case '>':
+              case 'greaterThan':
+                matches = cellNum > filterNum;
+                break;
+              case '<':
+              case 'lessThan':
+                matches = cellNum < filterNum;
+                break;
+              case '!=':
+              case 'notEquals':
+                matches = Math.abs(cellNum - filterNum) >= 0.0001;
+                break;
+              default:
+                matches = cellNum >= filterNum; // Default to >=
+            }
+          } else {
+            // Filter is not numeric, so no match for numeric column
+            matches = false;
+          }
+        } else if (isNumericFilter) {
+          // Text column but numeric filter - convert cell to number and compare
+          const cellNum = typeof cellValue === 'number' ? cellValue : (parseFloat(String(cellValue).replace(/[$,\s]/g, '')) || 0);
+          
+          switch (operator) {
+            case '=':
+            case 'equals':
+              matches = Math.abs(cellNum - filterNum) < 0.0001;
+              break;
+            case '>=':
+            case 'greaterThanOrEqual':
+              matches = cellNum >= filterNum;
+              break;
+            case '<=':
+            case 'lessThanOrEqual':
+              matches = cellNum <= filterNum;
+              break;
+            case '>':
+            case 'greaterThan':
+              matches = cellNum > filterNum;
+              break;
+            case '<':
+            case 'lessThan':
+              matches = cellNum < filterNum;
+              break;
+            case '!=':
+            case 'notEquals':
+              matches = Math.abs(cellNum - filterNum) >= 0.0001;
+              break;
+            default:
+              matches = cellNum >= filterNum;
           }
         } else if (filterValue.trim() !== '') {
-          // String matching (case-insensitive contains)
-          const cellValueStr = String(cellValue || '').toLowerCase();
-          const filterStr = filterValue.toLowerCase();
-          if (!cellValueStr.includes(filterStr)) {
-            matchesAllFilters = false;
-            break;
+          // String matching (case-insensitive) for text values
+          const cellValueStr = String(cellValue || '').toLowerCase().trim();
+          const filterStr = filterValue.toLowerCase().trim();
+          
+          switch (operator) {
+            case '=':
+            case 'equals':
+            case '==':
+              matches = cellValueStr === filterStr;
+              break;
+            case 'contains':
+              matches = cellValueStr.includes(filterStr);
+              break;
+            case 'startsWith':
+              matches = cellValueStr.startsWith(filterStr);
+              break;
+            case 'endsWith':
+              matches = cellValueStr.endsWith(filterStr);
+              break;
+            case '!=':
+            case 'notEquals':
+            case '!==':
+              matches = cellValueStr !== filterStr;
+              break;
+            case 'doesNotContain':
+              matches = !cellValueStr.includes(filterStr);
+              break;
+            default:
+              matches = cellValueStr.includes(filterStr); // Default to contains
           }
+        }
+        
+        if (!matches) {
+          matchesAllFilters = false;
+          break;
         }
       }
       
-      return matchesAllFilters;
-    }).map(row => ({
-      ...row,
-      children: row.children ? filterDataRecursive(row.children, filters, view) : undefined
-    }));
+      // Include row if it matches filters OR if any child matches (parent should be visible if children are visible)
+      const shouldInclude = matchesAllFilters || hasMatchingChildren;
+      
+      if (!shouldInclude) {
+        return null; // Mark for removal
+      }
+      
+      return {
+        ...row,
+        children: filteredChildren
+      };
+    }).filter(row => row !== null); // Remove null entries
   };
 
   // Helper function to calculate aggregate totals from top-level rows only
@@ -4395,10 +4824,11 @@ function App() {
     };
   };
   
-  // Apply hierarchy filter first (for Time Series and Specific Time views only), then column filters, then sorting
+  // Apply global search first, then hierarchy filter (for Time Series and Specific Time views only), then column filters, then sorting
+  const globallySearchedData = globalSearchFilter(displayedData, globalSearch, selectedView);
   const hierarchyFilteredData = (selectedView === 'Time series' || selectedView === 'Specific Time')
-    ? filterByHierarchyName(displayedData, hierarchyFilter)
-    : displayedData;
+    ? filterByHierarchyName(globallySearchedData, hierarchyFilter)
+    : globallySearchedData;
   const filteredData = filterDataRecursive(hierarchyFilteredData, columnFilters, selectedView);
   
   // Create aggregate row at the top (only for Account Director View)
@@ -4422,7 +4852,7 @@ function App() {
   // Sort data, but always keep aggregate row at the top
   let sortedDisplayedData;
   if (sortColumn) {
-    const sorted = sortDataRecursive(dataWithAggregate, sortColumn, sortDirection, selectedView);
+    const sorted = sortDataRecursive(dataWithAggregate, sortColumn, sortDirection, selectedView, preserveHierarchyOnSort);
     // Find and separate aggregate row
     const aggregateRowIndex = sorted.findIndex(row => row.id === 'total-aggregate');
     if (aggregateRowIndex >= 0) {
@@ -4463,79 +4893,345 @@ function App() {
     }
   };
 
-  // Helper to render sort indicator (arrow)
+  // Helper to render sort indicator (arrow) - now clickable to open popover
   const renderSortIndicator = (columnIdentifier) => {
     if (sortColumn !== columnIdentifier) return null;
-    return sortDirection === 'asc' ? ' ↑' : ' ↓';
+    const isAscending = sortDirection === 'asc';
+    return (
+      <>
+        <button
+          ref={(el) => {
+            if (el && sortColumn === columnIdentifier) {
+              sortIndicatorButtonRef.current = el;
+            }
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            setSortPopoverOpen(true);
+          }}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            flexShrink: 0,
+            marginLeft: '4px',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: '2px',
+            borderRadius: '2px',
+            color: '#0250d9'
+          }}
+          onMouseEnter={(e) => {
+            e.target.style.backgroundColor = '#e8f4fd';
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.backgroundColor = 'transparent';
+          }}
+          title="Sort options"
+        >
+          {isAscending ? (
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M6 1L10 8H2L6 1Z" fill="#0250d9"/>
+            </svg>
+          ) : (
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M6 11L2 4H10L6 11Z" fill="#0250d9"/>
+            </svg>
+          )}
+        </button>
+        {sortPopoverOpen && renderSortPopover()}
+      </>
+    );
+  };
+
+  // Render sort options popover
+  const renderSortPopover = () => {
+    if (!sortIndicatorButtonRef.current) return null;
+    
+    const buttonRect = sortIndicatorButtonRef.current.getBoundingClientRect();
+    
+    return ReactDOM.createPortal(
+      <div
+        ref={sortPopoverRef}
+        style={{
+          position: 'fixed',
+          top: `${buttonRect.bottom + window.scrollY + 4}px`,
+          left: `${buttonRect.left + window.scrollX}px`,
+          backgroundColor: '#ffffff',
+          border: '1px solid #dddbda',
+          borderRadius: '4px',
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
+          padding: '12px',
+          minWidth: '200px',
+          zIndex: 10001,
+          fontFamily: 'inherit'
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ marginBottom: '12px', fontSize: '12px', fontWeight: '600', color: '#080707' }}>
+          Sort Options
+        </div>
+        <label style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: '8px', 
+          fontSize: '12px', 
+          color: '#080707', 
+          cursor: 'pointer', 
+          userSelect: 'none' 
+        }}>
+          <input
+            type="checkbox"
+            checked={preserveHierarchyOnSort}
+            onChange={(e) => setPreserveHierarchyOnSort(e.target.checked)}
+            style={{ cursor: 'pointer', width: '14px', height: '14px' }}
+          />
+          <span>Preserve hierarchy on sort</span>
+        </label>
+      </div>,
+      document.body
+    );
   };
 
   // Handle filter change
-  const handleFilterChange = (columnIdentifier, filterValue) => {
+  const handleFilterChange = (columnIdentifier, filterValue, operator = null) => {
     setColumnFilters(prev => {
       const newFilters = { ...prev };
+      const currentFilter = prev[columnIdentifier] || {};
+      const currentOperator = typeof currentFilter === 'object' && currentFilter.operator ? currentFilter.operator : (operator || '>=');
+      
       if (filterValue && filterValue.trim() !== '') {
-        newFilters[columnIdentifier] = filterValue;
+        newFilters[columnIdentifier] = {
+          operator: operator || currentOperator,
+          value: filterValue
+        };
       } else {
         delete newFilters[columnIdentifier];
       }
       return newFilters;
     });
   };
+  
+  // Handle filter operator change
+  const handleFilterOperatorChange = (columnIdentifier, operator) => {
+    setColumnFilters(prev => {
+      const newFilters = { ...prev };
+      const currentFilter = prev[columnIdentifier] || {};
+      
+      if (typeof currentFilter === 'object' && currentFilter.value) {
+        // Keep existing value, update operator
+        newFilters[columnIdentifier] = {
+          operator: operator,
+          value: currentFilter.value
+        };
+      } else if (typeof currentFilter === 'string' && currentFilter.trim() !== '') {
+        // Legacy format: convert to new format
+        newFilters[columnIdentifier] = {
+          operator: operator,
+          value: currentFilter
+        };
+      } else {
+        // No value yet, set operator but keep value empty
+        newFilters[columnIdentifier] = {
+          operator: operator,
+          value: ''
+        };
+      }
+      return newFilters;
+    });
+  };
 
-  // Helper to render filter input
+  // Helper to render filter input with operator dropdown
   const renderFilterInput = (columnIdentifier) => {
-    const filterValue = columnFilters[columnIdentifier] || '';
+    const filterCriteria = columnFilters[columnIdentifier];
+    const filterValue = typeof filterCriteria === 'object' && filterCriteria?.value ? filterCriteria.value : (typeof filterCriteria === 'string' ? filterCriteria : '');
+    const filterOperator = typeof filterCriteria === 'object' && filterCriteria?.operator ? filterCriteria.operator : '>=';
+    
+    // Determine if this column is numeric (time-based columns and KPI columns are numeric)
+    const isNumeric = columnIdentifier.startsWith('time:') || columnIdentifier.startsWith('kpi:');
+    
+    const numericOperators = [
+      { value: '>=', label: '>=' },
+      { value: '<=', label: '<=' },
+      { value: '>', label: '>' },
+      { value: '<', label: '<' },
+      { value: '=', label: '=' },
+      { value: '!=', label: '≠' }
+    ];
+    
+    const textOperators = [
+      { value: 'contains', label: 'Contains' },
+      { value: '=', label: 'Equals' },
+      { value: 'startsWith', label: 'Starts with' },
+      { value: 'endsWith', label: 'Ends with' },
+      { value: 'doesNotContain', label: 'Does not contain' },
+      { value: '!=', label: 'Not equals' }
+    ];
+    
+    const operators = isNumeric ? numericOperators : textOperators;
+    
     return (
-      <div style={{ position: 'relative', marginTop: '4px', width: '100%' }}>
-        <input
-          type="text"
-          className="column-filter-input"
-          value={filterValue}
-          onChange={(e) => handleFilterChange(columnIdentifier, e.target.value)}
-          onClick={(e) => e.stopPropagation()} // Prevent header click when clicking filter
-          placeholder="Filter..."
-          style={{
-            width: '100%',
-            padding: '4px 20px 4px 6px',
-            fontSize: '11px',
-            border: '1px solid #c9c9c9',
-            borderRadius: '4px',
-            boxSizing: 'border-box'
+      <div style={{ position: 'relative', marginTop: '4px', width: '100%', display: 'flex', gap: '4px' }}>
+        <select
+          id={`filter-operator-${columnIdentifier.replace(/[:\[\]()\s]/g, '-')}`}
+          name={`filter-operator-${columnIdentifier.replace(/[:\[\]()\s]/g, '-')}`}
+          value={filterOperator}
+          onChange={(e) => {
+            e.stopPropagation();
+            handleFilterOperatorChange(columnIdentifier, e.target.value);
           }}
-        />
-        {filterValue && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleFilterChange(columnIdentifier, '');
-            }}
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            padding: '4px 6px',
+            fontSize: '10px',
+            border: filterValue ? '1px solid #0176d3' : '1px solid #c9c9c9',
+            borderRadius: '4px',
+            boxSizing: 'border-box',
+            cursor: 'pointer',
+            backgroundColor: filterValue ? '#f0f8ff' : '#ffffff',
+            minWidth: '50px',
+            flexShrink: 0
+          }}
+          title="Filter operator"
+        >
+          {operators.map(op => (
+            <option key={op.value} value={op.value}>{op.label}</option>
+          ))}
+        </select>
+        <div style={{ position: 'relative', flex: 1 }}>
+          <input
+            type="text"
+            id={`filter-value-${columnIdentifier.replace(/[:\[\]()\s]/g, '-')}`}
+            name={`filter-value-${columnIdentifier.replace(/[:\[\]()\s]/g, '-')}`}
+            className="column-filter-input"
+            value={filterValue}
+            onChange={(e) => handleFilterChange(columnIdentifier, e.target.value, filterOperator)}
+            onClick={(e) => e.stopPropagation()}
+            placeholder="Value..."
             style={{
-              position: 'absolute',
-              right: '4px',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: '2px 4px',
-              fontSize: '12px',
-              color: '#666',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: '3px',
-              transition: 'background-color 0.2s',
-              lineHeight: '1'
+              width: '100%',
+              padding: '4px 20px 4px 6px',
+              fontSize: '11px',
+              border: filterValue ? '1px solid #0176d3' : '1px solid #c9c9c9',
+              borderRadius: '4px',
+              boxSizing: 'border-box',
+              backgroundColor: filterValue ? '#f0f8ff' : '#ffffff'
             }}
-            onMouseEnter={(e) => e.target.style.backgroundColor = '#f0f0f0'}
-            onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-            title="Clear filter"
-          >
-            ✕
-          </button>
-        )}
+          />
+          {filterValue && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleFilterChange(columnIdentifier, '');
+              }}
+              style={{
+                position: 'absolute',
+                right: '4px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '2px 4px',
+                fontSize: '12px',
+                color: '#666',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: '3px',
+                transition: 'background-color 0.2s',
+                lineHeight: '1'
+              }}
+              onMouseEnter={(e) => e.target.style.backgroundColor = '#f0f0f0'}
+              onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+              title="Clear filter"
+            >
+              ✕
+            </button>
+          )}
+        </div>
       </div>
     );
+  };
+
+  // Helper function to get cell key for edited values map
+  const getCellKey = (rowId, kpi, timeIndex) => {
+    return `${rowId}-${kpi}-${timeIndex}`;
+  };
+
+  // Helper function to check if a KPI is editable
+  const isKpiEditable = (kpi) => {
+    return kpi && kpi.includes('[Editable]');
+  };
+
+  // Helper function to get edited value or return null
+  const getEditedValue = (rowId, kpi, timeIndex) => {
+    const key = getCellKey(rowId, kpi, timeIndex);
+    return editedCellValues[key] !== undefined ? editedCellValues[key] : null;
+  };
+
+  // Helper function to check if a cell has been edited
+  const isCellEdited = (rowId, kpi, timeIndex) => {
+    const key = getCellKey(rowId, kpi, timeIndex);
+    return editedCellValues[key] !== undefined;
+  };
+
+  // Helper function to check if a cell is impacted (has edited children)
+  const isCellImpacted = (rowId, timeIndex, monthData) => {
+    if (!monthData) return false;
+    
+    // Find the row
+    const findRowById = (dataArray, id) => {
+      if (!dataArray || !Array.isArray(dataArray)) return null;
+      for (const row of dataArray) {
+        if (row && row.id === id) return row;
+        if (row && row.children) {
+          const found = findRowById(row.children, id);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    
+    const row = findRowById(monthData, rowId);
+    if (!row || !row.children || row.children.length === 0) return false;
+    
+    // Check if any child has been edited
+    const checkChildren = (children) => {
+      if (!children) return false;
+      for (const child of children) {
+        if (!child) continue;
+        // Check all KPIs for this child at this time
+        const kpis = [
+          'Baseline (Revenue) [Read-Only]',
+          'AM Adjusted (Revenue) [Editable]',
+          'SM Adjustment [Read-Only]',
+          'RSD Adjustment [Read-Only]',
+          'Final Forecast (Revenue) [Read-Only]'
+        ];
+        for (const kpi of kpis) {
+          if (isCellEdited(child.id, kpi, timeIndex)) {
+            return true;
+          }
+        }
+        // Recursively check grandchildren
+        if (child.children && checkChildren(child.children)) {
+          return true;
+        }
+      }
+      return false;
+    };
+    
+    return checkChildren(row.children);
+  };
+
+  // Helper function to set edited value
+  const setEditedValue = (rowId, kpi, timeIndex, value) => {
+    const key = getCellKey(rowId, kpi, timeIndex);
+    setEditedCellValues(prev => ({
+      ...prev,
+      [key]: value
+    }));
   };
 
   const handleCellClick = (columnName, rowId, monthOverride = null, viewOverride = null) => {
@@ -4579,6 +5275,238 @@ function App() {
     if (currentView !== 'Time Roll-up') {
       setSelectedMonth(currentMonth);
     }
+  };
+
+  // Handle double-click to start editing
+  const handleCellDoubleClick = (rowId, kpi, timeIndex, currentValue) => {
+    if (!isKpiEditable(kpi)) return;
+    
+    setEditingCell({ rowId, kpi, timeIndex, currentValue });
+  };
+
+  // Helper function to recalculate finalForecast when amAdjusted is edited
+  const recalculateFinalForecast = (rowId, timeIndex, monthData) => {
+    if (!monthData) {
+      // If monthData not provided, generate it
+      const monthIndex = timeIndex >= 0 && timeIndex <= 11 ? timeIndex : null;
+      if (monthIndex === null) return;
+      const month = months[monthIndex];
+      const rawMonthData = generateDataForMonth(month, selectedKAMView === 'Account Director View');
+      const transformedMonthData = selectedKAMView === 'Account Director View' && groupedComboboxValue
+        ? transformDataByHierarchyOrder(rawMonthData, groupedComboboxValue)
+        : rawMonthData;
+      const selectedLevelsSetForMonth = selectedLevels instanceof Set ? selectedLevels : new Set(selectedLevels || []);
+      monthData = selectedKAMView === 'Account Director View' && groupedComboboxValue
+        ? filterDataByLevels(transformedMonthData, selectedLevelsSetForMonth, groupedComboboxValue)
+        : transformedMonthData;
+    }
+    
+    if (!monthData) return;
+    
+    // Find the row
+    const findRowById = (dataArray, id) => {
+      if (!dataArray || !Array.isArray(dataArray)) return null;
+      for (const row of dataArray) {
+        if (row && row.id === id) return row;
+        if (row && row.children) {
+          const found = findRowById(row.children, id);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    
+    const rowData = findRowById(monthData, rowId);
+    if (!rowData) return;
+    
+    // Get edited amAdjusted or use original
+    const editedAmAdjusted = getEditedValue(rowId, 'AM Adjusted (Revenue) [Editable]', timeIndex);
+    const amAdjusted = editedAmAdjusted !== null ? editedAmAdjusted : (rowData.amAdjusted || 0);
+    
+    // Get other values (baseline, smAdjustment, rsdAdjustment) - these are read-only
+    const baseline = getEditedValue(rowId, 'Baseline (Revenue) [Read-Only]', timeIndex);
+    const baselineValue = baseline !== null ? baseline : (rowData.baseline || 0);
+    const smAdjustment = rowData.smAdjustment || 0;
+    const rsdAdjustment = rowData.rsdAdjustment || 0;
+    
+    // Recalculate finalForecast: baseline + amAdjusted + smAdjustment + rsdAdjustment
+    const newFinalForecast = baselineValue + amAdjusted + smAdjustment + rsdAdjustment;
+    
+    // Store the recalculated finalForecast
+    setEditedValue(rowId, 'Final Forecast (Revenue) [Read-Only]', timeIndex, newFinalForecast);
+  };
+
+  // Helper function to find all parent rows recursively
+  const findAllParents = (dataArray, targetId, parentList = []) => {
+    if (!dataArray || !Array.isArray(dataArray)) return [];
+    
+    for (const row of dataArray) {
+      if (!row) continue;
+      
+      // Helper to check if targetId exists in children tree
+      const findInChildren = (children, targetId) => {
+        if (!children || !Array.isArray(children)) return false;
+        for (const child of children) {
+          if (child && child.id === targetId) return true;
+          if (child && child.children && findInChildren(child.children, targetId)) return true;
+        }
+        return false;
+      };
+      
+      // If this row contains the target as a child, it's a parent
+      if (row.children && findInChildren(row.children, targetId)) {
+        parentList.push(row);
+        // Recursively find parents of this parent
+        findAllParents(dataArray, row.id, parentList);
+      }
+      
+      // Also check in children recursively
+      if (row.children) {
+        findAllParents(row.children, targetId, parentList);
+      }
+    }
+    
+    return parentList;
+  };
+
+  // Helper function to recalculate parent aggregates recursively
+  const recalculateParentAggregates = (rowId, timeIndex, monthData) => {
+    if (!monthData) return;
+    
+    // Find all parent rows that contain this rowId
+    const findAllParents = (dataArray, targetId, parentList = []) => {
+      if (!dataArray || !Array.isArray(dataArray)) return parentList;
+      
+      for (const row of dataArray) {
+        if (!row) continue;
+        
+        // Helper to check if targetId exists in children tree
+        const findInChildren = (children, targetId) => {
+          if (!children || !Array.isArray(children)) return false;
+          for (const child of children) {
+            if (child && child.id === targetId) return true;
+            if (child && child.children && findInChildren(child.children, targetId)) return true;
+          }
+          return false;
+        };
+        
+        // If this row contains the target as a child, it's a parent
+        if (row.children && findInChildren(row.children, targetId)) {
+          if (!parentList.find(p => p.id === row.id)) {
+            parentList.push(row);
+            // Recursively find parents of this parent
+            findAllParents(dataArray, row.id, parentList);
+          }
+        }
+        
+        // Also check in children recursively
+        if (row.children) {
+          findAllParents(row.children, targetId, parentList);
+        }
+      }
+      
+      return parentList;
+    };
+    
+    const parentRows = findAllParents(monthData, rowId, []);
+    
+    // Recalculate aggregates for each parent
+    const recalculateAggregateForRow = (row) => {
+      if (!row || !row.children || row.children.length === 0) return;
+      
+      let totalBaseline = 0;
+      let totalAmAdjusted = 0;
+      let totalSmAdjustment = 0;
+      let totalRsdAdjustment = 0;
+      let totalFinalForecast = 0;
+      
+      const processChild = (child) => {
+        if (!child) return;
+        
+        // Get values for this child, using edited values if available
+        const childBaseline = getEditedValue(child.id, 'Baseline (Revenue) [Read-Only]', timeIndex);
+        const childAmAdjusted = getEditedValue(child.id, 'AM Adjusted (Revenue) [Editable]', timeIndex);
+        const childSmAdjustment = getEditedValue(child.id, 'SM Adjustment [Read-Only]', timeIndex);
+        const childRsdAdjustment = getEditedValue(child.id, 'RSD Adjustment [Read-Only]', timeIndex);
+        const childFinalForecast = getEditedValue(child.id, 'Final Forecast (Revenue) [Read-Only]', timeIndex);
+        
+        const baseline = childBaseline !== null ? childBaseline : (child.baseline || 0);
+        const amAdjusted = childAmAdjusted !== null ? childAmAdjusted : (child.amAdjusted || 0);
+        const smAdjustment = childSmAdjustment !== null ? childSmAdjustment : (child.smAdjustment || 0);
+        const rsdAdjustment = childRsdAdjustment !== null ? childRsdAdjustment : (child.rsdAdjustment || 0);
+        
+        // If finalForecast is edited, use it; otherwise recalculate
+        let finalForecast;
+        if (childFinalForecast !== null) {
+          finalForecast = childFinalForecast;
+        } else {
+          finalForecast = baseline + amAdjusted + smAdjustment + rsdAdjustment;
+        }
+        
+        totalBaseline += baseline;
+        totalAmAdjusted += amAdjusted;
+        totalSmAdjustment += smAdjustment;
+        totalRsdAdjustment += rsdAdjustment;
+        totalFinalForecast += finalForecast;
+        
+        // If child has children, process them recursively
+        if (child.children && child.children.length > 0) {
+          child.children.forEach(processChild);
+        }
+      };
+      
+      row.children.forEach(processChild);
+      
+      // Store aggregated values for the parent
+      setEditedValue(row.id, 'Baseline (Revenue) [Read-Only]', timeIndex, totalBaseline);
+      setEditedValue(row.id, 'AM Adjusted (Revenue) [Editable]', timeIndex, totalAmAdjusted);
+      setEditedValue(row.id, 'SM Adjustment [Read-Only]', timeIndex, totalSmAdjustment);
+      setEditedValue(row.id, 'RSD Adjustment [Read-Only]', timeIndex, totalRsdAdjustment);
+      setEditedValue(row.id, 'Final Forecast (Revenue) [Read-Only]', timeIndex, totalFinalForecast);
+      
+      // Recursively recalculate this parent's parents
+      recalculateParentAggregates(row.id, timeIndex, monthData);
+    };
+    
+    // Recalculate all parents
+    parentRows.forEach(recalculateAggregateForRow);
+  };
+
+  // Handle saving edited value
+  const handleSaveEdit = (rowId, kpi, timeIndex, newValue) => {
+    // Parse the value - remove $ and commas
+    const cleanValue = String(newValue).replace(/[$,\s]/g, '').replace(/[^0-9.-]/g, '');
+    const numValue = parseFloat(cleanValue);
+    
+    if (!isNaN(numValue)) {
+      setEditedValue(rowId, kpi, timeIndex, numValue);
+      
+      // If editing AM Adjusted, recalculate Final Forecast and parent aggregates
+      if (kpi === 'AM Adjusted (Revenue) [Editable]') {
+        const monthIndex = timeIndex >= 0 && timeIndex <= 11 ? timeIndex : null;
+        if (monthIndex !== null) {
+          // Generate month data on the fly
+          const month = months[monthIndex];
+          const rawMonthData = generateDataForMonth(month, selectedKAMView === 'Account Director View');
+          const transformedMonthData = selectedKAMView === 'Account Director View' && groupedComboboxValue
+            ? transformDataByHierarchyOrder(rawMonthData, groupedComboboxValue)
+            : rawMonthData;
+          const selectedLevelsSetForMonth = selectedLevels instanceof Set ? selectedLevels : new Set(selectedLevels || []);
+          const monthData = selectedKAMView === 'Account Director View' && groupedComboboxValue
+            ? filterDataByLevels(transformedMonthData, selectedLevelsSetForMonth, groupedComboboxValue)
+            : transformedMonthData;
+          
+          recalculateFinalForecast(rowId, timeIndex, monthData);
+          recalculateParentAggregates(rowId, timeIndex, monthData);
+        }
+      }
+    }
+    setEditingCell(null);
+  };
+
+  // Handle canceling edit
+  const handleCancelEdit = () => {
+    setEditingCell(null);
   };
 
   // Handle cell click in Time Series view
@@ -4788,6 +5716,114 @@ function App() {
               <span className={hasChildren ? 'parent-text' : 'child-text'} style={{ flex: 1, fontWeight: row.id === 'total-aggregate' ? 'bold' : 'normal' }}>
                 {row.name}
               </span>
+              {/* Show filter button for parent rows */}
+              {hasChildren && row.children && row.children.length > 0 && (
+                <div style={{ position: 'relative', display: 'inline-block' }}>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setChildFilterOpen(childFilterOpen === row.id ? null : row.id);
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: '2px 4px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#706e6b',
+                      fontSize: '14px',
+                      lineHeight: '1',
+                      width: '18px',
+                      height: '18px'
+                    }}
+                    title="Filter children"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M13 1H1L6 7.5V11.5L8 12.5V7.5L13 1Z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                    </svg>
+                  </button>
+                  {childFilterOpen === row.id && ReactDOM.createPortal(
+                    <div
+                      ref={childFilterPopoverRef}
+                      style={{
+                        position: 'fixed',
+                        top: '0px',
+                        left: '0px',
+                        padding: '8px 0',
+                        backgroundColor: '#ffffff',
+                        border: '1px solid #c9c9c9',
+                        borderRadius: '4px',
+                        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
+                        zIndex: 99999,
+                        minWidth: '200px',
+                        maxWidth: '300px',
+                        maxHeight: '300px',
+                        overflowY: 'auto',
+                        display: 'none'
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div style={{ padding: '0 12px 8px 12px', fontSize: '12px', fontWeight: '600', color: '#080707', borderBottom: '1px solid #dddbda', marginBottom: '4px' }}>
+                        Filter Children
+                      </div>
+                      {row.children.map((child) => {
+                        const childSelections = childFilterSelections[row.id] || new Set();
+                        const isSelected = !childSelections.has(child.id); // If not in filter, show by default (all selected)
+                        
+                        return (
+                          <label
+                            key={child.id}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              padding: '6px 12px',
+                              cursor: 'pointer',
+                              fontSize: '12px',
+                              color: '#080707',
+                              userSelect: 'none'
+                            }}
+                            onMouseEnter={(e) => e.target.style.backgroundColor = '#f3f2f2'}
+                            onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={(e) => {
+                                setChildFilterSelections(prev => {
+                                  const parentSelections = prev[row.id] || new Set();
+                                  const newSelections = new Set(parentSelections);
+                                  
+                                  if (e.target.checked) {
+                                    newSelections.delete(child.id); // Remove from filter = show
+                                  } else {
+                                    newSelections.add(child.id); // Add to filter = hide
+                                  }
+                                  
+                                  return {
+                                    ...prev,
+                                    [row.id]: newSelections.size > 0 ? newSelections : undefined
+                                  };
+                                });
+                              }}
+                              style={{
+                                marginRight: '8px',
+                                cursor: 'pointer',
+                                width: '14px',
+                                height: '14px'
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            <span>{child.name}</span>
+                          </label>
+                        );
+                      })}
+                    </div>,
+                    document.body
+                  )}
+                </div>
+              )}
               {/* Show hierarchy info button for products when intermediate levels are disabled */}
               {!hasChildren && row._hierarchyPath && row._hierarchyPath.length > 2 && selectedKAMView === 'Account Director View' && (
                 <div style={{ position: 'relative', display: 'inline-block' }}>
@@ -4857,34 +5893,56 @@ function App() {
                 </div>
               )}
             </div>
-            {selectedTimeLevels.has('Year') && (
-            <div 
-              className={`cell ${selectedCell && selectedCell.time === -1 && selectedCell.hierarchy === row.id && selectedCell.kpi === (lastSelectedCell || 'Baseline (Revenue) [Read-Only]') ? 'selected' : ''}`}
-              style={{ fontWeight: row.id === 'total-aggregate' ? 'bold' : 'normal', cursor: 'pointer' }}
-              onClick={() => {
-                // Just update BB cell, don't switch views
-                const kpiToUse = lastSelectedCell || 'Baseline (Revenue) [Read-Only]';
-                setSelectedCell({
-                  time: -1,
-                  hierarchy: row.id,
-                  kpi: kpiToUse
-                });
-                setLastSelectedCell(kpiToUse);
-                setSelectedMonth('FY 25');
-              }}
-              data-selected-hierarchy={row.id}
-              data-selected-time="-1"
-              data-selected-kpi={lastSelectedCell || 'Baseline (Revenue) [Read-Only]'}
-            >
-              {getFYTotal()}
-            </div>
-            )}
+            {selectedTimeLevels.has('Year') && (() => {
+              const kpiToUse = lastSelectedCell || 'Baseline (Revenue) [Read-Only]';
+              const isEdited = isCellEdited(row.id, kpiToUse, -1);
+              const monthIndex = 0;
+              const monthDataForImpactCheck = allMonthsData && allMonthsData[monthIndex] ? allMonthsData[monthIndex] : null;
+              const isImpacted = !isEdited && isCellImpacted(row.id, -1, monthDataForImpactCheck);
+              
+              return (
+                <div 
+                  className={`cell ${selectedCell && selectedCell.time === -1 && selectedCell.hierarchy === row.id && selectedCell.kpi === kpiToUse ? 'selected' : ''} ${isEdited ? 'cell-edited' : ''} ${isImpacted ? 'cell-impacted' : ''}`}
+                  style={{ 
+                    fontWeight: row.id === 'total-aggregate' ? 'bold' : 'normal', 
+                    cursor: 'pointer',
+                    backgroundColor: isEdited ? '#e8f5e9' : (isImpacted ? '#fff3e0' : undefined)
+                  }}
+                  onClick={() => {
+                    // Just update BB cell, don't switch views
+                    setSelectedCell({
+                      time: -1,
+                      hierarchy: row.id,
+                      kpi: kpiToUse
+                    });
+                    setLastSelectedCell(kpiToUse);
+                    setSelectedMonth('FY 25');
+                  }}
+                  data-selected-hierarchy={row.id}
+                  data-selected-time="-1"
+                  data-selected-kpi={kpiToUse}
+                >
+                  {getFYTotal()}
+                </div>
+              );
+            })()}
             {/* Quarter columns for Account Director view */}
-            {selectedKAMView === 'Account Director View' && selectedTimeLevels.has('Quarter') && quarters.map((quarter) => (
-              <div
-                key={quarter.id}
-                className={`cell ${isQuarterCellSelected(quarter.time) ? 'selected' : ''}`}
-                style={{ fontWeight: row.id === 'total-aggregate' ? 'bold' : 'normal', cursor: 'pointer' }}
+            {selectedKAMView === 'Account Director View' && selectedTimeLevels.has('Quarter') && quarters.map((quarter) => {
+              const kpiToUse = lastSelectedCell || 'Baseline (Revenue) [Read-Only]';
+              const isEdited = isCellEdited(row.id, kpiToUse, quarter.time);
+              const monthIndex = quarter.months[0]; // Use first month of quarter for impact check
+              const monthDataForImpactCheck = allMonthsData && allMonthsData[monthIndex] ? allMonthsData[monthIndex] : null;
+              const isImpacted = !isEdited && isCellImpacted(row.id, quarter.time, monthDataForImpactCheck);
+              
+              return (
+                <div
+                  key={quarter.id}
+                  className={`cell ${isQuarterCellSelected(quarter.time) ? 'selected' : ''} ${isEdited ? 'cell-edited' : ''} ${isImpacted ? 'cell-impacted' : ''}`}
+                  style={{ 
+                    fontWeight: row.id === 'total-aggregate' ? 'bold' : 'normal', 
+                    cursor: 'pointer',
+                    backgroundColor: isEdited ? '#e8f5e9' : (isImpacted ? '#fff3e0' : undefined)
+                  }}
                 onClick={() => {
                   const kpiToUse = lastSelectedCell || 'Baseline (Revenue) [Read-Only]';
                   setSelectedCell({
@@ -4896,28 +5954,122 @@ function App() {
                 }}
                 data-selected-hierarchy={row.id}
                 data-selected-time={quarter.time}
-                data-selected-kpi={lastSelectedCell || ''}
-              >
-                {getQuarterTotal(quarter.months)}
-              </div>
-            ))}
-            {selectedTimeLevels.has('Month') && monthNames.map((month, idx) => (
-              <div 
-                key={month} 
-                className={`cell ${isCellSelected(idx) ? 'selected' : ''}`}
-                style={{ fontWeight: row.id === 'total-aggregate' ? 'bold' : 'normal', cursor: 'pointer' }}
-                onClick={() => handleTimeSeriesCellClick(row.id, idx)}
-                data-selected-hierarchy={row.id}
-                data-selected-time={idx}
-                data-selected-kpi={lastSelectedCell || ''}
-              >
-                {getCellValue(idx)}
-              </div>
-            ))}
+                  data-selected-kpi={lastSelectedCell || ''}
+                >
+                  {getQuarterTotal(quarter.months)}
+                </div>
+              );
+            })}
+            {selectedTimeLevels.has('Month') && monthNames.map((month, idx) => {
+              const kpiToUse = lastSelectedCell || 'Baseline (Revenue) [Read-Only]';
+              const isEditing = editingCell && editingCell.rowId === row.id && editingCell.kpi === kpiToUse && editingCell.timeIndex === idx;
+              const cellValue = getCellValue(idx);
+              const isEditable = isKpiEditable(kpiToUse);
+              const isEdited = isCellEdited(row.id, kpiToUse, idx);
+              const monthDataForImpactCheck = allMonthsData[idx];
+              const isImpacted = !isEdited && isCellImpacted(row.id, idx, monthDataForImpactCheck);
+              
+              return (
+                <div 
+                  key={month} 
+                  className={`cell ${isCellSelected(idx) ? 'selected' : ''} ${isEdited ? 'cell-edited' : ''} ${isImpacted ? 'cell-impacted' : ''}`}
+                  style={{ 
+                    fontWeight: row.id === 'total-aggregate' ? 'bold' : 'normal', 
+                    cursor: isEditable ? 'pointer' : 'pointer',
+                    padding: isEditing ? '0' : undefined,
+                    backgroundColor: isEdited ? '#e8f5e9' : (isImpacted ? '#fff3e0' : undefined)
+                  }}
+                  onClick={(e) => {
+                    // Clear any existing timeout
+                    if (clickTimeoutRef.current) {
+                      clearTimeout(clickTimeoutRef.current);
+                    }
+                    
+                    // Delay click handler to allow double-click to be detected
+                    clickTimeoutRef.current = setTimeout(() => {
+                      // Only select if not currently editing this cell
+                      if (!isEditing) {
+                        handleTimeSeriesCellClick(row.id, idx);
+                      }
+                      clickTimeoutRef.current = null;
+                    }, 250);
+                  }}
+                  onDoubleClick={(e) => {
+                    // Double-click starts editing (only for editable cells)
+                    // Check if this specific KPI is editable
+                    const cellKpiIsEditable = isKpiEditable(kpiToUse);
+                    if (cellKpiIsEditable) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      
+                      // Clear the click timeout immediately
+                      if (clickTimeoutRef.current) {
+                        clearTimeout(clickTimeoutRef.current);
+                        clickTimeoutRef.current = null;
+                      }
+                      
+                      const monthData = allMonthsData[idx];
+                      const rowData = findRowById(monthData, row.id);
+                      const editedVal = getEditedValue(row.id, kpiToUse, idx);
+                      const currentValue = editedVal !== null ? editedVal : (rowData ? getMetricValue(rowData, kpiToUse) : 0);
+                      handleCellDoubleClick(row.id, kpiToUse, idx, currentValue);
+                    }
+                  }}
+                  data-selected-hierarchy={row.id}
+                  data-selected-time={idx}
+                  data-selected-kpi={kpiToUse}
+                >
+                  {isEditing ? (
+                    <input
+                      type="text"
+                      autoFocus
+                      defaultValue={editingCell.currentValue !== undefined ? `$${editingCell.currentValue.toLocaleString()}` : ''}
+                      onBlur={(e) => {
+                        handleSaveEdit(row.id, kpiToUse, idx, e.target.value);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          handleSaveEdit(row.id, kpiToUse, idx, e.target.value);
+                        } else if (e.key === 'Escape') {
+                          handleCancelEdit();
+                        }
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        border: '2px solid black',
+                        outline: 'none',
+                        padding: '4px 8px',
+                        fontSize: '13px',
+                        fontFamily: 'inherit',
+                        background: 'white',
+                        textAlign: 'right',
+                        boxShadow: '0 0 8px rgba(2, 80, 217, 0.5)',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  ) : (
+                    cellValue
+                  )}
+                </div>
+              );
+            })}
           </div>
-          {hasChildren && isExpanded && row.children.map(child => (
-            <Row key={child.id} row={child} level={level + 1} view={view} />
-          ))}
+          {hasChildren && isExpanded && (() => {
+            // Filter children based on childFilterSelections
+            const filteredChildren = row.children.filter(child => {
+              const parentSelections = childFilterSelections[row.id];
+              if (!parentSelections || parentSelections.size === 0) {
+                return true; // No filter = show all
+              }
+              return !parentSelections.has(child.id); // Show if not in filter (filter contains hidden items)
+            });
+            
+            return filteredChildren.map(child => (
+              <Row key={child.id} row={child} level={level + 1} view={view} />
+            ));
+          })()}
         </>
       );
     }
@@ -4988,15 +6140,42 @@ function App() {
       return total;
     };
 
+    // Helper function to get time index for edited values
+    const getTimeIndexForEditedValue = () => {
+      if (view === 'Time Roll-up') {
+        return selectedCell?.time !== undefined ? selectedCell.time : -1;
+      } else if (selectedMonth === 'FY 25') {
+        return -1;
+      } else if (selectedMonth === 'Q1 2025') {
+        return -2;
+      } else if (selectedMonth === 'Q2 2025') {
+        return -3;
+      } else if (selectedMonth === 'Q3 2025') {
+        return -4;
+      } else if (selectedMonth === 'Q4 2025') {
+        return -5;
+      } else {
+        return months.indexOf(selectedMonth);
+      }
+    };
+
     // Helper function to get cell value - handles quarters by summing months
     const getCellValueForSpecificTime = (metricName) => {
+      const timeIndex = getTimeIndexForEditedValue();
+      const editedValue = getEditedValue(row.id, metricName, timeIndex);
+      
       // For Time Roll-up view, aggregate row should use its own values directly
       // For Specific Time view, calculate from all top-level rows based on selectedMonth
       if (row.id === 'total-aggregate') {
         // If view is Time Roll-up, use row's own values (they're already calculated)
         if (view === 'Time Roll-up') {
-          const value = getMetricValue(row, metricName);
-          if (value === undefined || value === null) return '-';
+          let value;
+          if (editedValue !== null) {
+            value = editedValue;
+          } else {
+            value = getMetricValue(row, metricName);
+            if (value === undefined || value === null) return '-';
+          }
           
           if (metricName === 'SM Adjustment [Read-Only]' || metricName === 'RSD Adjustment [Read-Only]') {
             return value !== 0 ? (value > 0 ? `+$${value.toLocaleString()}` : `-$${Math.abs(value).toLocaleString()}`) : '-';
@@ -5048,77 +6227,83 @@ function App() {
         return total !== 0 ? `$${total.toLocaleString()}` : '-';
       }
       
-      // For regular rows, use existing logic
-      // If a quarter is selected, calculate quarter total
-      if (selectedMonth === 'Q1 2025' || selectedMonth === 'Q2 2025' || selectedMonth === 'Q3 2025' || selectedMonth === 'Q4 2025') {
-        const quarterMonths = selectedMonth === 'Q1 2025' ? [0, 1, 2] :
-                              selectedMonth === 'Q2 2025' ? [3, 4, 5] :
-                              selectedMonth === 'Q3 2025' ? [6, 7, 8] :
-                              [9, 10, 11]; // Q4
-        
-        let total = 0;
-        quarterMonths.forEach(monthIdx => {
-          const monthData = allMonthsData[monthIdx];
-          const rowData = findRowById(monthData, row.id);
-          if (rowData) {
-            const value = getMetricValue(rowData, metricName);
-            if (value !== undefined) {
-              total += value;
-            }
-          }
-        });
-        
-        // Format based on metric type
-        if (metricName === 'SM Adjustment [Read-Only]' || metricName === 'RSD Adjustment [Read-Only]') {
-          return total > 0 ? `+$${total.toLocaleString()}` : `-$${Math.abs(total).toLocaleString()}`;
-        }
-        return `$${total.toLocaleString()}`;
-      }
-      
-      // For FY 25, calculate sum from all months (consistent with Time Series)
-      if (selectedMonth === 'FY 25') {
-        let total = 0;
-        months.forEach((month, idx) => {
-          const monthData = allMonthsData[idx];
-          const rowData = findRowById(monthData, row.id);
-          if (rowData) {
-            const value = getMetricValue(rowData, metricName);
-            if (value !== undefined) {
-              total += value;
-            }
-          }
-        });
-        
-        // Format based on metric type
-        if (metricName === 'SM Adjustment [Read-Only]' || metricName === 'RSD Adjustment [Read-Only]') {
-          return total > 0 ? `+$${total.toLocaleString()}` : `-$${Math.abs(total).toLocaleString()}`;
-        }
-        return `$${total.toLocaleString()}`;
-      }
-      
-      // For months, use value from the specific month's data (consistent with Time Series)
-      const monthIndex = months.indexOf(selectedMonth);
-      if (monthIndex >= 0 && monthIndex <= 11) {
-        const monthData = allMonthsData[monthIndex];
-        const rowData = findRowById(monthData, row.id);
-        if (rowData) {
-          const value = getMetricValue(rowData, metricName);
-          if (value === undefined) return '-';
+      // For regular rows, check for edited value first
+      let value;
+      if (editedValue !== null) {
+        // If edited value exists, use it directly
+        value = editedValue;
+      } else {
+        // For regular rows, use existing logic
+        // If a quarter is selected, calculate quarter total
+        if (selectedMonth === 'Q1 2025' || selectedMonth === 'Q2 2025' || selectedMonth === 'Q3 2025' || selectedMonth === 'Q4 2025') {
+          const quarterMonths = selectedMonth === 'Q1 2025' ? [0, 1, 2] :
+                                selectedMonth === 'Q2 2025' ? [3, 4, 5] :
+                                selectedMonth === 'Q3 2025' ? [6, 7, 8] :
+                                [9, 10, 11]; // Q4
           
-          if (metricName === 'SM Adjustment [Read-Only]' || metricName === 'RSD Adjustment [Read-Only]') {
-            return value > 0 ? `+$${value.toLocaleString()}` : `-$${Math.abs(value).toLocaleString()}`;
-          }
-          return `$${value.toLocaleString()}`;
+          let total = 0;
+          quarterMonths.forEach(monthIdx => {
+            const monthData = allMonthsData[monthIdx];
+            const rowData = findRowById(monthData, row.id);
+            if (rowData) {
+              const cellValue = getEditedValue(row.id, metricName, monthIdx);
+              if (cellValue !== null) {
+                total += cellValue;
+              } else {
+                const val = getMetricValue(rowData, metricName);
+                if (val !== undefined) {
+                  total += val;
+                }
+              }
+            }
+          });
+          
+          value = total;
         }
-        return '-';
+        // For FY 25, calculate sum from all months (consistent with Time Series)
+        else if (selectedMonth === 'FY 25') {
+          let total = 0;
+          months.forEach((month, idx) => {
+            const monthData = allMonthsData[idx];
+            const rowData = findRowById(monthData, row.id);
+            if (rowData) {
+              const cellValue = getEditedValue(row.id, metricName, idx);
+              if (cellValue !== null) {
+                total += cellValue;
+              } else {
+                const val = getMetricValue(rowData, metricName);
+                if (val !== undefined) {
+                  total += val;
+                }
+              }
+            }
+          });
+          
+          value = total;
+        }
+        // For months, use value from the specific month's data (consistent with Time Series)
+        else {
+          const monthIndex = months.indexOf(selectedMonth);
+          if (monthIndex >= 0 && monthIndex <= 11) {
+            const monthData = allMonthsData[monthIndex];
+            const rowData = findRowById(monthData, row.id);
+            if (rowData) {
+              value = getMetricValue(rowData, metricName);
+              if (value === undefined) return '-';
+            } else {
+              return '-';
+            }
+          } else {
+            // Fallback to row value if month not found
+            value = getMetricValue(row, metricName);
+            if (value === undefined) return '-';
+          }
+        }
       }
       
-      // Fallback to row value if month not found
-      const value = getMetricValue(row, metricName);
-      if (value === undefined) return '-';
-      
+      // Format based on metric type
       if (metricName === 'SM Adjustment [Read-Only]' || metricName === 'RSD Adjustment [Read-Only]') {
-        return value > 0 ? `+$${value.toLocaleString()}` : `-$${Math.abs(value).toLocaleString()}`;
+        return value !== 0 ? (value > 0 ? `+$${value.toLocaleString()}` : `-$${Math.abs(value).toLocaleString()}`) : '-';
       }
       return `$${value.toLocaleString()}`;
     };
@@ -5135,9 +6320,117 @@ function App() {
                 {isExpanded ? '▼' : '▶'}
               </button>
             )}
-            <span className={hasChildren ? 'parent-text' : 'child-text'} style={{ flex: 1 }}>
+            <span className={hasChildren ? 'parent-text' : 'child-text'} style={{ flex: 1, fontWeight: row.id === 'total-aggregate' ? 'bold' : 'normal' }}>
               {row.name}
             </span>
+            {/* Show filter button for parent rows */}
+            {hasChildren && row.children && row.children.length > 0 && (
+              <div style={{ position: 'relative', display: 'inline-block' }}>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setChildFilterOpen(childFilterOpen === row.id ? null : row.id);
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: '2px 4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#706e6b',
+                    fontSize: '14px',
+                    lineHeight: '1',
+                    width: '18px',
+                    height: '18px'
+                  }}
+                  title="Filter children"
+                >
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M13 1H1L6 7.5V11.5L8 12.5V7.5L13 1Z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                  </svg>
+                </button>
+                {childFilterOpen === row.id && ReactDOM.createPortal(
+                  <div
+                    ref={childFilterPopoverRef}
+                    style={{
+                      position: 'fixed',
+                      top: '0px',
+                      left: '0px',
+                      padding: '8px 0',
+                      backgroundColor: '#ffffff',
+                      border: '1px solid #c9c9c9',
+                      borderRadius: '4px',
+                      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
+                      zIndex: 99999,
+                      minWidth: '200px',
+                      maxWidth: '300px',
+                      maxHeight: '300px',
+                      overflowY: 'auto',
+                      display: 'none'
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div style={{ padding: '0 12px 8px 12px', fontSize: '12px', fontWeight: '600', color: '#080707', borderBottom: '1px solid #dddbda', marginBottom: '4px' }}>
+                      Filter Children
+                    </div>
+                    {row.children.map((child) => {
+                      const childSelections = childFilterSelections[row.id] || new Set();
+                      const isSelected = !childSelections.has(child.id); // If not in filter, show by default (all selected)
+                      
+                      return (
+                        <label
+                          key={child.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            padding: '6px 12px',
+                            cursor: 'pointer',
+                            fontSize: '12px',
+                            color: '#080707',
+                            userSelect: 'none'
+                          }}
+                          onMouseEnter={(e) => e.target.style.backgroundColor = '#f3f2f2'}
+                          onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              setChildFilterSelections(prev => {
+                                const parentSelections = prev[row.id] || new Set();
+                                const newSelections = new Set(parentSelections);
+                                
+                                if (e.target.checked) {
+                                  newSelections.delete(child.id); // Remove from filter = show
+                                } else {
+                                  newSelections.add(child.id); // Add to filter = hide
+                                }
+                                
+                                return {
+                                  ...prev,
+                                  [row.id]: newSelections.size > 0 ? newSelections : undefined
+                                };
+                              });
+                            }}
+                            style={{
+                              marginRight: '8px',
+                              cursor: 'pointer',
+                              width: '14px',
+                              height: '14px'
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                          <span>{child.name}</span>
+                        </label>
+                      );
+                    })}
+                  </div>,
+                  document.body
+                )}
+              </div>
+            )}
             {/* Show hierarchy info button for products when intermediate levels are disabled */}
             {!hasChildren && row._hierarchyPath && row._hierarchyPath.length > 2 && selectedKAMView === 'Account Director View' && (
               <div style={{ position: 'relative', display: 'inline-block' }}>
@@ -5165,29 +6458,29 @@ function App() {
                   ⓘ
                 </button>
                 {productPopoverOpen === row.id && ReactDOM.createPortal(
-                  <div
-                    ref={productPopoverRef}
-                    style={{
-                      position: 'fixed',
-                      top: '0px',
-                      left: '0px',
-                      padding: '8px 12px',
-                      backgroundColor: '#ffffff',
-                      border: '1px solid #c9c9c9',
-                      borderRadius: '4px',
-                      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
-                      zIndex: 99999,
-                      whiteSpace: 'nowrap',
-                      fontSize: '12px',
-                      color: '#181818',
-                      minWidth: '200px',
-                      maxWidth: '400px',
-                      display: 'none'
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div style={{ fontWeight: '600', marginBottom: '4px' }}>Hierarchy Path:</div>
-                    <div style={{ color: '#706e6b' }}>
+                  <>
+                    <div
+                      ref={productPopoverRef}
+                      style={{
+                        position: 'fixed',
+                        top: '0px',
+                        left: '0px',
+                        padding: '8px 12px',
+                        backgroundColor: '#ffffff',
+                        border: '1px solid #c9c9c9',
+                        borderRadius: '4px',
+                        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
+                        zIndex: 99999,
+                        fontSize: '12px',
+                        color: '#706e6b',
+                        minWidth: '200px',
+                        maxWidth: '400px',
+                        wordWrap: 'break-word',
+                        lineHeight: '1.4',
+                        display: 'none'
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       {(() => {
                         if (!row._hierarchyPath || row._hierarchyPath.length === 0) {
                           return row.name;
@@ -5198,75 +6491,621 @@ function App() {
                         const disabledParts = row._hierarchyPath
                           .filter(p => p && p.levelType && !selectedLevels.has(p.levelType))
                           .map(p => p.name);
-                        return [...enabledParts, ...disabledParts, row.name].join(' > ');
+                        
+                        // Combine and remove duplicates while preserving order
+                        const allParts = [...enabledParts, ...disabledParts];
+                        const uniqueParts = [];
+                        const seen = new Set();
+                        
+                        // Add parts in order, skipping duplicates
+                        for (const part of allParts) {
+                          if (part && !seen.has(part)) {
+                            uniqueParts.push(part);
+                            seen.add(part);
+                          }
+                        }
+                        
+                        // Add row.name only if it's not already in the path
+                        if (row.name && !seen.has(row.name)) {
+                          uniqueParts.push(row.name);
+                        }
+                        
+                        return uniqueParts.join(' > ');
                       })()}
                     </div>
-                  </div>,
+                    {/* Arrow/nubbin pointing to the button */}
+                    <div
+                      id="product-popover-arrow"
+                      style={{
+                        position: 'fixed',
+                        top: '0px',
+                        left: '0px',
+                        width: '0',
+                        height: '0',
+                        borderLeft: '6px solid transparent',
+                        borderRight: '6px solid transparent',
+                        borderTop: 'none',
+                        borderBottom: 'none',
+                        zIndex: 99998,
+                        display: 'none'
+                      }}
+                    />
+                    <div
+                      id="product-popover-arrow-inner"
+                      style={{
+                        position: 'fixed',
+                        top: '0px',
+                        left: '0px',
+                        width: '0',
+                        height: '0',
+                        borderLeft: '5px solid transparent',
+                        borderRight: '5px solid transparent',
+                        borderTop: 'none',
+                        borderBottom: 'none',
+                        zIndex: 99999,
+                        display: 'none'
+                      }}
+                    />
+                  </>,
                   document.body
                 )}
               </div>
             )}
           </div>
-          <div 
-            className={`cell ${isSelected('Baseline (Revenue) [Read-Only]') ? 'selected' : ''}`}
-            style={{ fontWeight: row.id === 'total-aggregate' ? 'bold' : 'normal', cursor: 'pointer' }}
-            onClick={() => handleCellClick('Baseline (Revenue) [Read-Only]', row.id, null, view)}
-            data-selected-hierarchy={row.id}
-            data-selected-time={view === 'Specific Time' ? getTimeValueForDataAttr() : (view === 'Time Roll-up' && selectedCell?.time !== undefined ? selectedCell.time : '')}
-            data-selected-kpi="Baseline (Revenue) [Read-Only]"
-          >
-            {getCellValueForSpecificTime('Baseline (Revenue) [Read-Only]')}
-          </div>
-          <div 
-            className={`cell ${isSelected('AM Adjusted (Revenue) [Editable]') ? 'selected' : ''}`}
-            style={{ fontWeight: row.id === 'total-aggregate' ? 'bold' : 'normal', cursor: 'pointer' }}
-            onClick={() => handleCellClick('AM Adjusted (Revenue) [Editable]', row.id, null, view)}
+          {(() => {
+            const timeIdx = getTimeIndexForEditedValue();
+            const monthIndex = timeIdx >= 0 && timeIdx <= 11 ? timeIdx : null;
+            let monthDataForImpactCheck = null;
+            if (monthIndex !== null && allMonthsData && allMonthsData[monthIndex]) {
+              monthDataForImpactCheck = allMonthsData[monthIndex];
+            } else if (view === 'Time Roll-up' && allMonthsData && allMonthsData.length > 0) {
+              monthDataForImpactCheck = allMonthsData[0];
+            }
+            
+            const baselineIsEdited = isCellEdited(row.id, 'Baseline (Revenue) [Read-Only]', timeIdx);
+            const baselineIsImpacted = !baselineIsEdited && isCellImpacted(row.id, timeIdx, monthDataForImpactCheck);
+            
+            return (
+              <>
+                <div 
+                  className={`cell ${isSelected('Baseline (Revenue) [Read-Only]') ? 'selected' : ''} ${baselineIsEdited ? 'cell-edited' : ''} ${baselineIsImpacted ? 'cell-impacted' : ''}`}
+                  style={{ 
+                    fontWeight: row.id === 'total-aggregate' ? 'bold' : 'normal', 
+                    cursor: 'pointer',
+                    backgroundColor: baselineIsEdited ? '#e8f5e9' : (baselineIsImpacted ? '#fff3e0' : undefined)
+                  }}
+                  onClick={() => handleCellClick('Baseline (Revenue) [Read-Only]', row.id, null, view)}
+                  data-selected-hierarchy={row.id}
+                  data-selected-time={view === 'Specific Time' ? getTimeValueForDataAttr() : (view === 'Time Roll-up' && selectedCell?.time !== undefined ? selectedCell.time : '')}
+                  data-selected-kpi="Baseline (Revenue) [Read-Only]"
+                >
+                  {getCellValueForSpecificTime('Baseline (Revenue) [Read-Only]')}
+                </div>
+              </>
+            );
+          })()}
+          {(() => {
+            const timeIdx = getTimeIndexForEditedValue();
+            const monthIndex = timeIdx >= 0 && timeIdx <= 11 ? timeIdx : null;
+            let monthDataForImpactCheck = null;
+            if (monthIndex !== null && allMonthsData && allMonthsData[monthIndex]) {
+              monthDataForImpactCheck = allMonthsData[monthIndex];
+            } else if (view === 'Time Roll-up' && allMonthsData && allMonthsData.length > 0) {
+              monthDataForImpactCheck = allMonthsData[0];
+            }
+            const isEdited = isCellEdited(row.id, 'AM Adjusted (Revenue) [Editable]', timeIdx);
+            const isImpacted = !isEdited && isCellImpacted(row.id, timeIdx, monthDataForImpactCheck);
+            
+            return (
+              <div 
+                className={`cell ${isSelected('AM Adjusted (Revenue) [Editable]') ? 'selected' : ''} ${isEdited ? 'cell-edited' : ''} ${isImpacted ? 'cell-impacted' : ''}`}
+                style={{ 
+                  fontWeight: row.id === 'total-aggregate' ? 'bold' : 'normal', 
+                  cursor: 'pointer',
+                  padding: editingCell && editingCell.rowId === row.id && editingCell.kpi === 'AM Adjusted (Revenue) [Editable]' && editingCell.timeIndex === timeIdx ? '0' : undefined,
+                  backgroundColor: isEdited ? '#e8f5e9' : (isImpacted ? '#fff3e0' : undefined)
+                }}
+            onClick={(e) => {
+              // Clear any existing timeout
+              if (clickTimeoutRef.current) {
+                clearTimeout(clickTimeoutRef.current);
+              }
+              
+              // Delay click handler to allow double-click to be detected
+              clickTimeoutRef.current = setTimeout(() => {
+                // Only select if not currently editing this cell
+                const timeIdx = getTimeIndexForEditedValue();
+                const isCurrentlyEditing = editingCell && editingCell.rowId === row.id && editingCell.kpi === 'AM Adjusted (Revenue) [Editable]' && editingCell.timeIndex === timeIdx;
+                if (!isCurrentlyEditing) {
+                  handleCellClick('AM Adjusted (Revenue) [Editable]', row.id, null, view);
+                }
+                clickTimeoutRef.current = null;
+              }, 250);
+            }}
+            onDoubleClick={(e) => {
+              // Double-click starts editing (only for editable cells)
+              if (isKpiEditable('AM Adjusted (Revenue) [Editable]')) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // Clear the click timeout immediately
+                if (clickTimeoutRef.current) {
+                  clearTimeout(clickTimeoutRef.current);
+                  clickTimeoutRef.current = null;
+                }
+                
+                const timeIdx = getTimeIndexForEditedValue();
+                const editedVal = getEditedValue(row.id, 'AM Adjusted (Revenue) [Editable]', timeIdx);
+                let currentValue = 0;
+                if (editedVal !== null) {
+                  currentValue = editedVal;
+                } else if (view === 'Time Roll-up') {
+                  currentValue = getMetricValue(row, 'AM Adjusted (Revenue) [Editable]') || 0;
+                } else {
+                  const monthIdx = months.indexOf(selectedMonth);
+                  if (monthIdx >= 0) {
+                    const monthData = allMonthsData[monthIdx];
+                    const rowData = findRowById(monthData, row.id);
+                    if (rowData) {
+                      currentValue = getMetricValue(rowData, 'AM Adjusted (Revenue) [Editable]') || 0;
+                    }
+                  }
+                }
+                handleCellDoubleClick(row.id, 'AM Adjusted (Revenue) [Editable]', timeIdx, currentValue);
+              }
+            }}
             data-selected-hierarchy={row.id}
             data-selected-time={view === 'Specific Time' ? getTimeValueForDataAttr() : (view === 'Time Roll-up' && selectedCell?.time !== undefined ? selectedCell.time : '')}
             data-selected-kpi="AM Adjusted (Revenue) [Editable]"
           >
-            {getCellValueForSpecificTime('AM Adjusted (Revenue) [Editable]')}
+            {editingCell && editingCell.rowId === row.id && editingCell.kpi === 'AM Adjusted (Revenue) [Editable]' && editingCell.timeIndex === getTimeIndexForEditedValue() ? (
+              <input
+                type="text"
+                autoFocus
+                defaultValue={editingCell.currentValue !== undefined ? `$${editingCell.currentValue.toLocaleString()}` : ''}
+                onBlur={(e) => {
+                  handleSaveEdit(row.id, 'AM Adjusted (Revenue) [Editable]', getTimeIndexForEditedValue(), e.target.value);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleSaveEdit(row.id, 'AM Adjusted (Revenue) [Editable]', getTimeIndexForEditedValue(), e.target.value);
+                  } else if (e.key === 'Escape') {
+                    handleCancelEdit();
+                  }
+                }}
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    border: '2px solid black',
+                    outline: 'none',
+                    padding: '4px 8px',
+                    fontSize: '13px',
+                    fontFamily: 'inherit',
+                    background: 'white',
+                    textAlign: 'right',
+                    boxShadow: '0 0 8px rgba(2, 80, 217, 0.5)',
+                    boxSizing: 'border-box'
+                  }}
+              />
+            ) : (
+              getCellValueForSpecificTime('AM Adjusted (Revenue) [Editable]')
+            )}
           </div>
-          <div 
-            className={`cell ${isSelected('SM Adjustment [Read-Only]') ? 'selected' : ''}`}
-            style={{ fontWeight: row.id === 'total-aggregate' ? 'bold' : 'normal', cursor: 'pointer' }}
-            onClick={() => handleCellClick('SM Adjustment [Read-Only]', row.id, null, view)}
-            data-selected-hierarchy={row.id}
-            data-selected-time={view === 'Specific Time' ? getTimeValueForDataAttr() : (view === 'Time Roll-up' && selectedCell?.time !== undefined ? selectedCell.time : '')}
-            data-selected-kpi="SM Adjustment [Read-Only]"
-          >
-            {getCellValueForSpecificTime('SM Adjustment [Read-Only]')}
-          </div>
-          <div 
-            className={`cell ${isSelected('RSD Adjustment [Read-Only]') ? 'selected' : ''}`}
-            style={{ fontWeight: row.id === 'total-aggregate' ? 'bold' : 'normal', cursor: 'pointer' }}
-            onClick={() => handleCellClick('RSD Adjustment [Read-Only]', row.id, null, view)}
-            data-selected-hierarchy={row.id}
-            data-selected-time={view === 'Specific Time' ? getTimeValueForDataAttr() : (view === 'Time Roll-up' && selectedCell?.time !== undefined ? selectedCell.time : '')}
-            data-selected-kpi="RSD Adjustment [Read-Only]"
-          >
-            {getCellValueForSpecificTime('RSD Adjustment [Read-Only]')}
-          </div>
-          <div 
-            className={`cell ${isSelected('Final Forecast (Revenue) [Read-Only]') ? 'selected' : ''}`}
-            style={{ fontWeight: row.id === 'total-aggregate' ? 'bold' : 'normal', cursor: 'pointer' }}
-            onClick={() => handleCellClick('Final Forecast (Revenue) [Read-Only]', row.id, null, view)}
-            data-selected-hierarchy={row.id}
-            data-selected-time={view === 'Specific Time' ? getTimeValueForDataAttr() : (view === 'Time Roll-up' && selectedCell?.time !== undefined ? selectedCell.time : '')}
-            data-selected-kpi="Final Forecast (Revenue) [Read-Only]"
-          >
-            {getCellValueForSpecificTime('Final Forecast (Revenue) [Read-Only]')}
-          </div>
+            );
+          })()}
+          {(() => {
+            const timeIdx = getTimeIndexForEditedValue();
+            const monthIndex = timeIdx >= 0 && timeIdx <= 11 ? timeIdx : null;
+            let monthDataForImpactCheck = null;
+            if (monthIndex !== null && allMonthsData && allMonthsData[monthIndex]) {
+              monthDataForImpactCheck = allMonthsData[monthIndex];
+            } else if (view === 'Time Roll-up' && allMonthsData && allMonthsData.length > 0) {
+              monthDataForImpactCheck = allMonthsData[0];
+            }
+            
+            const renderCell = (kpiName) => {
+              const isEdited = isCellEdited(row.id, kpiName, timeIdx);
+              const isImpacted = !isEdited && isCellImpacted(row.id, timeIdx, monthDataForImpactCheck);
+              
+              return (
+                <div 
+                  className={`cell ${isSelected(kpiName) ? 'selected' : ''} ${isEdited ? 'cell-edited' : ''} ${isImpacted ? 'cell-impacted' : ''}`}
+                  style={{ 
+                    fontWeight: row.id === 'total-aggregate' ? 'bold' : 'normal', 
+                    cursor: 'pointer',
+                    backgroundColor: isEdited ? '#e8f5e9' : (isImpacted ? '#fff3e0' : undefined)
+                  }}
+                  onClick={() => handleCellClick(kpiName, row.id, null, view)}
+                  data-selected-hierarchy={row.id}
+                  data-selected-time={view === 'Specific Time' ? getTimeValueForDataAttr() : (view === 'Time Roll-up' && selectedCell?.time !== undefined ? selectedCell.time : '')}
+                  data-selected-kpi={kpiName}
+                >
+                  {getCellValueForSpecificTime(kpiName)}
+                </div>
+              );
+            };
+            
+            return (
+              <>
+                {renderCell('SM Adjustment [Read-Only]')}
+                {renderCell('RSD Adjustment [Read-Only]')}
+                {renderCell('Final Forecast (Revenue) [Read-Only]')}
+              </>
+            );
+          })()}
         </div>
-        {hasChildren && isExpanded && row.children.map(child => (
-          <Row key={child.id} row={child} level={level + 1} view={view} />
-        ))}
+        {hasChildren && isExpanded && (() => {
+          // Filter children based on childFilterSelections
+          const filteredChildren = row.children.filter(child => {
+            const parentSelections = childFilterSelections[row.id];
+            if (!parentSelections || parentSelections.size === 0) {
+              return true; // No filter = show all
+            }
+            return !parentSelections.has(child.id); // Show if not in filter (filter contains hidden items)
+          });
+          
+          return filteredChildren.map(child => (
+            <Row key={child.id} row={child} level={level + 1} view={view} />
+          ));
+        })()}
       </>
+    );
+  };
+
+  // Render Global Filter Panel
+  const renderGlobalFilterPanel = () => {
+    if (!globalFilterPanelOpen) return null;
+
+    const filterableFields = [
+      { label: 'Hierarchy Name', value: 'hierarchyName' },
+      { label: 'Baseline Revenue', value: 'baseline' },
+      { label: 'AM Adjusted Revenue', value: 'amAdjusted' },
+      { label: 'SM Adjustment', value: 'smAdjustment' },
+      { label: 'RSD Adjustment', value: 'rsdAdjustment' },
+      { label: 'Final Forecast Revenue', value: 'finalForecast' }
+    ];
+
+    const operators = [
+      { label: 'equals', value: 'equals' },
+      { label: 'not equal to', value: 'notEqual' },
+      { label: 'greater than', value: 'greaterThan' },
+      { label: 'less than', value: 'lessThan' },
+      { label: 'greater or equal', value: 'greaterOrEqual' },
+      { label: 'less or equal', value: 'lessOrEqual' },
+      { label: 'contains', value: 'contains' },
+      { label: 'does not contain', value: 'notContains' }
+    ];
+
+    const addFilter = () => {
+      setGlobalFilters([...globalFilters, {
+        id: Date.now(),
+        field: 'hierarchyName',
+        operator: 'contains',
+        value: ''
+      }]);
+    };
+
+    const removeFilter = (id) => {
+      setGlobalFilters(globalFilters.filter(f => f.id !== id));
+    };
+
+    const updateFilter = (id, updates) => {
+      setGlobalFilters(globalFilters.map(f => f.id === id ? { ...f, ...updates } : f));
+    };
+
+    const clearAllFilters = () => {
+      setGlobalFilters([]);
+    };
+
+    return (
+      <div
+        style={{
+          position: 'fixed',
+          top: 0,
+          right: 0,
+          width: '320px',
+          height: '100vh',
+          backgroundColor: '#ffffff',
+          boxShadow: '-2px 0 8px rgba(0, 0, 0, 0.15)',
+          zIndex: 10000,
+          display: 'flex',
+          flexDirection: 'column',
+          transform: 'translateX(0)',
+          transition: 'transform 0.3s ease'
+        }}
+      >
+        {/* Header */}
+        <div style={{
+          padding: '1rem',
+          borderBottom: '1px solid #dddbda',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          backgroundColor: '#fafaf9'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M15 1H1L6 7.5V13.5L10 15.5V7.5L15 1Z" stroke="#706e6b" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+            </svg>
+            <h2 style={{ fontSize: '0.875rem', fontWeight: '600', color: '#080707', margin: 0 }}>
+              Filters
+            </h2>
+            {globalFilters.length > 0 && (
+              <span style={{
+                backgroundColor: '#0176d3',
+                color: '#ffffff',
+                borderRadius: '0.75rem',
+                padding: '0 0.5rem',
+                fontSize: '0.75rem',
+                fontWeight: '600',
+                minWidth: '1.5rem',
+                height: '1.5rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                {globalFilters.length}
+              </span>
+            )}
+          </div>
+          <button
+            onClick={() => setGlobalFilterPanelOpen(false)}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '0.25rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#706e6b'
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          </button>
+        </div>
+
+        {/* Filter List */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem' }}>
+          {globalFilters.length === 0 ? (
+            <div style={{
+              padding: '2rem 1rem',
+              textAlign: 'center',
+              color: '#706e6b',
+              fontSize: '0.875rem'
+            }}>
+              No filters applied
+            </div>
+          ) : (
+            globalFilters.map((filter) => (
+              <div
+                key={filter.id}
+                style={{
+                  padding: '0.75rem',
+                  marginBottom: '0.5rem',
+                  backgroundColor: '#fafaf9',
+                  borderRadius: '0.25rem',
+                  border: '1px solid #dddbda'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: '600', color: '#080707' }}>
+                    Filter {globalFilters.indexOf(filter) + 1}
+                  </span>
+                  <button
+                    onClick={() => removeFilter(filter.id)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: '0.25rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      color: '#706e6b'
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M3.5 3.5L10.5 10.5M10.5 3.5L3.5 10.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                    </svg>
+                  </button>
+                </div>
+                
+                {/* Field Dropdown */}
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <label style={{ fontSize: '0.75rem', color: '#706e6b', marginBottom: '0.25rem', display: 'block' }}>
+                    Field
+                  </label>
+                  <select
+                    value={filter.field}
+                    onChange={(e) => updateFilter(filter.id, { field: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '0.375rem 0.5rem',
+                      border: '1px solid #c9c9c9',
+                      borderRadius: '0.25rem',
+                      fontSize: '0.875rem',
+                      backgroundColor: '#ffffff',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {filterableFields.map(field => (
+                      <option key={field.value} value={field.value}>{field.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Operator Dropdown */}
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <label style={{ fontSize: '0.75rem', color: '#706e6b', marginBottom: '0.25rem', display: 'block' }}>
+                    Operator
+                  </label>
+                  <select
+                    value={filter.operator}
+                    onChange={(e) => updateFilter(filter.id, { operator: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '0.375rem 0.5rem',
+                      border: '1px solid #c9c9c9',
+                      borderRadius: '0.25rem',
+                      fontSize: '0.875rem',
+                      backgroundColor: '#ffffff',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {operators.map(op => (
+                      <option key={op.value} value={op.value}>{op.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Value Input */}
+                <div>
+                  <label style={{ fontSize: '0.75rem', color: '#706e6b', marginBottom: '0.25rem', display: 'block' }}>
+                    Value
+                  </label>
+                  <input
+                    type="text"
+                    value={filter.value}
+                    onChange={(e) => updateFilter(filter.id, { value: e.target.value })}
+                    placeholder="Enter value"
+                    style={{
+                      width: '100%',
+                      padding: '0.375rem 0.5rem',
+                      border: '1px solid #c9c9c9',
+                      borderRadius: '0.25rem',
+                      fontSize: '0.875rem',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          padding: '1rem',
+          borderTop: '1px solid #dddbda',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.5rem'
+        }}>
+          <button
+            onClick={addFilter}
+            style={{
+              width: '100%',
+              padding: '0.5rem',
+              backgroundColor: '#ffffff',
+              border: '1px solid #0176d3',
+              borderRadius: '0.25rem',
+              color: '#0176d3',
+              fontSize: '0.875rem',
+              fontWeight: '600',
+              cursor: 'pointer',
+              transition: 'background-color 0.2s'
+            }}
+            onMouseEnter={(e) => e.target.style.backgroundColor = '#f0f8ff'}
+            onMouseLeave={(e) => e.target.style.backgroundColor = '#ffffff'}
+          >
+            Add Filter
+          </button>
+          {globalFilters.length > 0 && (
+            <button
+              onClick={clearAllFilters}
+              style={{
+                width: '100%',
+                padding: '0.5rem',
+                backgroundColor: '#ffffff',
+                border: '1px solid #c9c9c9',
+                borderRadius: '0.25rem',
+                color: '#706e6b',
+                fontSize: '0.875rem',
+                cursor: 'pointer',
+                transition: 'background-color 0.2s'
+              }}
+              onMouseEnter={(e) => e.target.style.backgroundColor = '#f3f2f2'}
+              onMouseLeave={(e) => e.target.style.backgroundColor = '#ffffff'}
+            >
+              Clear All
+            </button>
+          )}
+        </div>
+      </div>
     );
   };
 
   return (
     <div className="app-container">
+      {/* Global Filter Panel */}
+      {renderGlobalFilterPanel()}
+      {/* Global Search Bar */}
+      <div style={{ 
+        padding: '12px 24px', 
+        backgroundColor: '#ffffff', 
+        borderBottom: '1px solid #dddbda',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px'
+      }}>
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: '8px',
+          flex: '1',
+          maxWidth: '400px'
+        }}>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0, color: '#706e6b' }}>
+            <path d="M11.3333 9.66667H10.7267L10.4533 9.4C11.4067 8.26 12 6.79333 12 5.16667C12 2.32667 9.67333 0 6.83333 0C3.99333 0 1.66667 2.32667 1.66667 5.16667C1.66667 8.00667 3.99333 10.3333 6.83333 10.3333C8.46 10.3333 9.92667 9.74 11.0667 8.78667L11.3333 9.06V9.66667ZM6.83333 9C4.80667 9 3.16667 7.36 3.16667 5.33333C3.16667 3.30667 4.80667 1.66667 6.83333 1.66667C8.86 1.66667 10.5 3.30667 10.5 5.33333C10.5 7.36 8.86 9 6.83333 9Z" fill="currentColor"/>
+          </svg>
+          <input
+            type="text"
+            id="global-search-input"
+            name="global-search-input"
+            placeholder="Search across all data..."
+            value={globalSearch}
+            onChange={(e) => setGlobalSearch(e.target.value)}
+            style={{
+              flex: '1',
+              padding: '8px 12px',
+              fontSize: '13px',
+              border: '1px solid #c9c9c9',
+              borderRadius: '4px',
+              outline: 'none',
+              fontFamily: 'inherit'
+            }}
+            onFocus={(e) => e.target.style.borderColor = '#0250d9'}
+            onBlur={(e) => e.target.style.borderColor = '#c9c9c9'}
+          />
+          {globalSearch && (
+            <button
+              onClick={() => setGlobalSearch('')}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#706e6b',
+                borderRadius: '2px'
+              }}
+              onMouseEnter={(e) => e.target.style.backgroundColor = '#f3f2f2'}
+              onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+              title="Clear search"
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M9 4L4 9M4 4L9 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* KAM View Tabs - At the very top */}
       <div className="kam-view-container">
         <div className="kam-view-tabs">
@@ -5286,16 +7125,18 @@ function App() {
       {selectedKAMView === 'Account Manager View' && (
         <div className="title-and-buttons-container">
           <div className="header-title">MagnaDrive - North America Forecast</div>
-          <div className="button-group">
-          {viewOptions.map((option, index) => (
-            <button
-              key={option}
-              className={`view-button ${selectedView === option ? 'active' : ''} ${index === 0 ? 'first' : ''} ${index === viewOptions.length - 1 ? 'last' : ''}`}
-              onClick={() => setSelectedView(option)}
-            >
-              {option}
-            </button>
-          ))}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <div className="button-group">
+            {viewOptions.map((option, index) => (
+              <button
+                key={option}
+                className={`view-button ${selectedView === option ? 'active' : ''} ${index === 0 ? 'first' : ''} ${index === viewOptions.length - 1 ? 'last' : ''}`}
+                onClick={() => setSelectedView(option)}
+              >
+                {option}
+              </button>
+            ))}
+            </div>
           </div>
         </div>
       )}
@@ -5322,6 +7163,8 @@ function App() {
               <div style={{ position: 'relative', marginTop: '4px', width: '100%', marginBottom: '8px' }}>
                 <input
                   type="text"
+                  id="hierarchy-filter-input"
+                  name="hierarchy-filter-input"
                   className="hierarchy-filter-input"
                   value={hierarchyFilter}
                   onChange={(e) => setHierarchyFilter(e.target.value)}
@@ -5330,9 +7173,10 @@ function App() {
                     width: '100%',
                     padding: '4px 20px 4px 6px',
                     fontSize: '11px',
-                    border: '1px solid #c9c9c9',
+                    border: hierarchyFilter ? '1px solid #0176d3' : '1px solid #c9c9c9',
                     borderRadius: '4px',
-                    boxSizing: 'border-box'
+                    boxSizing: 'border-box',
+                    backgroundColor: hierarchyFilter ? '#f0f8ff' : '#ffffff'
                   }}
                 />
                 {hierarchyFilter && (
@@ -5401,8 +7245,24 @@ function App() {
                 onClick={() => handleColumnHeaderClick('kpi:Baseline (Revenue) [Read-Only]')}
                 style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
               >
-                <div style={{ width: '100%' }}>
-                  Baseline (Revenue) 📖{renderSortIndicator('kpi:Baseline (Revenue) [Read-Only]')}
+                <div style={{ 
+                  width: '100%', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'flex-end',
+                  gap: '4px',
+                  minWidth: 0
+                }}>
+                  <span style={{ 
+                    overflow: 'hidden', 
+                    textOverflow: 'ellipsis', 
+                    whiteSpace: 'nowrap',
+                    flex: '1 1 auto',
+                    minWidth: 0
+                  }}>
+                    Baseline (Revenue) 📖
+                  </span>
+                  {renderSortIndicator('kpi:Baseline (Revenue) [Read-Only]')}
                 </div>
                 {renderFilterInput('kpi:Baseline (Revenue) [Read-Only]')}
               </div>
@@ -5411,8 +7271,24 @@ function App() {
                 onClick={() => handleColumnHeaderClick('kpi:AM Adjusted (Revenue) [Editable]')}
                 style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
               >
-                <div style={{ width: '100%' }}>
-                  AM Adjusted (Revenue) ✏️{renderSortIndicator('kpi:AM Adjusted (Revenue) [Editable]')}
+                <div style={{ 
+                  width: '100%', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'flex-end',
+                  gap: '4px',
+                  minWidth: 0
+                }}>
+                  <span style={{ 
+                    overflow: 'hidden', 
+                    textOverflow: 'ellipsis', 
+                    whiteSpace: 'nowrap',
+                    flex: '1 1 auto',
+                    minWidth: 0
+                  }}>
+                    AM Adjusted (Revenue) ✏️
+                  </span>
+                  {renderSortIndicator('kpi:AM Adjusted (Revenue) [Editable]')}
                 </div>
                 {renderFilterInput('kpi:AM Adjusted (Revenue) [Editable]')}
               </div>
@@ -5421,8 +7297,24 @@ function App() {
                 onClick={() => handleColumnHeaderClick('kpi:SM Adjustment [Read-Only]')}
                 style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
               >
-                <div style={{ width: '100%' }}>
-                  SM Adjustment 📖{renderSortIndicator('kpi:SM Adjustment [Read-Only]')}
+                <div style={{ 
+                  width: '100%', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'flex-end',
+                  gap: '4px',
+                  minWidth: 0
+                }}>
+                  <span style={{ 
+                    overflow: 'hidden', 
+                    textOverflow: 'ellipsis', 
+                    whiteSpace: 'nowrap',
+                    flex: '1 1 auto',
+                    minWidth: 0
+                  }}>
+                    SM Adjustment 📖
+                  </span>
+                  {renderSortIndicator('kpi:SM Adjustment [Read-Only]')}
                 </div>
                 {renderFilterInput('kpi:SM Adjustment [Read-Only]')}
               </div>
@@ -5431,8 +7323,24 @@ function App() {
                 onClick={() => handleColumnHeaderClick('kpi:RSD Adjustment [Read-Only]')}
                 style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
               >
-                <div style={{ width: '100%' }}>
-                  RSD Adjustment 📖{renderSortIndicator('kpi:RSD Adjustment [Read-Only]')}
+                <div style={{ 
+                  width: '100%', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'flex-end',
+                  gap: '4px',
+                  minWidth: 0
+                }}>
+                  <span style={{ 
+                    overflow: 'hidden', 
+                    textOverflow: 'ellipsis', 
+                    whiteSpace: 'nowrap',
+                    flex: '1 1 auto',
+                    minWidth: 0
+                  }}>
+                    RSD Adjustment 📖
+                  </span>
+                  {renderSortIndicator('kpi:RSD Adjustment [Read-Only]')}
                 </div>
                 {renderFilterInput('kpi:RSD Adjustment [Read-Only]')}
               </div>
@@ -5441,8 +7349,24 @@ function App() {
                 onClick={() => handleColumnHeaderClick('kpi:Final Forecast (Revenue) [Read-Only]')}
                 style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
               >
-                <div style={{ width: '100%' }}>
-                  Final Forecast (Revenue) 📖{renderSortIndicator('kpi:Final Forecast (Revenue) [Read-Only]')}
+                <div style={{ 
+                  width: '100%', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'flex-end',
+                  gap: '4px',
+                  minWidth: 0
+                }}>
+                  <span style={{ 
+                    overflow: 'hidden', 
+                    textOverflow: 'ellipsis', 
+                    whiteSpace: 'nowrap',
+                    flex: '1 1 auto',
+                    minWidth: 0
+                  }}>
+                    Final Forecast (Revenue) 📖
+                  </span>
+                  {renderSortIndicator('kpi:Final Forecast (Revenue) [Read-Only]')}
                 </div>
                 {renderFilterInput('kpi:Final Forecast (Revenue) [Read-Only]')}
               </div>
@@ -5475,9 +7399,11 @@ function App() {
               >
                 Name{renderSortIndicator('hierarchy:name')}
               </div>
-              <div style={{ position: 'relative', marginTop: '4px', width: '100%', marginBottom: '8px' }}>
+              <div style={{ position: 'relative', marginTop: '4px', width: '100%', marginBottom: '8px', display: 'block', visibility: 'visible', opacity: 1 }}>
                 <input
                   type="text"
+                  id="hierarchy-filter-input"
+                  name="hierarchy-filter-input"
                   className="hierarchy-filter-input"
                   value={hierarchyFilter}
                   onChange={(e) => setHierarchyFilter(e.target.value)}
@@ -5486,9 +7412,13 @@ function App() {
                     width: '100%',
                     padding: '4px 20px 4px 6px',
                     fontSize: '11px',
-                    border: '1px solid #c9c9c9',
+                    border: hierarchyFilter ? '1px solid #0176d3' : '1px solid #c9c9c9',
                     borderRadius: '4px',
-                    boxSizing: 'border-box'
+                    boxSizing: 'border-box',
+                    backgroundColor: hierarchyFilter ? '#f0f8ff' : '#ffffff',
+                    display: 'block',
+                    visibility: 'visible',
+                    opacity: 1
                   }}
                 />
                 {hierarchyFilter && (
@@ -5551,8 +7481,24 @@ function App() {
                 onClick={() => handleColumnHeaderClick('time:-1')}
                 style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
               >
-                <div style={{ width: '100%' }}>
-                  FY 25{renderSortIndicator('time:-1')}
+                <div style={{ 
+                  width: '100%', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'flex-end',
+                  gap: '4px',
+                  minWidth: 0
+                }}>
+                  <span style={{ 
+                    overflow: 'hidden', 
+                    textOverflow: 'ellipsis', 
+                    whiteSpace: 'nowrap',
+                    flex: '1 1 auto',
+                    minWidth: 0
+                  }}>
+                    FY 25
+                  </span>
+                  {renderSortIndicator('time:-1')}
                 </div>
                 {renderFilterInput('time:-1')}
               </div>
@@ -5564,8 +7510,24 @@ function App() {
                   onClick={() => handleColumnHeaderClick(`time:${idx}`)}
                   style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
                 >
-                  <div style={{ width: '100%' }}>
-                    {month}{renderSortIndicator(`time:${idx}`)}
+                  <div style={{ 
+                    width: '100%', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'flex-end',
+                    gap: '4px',
+                    minWidth: 0
+                  }}>
+                    <span style={{ 
+                      overflow: 'hidden', 
+                      textOverflow: 'ellipsis', 
+                      whiteSpace: 'nowrap',
+                      flex: '1 1 auto',
+                      minWidth: 0
+                    }}>
+                      {month}
+                    </span>
+                    {renderSortIndicator(`time:${idx}`)}
                   </div>
                   {renderFilterInput(`time:${idx}`)}
                 </div>
@@ -5597,12 +7559,30 @@ function App() {
                   userSelect: 'none'
                 }}
               >
-                Time{renderSortIndicator('hierarchy:name')}
+                <div style={{ 
+                  width: '100%', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '4px'
+                }}>
+                  <span style={{ 
+                    overflow: 'hidden', 
+                    textOverflow: 'ellipsis', 
+                    whiteSpace: 'nowrap',
+                    flex: '1 1 auto',
+                    minWidth: 0
+                  }}>
+                    Time
+                  </span>
+                  {renderSortIndicator('hierarchy:name')}
+                </div>
               </div>
               <div style={{ position: 'relative', marginTop: '4px', width: '100%', marginBottom: '8px' }}>
                 <input
                   type="text"
                   className="hierarchy-filter-input"
+                  id="time-hierarchy-filter-input"
+                  name="time-hierarchy-filter-input"
                   value={timeHierarchyFilter}
                   onChange={(e) => setTimeHierarchyFilter(e.target.value)}
                   placeholder="Filter..."
@@ -5610,9 +7590,10 @@ function App() {
                     width: '100%',
                     padding: '4px 20px 4px 6px',
                     fontSize: '11px',
-                    border: '1px solid #c9c9c9',
+                    border: timeHierarchyFilter ? '1px solid #0176d3' : '1px solid #c9c9c9',
                     borderRadius: '4px',
-                    boxSizing: 'border-box'
+                    boxSizing: 'border-box',
+                    backgroundColor: timeHierarchyFilter ? '#f0f8ff' : '#ffffff'
                   }}
                 />
                 {timeHierarchyFilter && (
@@ -5668,8 +7649,24 @@ function App() {
                 onClick={() => handleColumnHeaderClick('kpi:Baseline (Revenue) [Read-Only]')}
                 style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
               >
-                <div style={{ width: '100%' }}>
-                  Baseline (Revenue) 📖{renderSortIndicator('kpi:Baseline (Revenue) [Read-Only]')}
+                <div style={{ 
+                  width: '100%', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'flex-end',
+                  gap: '4px',
+                  minWidth: 0
+                }}>
+                  <span style={{ 
+                    overflow: 'hidden', 
+                    textOverflow: 'ellipsis', 
+                    whiteSpace: 'nowrap',
+                    flex: '1 1 auto',
+                    minWidth: 0
+                  }}>
+                    Baseline (Revenue) 📖
+                  </span>
+                  {renderSortIndicator('kpi:Baseline (Revenue) [Read-Only]')}
                 </div>
                 {renderFilterInput('kpi:Baseline (Revenue) [Read-Only]')}
               </div>
@@ -5678,8 +7675,24 @@ function App() {
                 onClick={() => handleColumnHeaderClick('kpi:AM Adjusted (Revenue) [Editable]')}
                 style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
               >
-                <div style={{ width: '100%' }}>
-                  AM Adjusted (Revenue) ✏️{renderSortIndicator('kpi:AM Adjusted (Revenue) [Editable]')}
+                <div style={{ 
+                  width: '100%', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'flex-end',
+                  gap: '4px',
+                  minWidth: 0
+                }}>
+                  <span style={{ 
+                    overflow: 'hidden', 
+                    textOverflow: 'ellipsis', 
+                    whiteSpace: 'nowrap',
+                    flex: '1 1 auto',
+                    minWidth: 0
+                  }}>
+                    AM Adjusted (Revenue) ✏️
+                  </span>
+                  {renderSortIndicator('kpi:AM Adjusted (Revenue) [Editable]')}
                 </div>
                 {renderFilterInput('kpi:AM Adjusted (Revenue) [Editable]')}
               </div>
@@ -5688,8 +7701,24 @@ function App() {
                 onClick={() => handleColumnHeaderClick('kpi:SM Adjustment [Read-Only]')}
                 style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
               >
-                <div style={{ width: '100%' }}>
-                  SM Adjustment 📖{renderSortIndicator('kpi:SM Adjustment [Read-Only]')}
+                <div style={{ 
+                  width: '100%', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'flex-end',
+                  gap: '4px',
+                  minWidth: 0
+                }}>
+                  <span style={{ 
+                    overflow: 'hidden', 
+                    textOverflow: 'ellipsis', 
+                    whiteSpace: 'nowrap',
+                    flex: '1 1 auto',
+                    minWidth: 0
+                  }}>
+                    SM Adjustment 📖
+                  </span>
+                  {renderSortIndicator('kpi:SM Adjustment [Read-Only]')}
                 </div>
                 {renderFilterInput('kpi:SM Adjustment [Read-Only]')}
               </div>
@@ -5698,8 +7727,24 @@ function App() {
                 onClick={() => handleColumnHeaderClick('kpi:RSD Adjustment [Read-Only]')}
                 style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
               >
-                <div style={{ width: '100%' }}>
-                  RSD Adjustment 📖{renderSortIndicator('kpi:RSD Adjustment [Read-Only]')}
+                <div style={{ 
+                  width: '100%', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'flex-end',
+                  gap: '4px',
+                  minWidth: 0
+                }}>
+                  <span style={{ 
+                    overflow: 'hidden', 
+                    textOverflow: 'ellipsis', 
+                    whiteSpace: 'nowrap',
+                    flex: '1 1 auto',
+                    minWidth: 0
+                  }}>
+                    RSD Adjustment 📖
+                  </span>
+                  {renderSortIndicator('kpi:RSD Adjustment [Read-Only]')}
                 </div>
                 {renderFilterInput('kpi:RSD Adjustment [Read-Only]')}
               </div>
@@ -5708,8 +7753,24 @@ function App() {
                 onClick={() => handleColumnHeaderClick('kpi:Final Forecast (Revenue) [Read-Only]')}
                 style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
               >
-                <div style={{ width: '100%' }}>
-                  Final Forecast (Revenue) 📖{renderSortIndicator('kpi:Final Forecast (Revenue) [Read-Only]')}
+                <div style={{ 
+                  width: '100%', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'flex-end',
+                  gap: '4px',
+                  minWidth: 0
+                }}>
+                  <span style={{ 
+                    overflow: 'hidden', 
+                    textOverflow: 'ellipsis', 
+                    whiteSpace: 'nowrap',
+                    flex: '1 1 auto',
+                    minWidth: 0
+                  }}>
+                    Final Forecast (Revenue) 📖
+                  </span>
+                  {renderSortIndicator('kpi:Final Forecast (Revenue) [Read-Only]')}
                 </div>
                 {renderFilterInput('kpi:Final Forecast (Revenue) [Read-Only]')}
               </div>
@@ -5976,16 +8037,18 @@ function App() {
           {/* Title and buttons first */}
           <div className="title-and-buttons-container">
             <div className="header-title">MagnaDrive - North America Forecast</div>
-            <div className="button-group">
-            {viewOptions.map((option, index) => (
-              <button
-                key={option}
-                className={`view-button ${selectedView === option ? 'active' : ''} ${index === 0 ? 'first' : ''} ${index === viewOptions.length - 1 ? 'last' : ''}`}
-                onClick={() => setSelectedView(option)}
-              >
-                {option}
-              </button>
-            ))}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <div className="button-group">
+              {viewOptions.map((option, index) => (
+                <button
+                  key={option}
+                  className={`view-button ${selectedView === option ? 'active' : ''} ${index === 0 ? 'first' : ''} ${index === viewOptions.length - 1 ? 'last' : ''}`}
+                  onClick={() => setSelectedView(option)}
+                >
+                  {option}
+                </button>
+              ))}
+              </div>
             </div>
           </div>
           
@@ -6320,20 +8383,21 @@ function App() {
             </div>
           </div>
           
-          {/* Time Levels Filter */}
-          <div ref={timeLevelFilterRef} style={{ position: 'relative', zIndex: 9999 }}>
-            <div className="slds-form-element" style={{ width: '250px', position: 'relative' }}>
-              <label className="slds-form-element__label" style={{ 
-                fontSize: '0.625rem',
-                color: '#181818', 
-                fontWeight: '700',
-                marginBottom: '0.375rem',
-                display: 'block',
-                lineHeight: '1.25',
-                letterSpacing: '0.0125rem'
-              }}>
-                Time Levels
-              </label>
+          {/* Time Levels Filter and KPI Set */}
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px' }}>
+            <div ref={timeLevelFilterRef} style={{ position: 'relative', zIndex: 9999 }}>
+              <div className="slds-form-element" style={{ width: '250px', position: 'relative' }}>
+                <label className="slds-form-element__label" style={{ 
+                  fontSize: '0.625rem',
+                  color: '#181818', 
+                  fontWeight: '700',
+                  marginBottom: '0.375rem',
+                  display: 'block',
+                  lineHeight: '1.25',
+                  letterSpacing: '0.0125rem'
+                }}>
+                  Time Levels
+                </label>
               <div className="slds-form-element__control" style={{ position: 'relative', zIndex: timeLevelFilterOpen ? 10000 : 'auto', overflow: 'visible' }}>
                 <div 
                   onClick={(e) => {
@@ -6496,8 +8560,218 @@ function App() {
                 )}
               </div>
             </div>
+            </div>
+            {/* KPI Set Dropdown */}
+            <div ref={kpiSetDropdownRef} style={{ position: 'relative', zIndex: 9999 }}>
+              <div className="slds-form-element" style={{ width: '200px', position: 'relative' }}>
+                <label className="slds-form-element__label" style={{ 
+                  fontSize: '0.625rem',
+                  color: '#181818', 
+                  fontWeight: '700',
+                  marginBottom: '0.375rem',
+                  display: 'block',
+                  lineHeight: '1.25',
+                  letterSpacing: '0.0125rem'
+                }}>
+                  KPI Set
+                </label>
+                <div className="slds-form-element__control" style={{ position: 'relative', zIndex: kpiSetDropdownOpen ? 10000 : 'auto', overflow: 'visible' }}>
+                  <div 
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setKpiSetDropdownOpen(!kpiSetDropdownOpen);
+                      setGroupedComboboxOpen(false);
+                      setLevelFilterOpen(false);
+                      setTimeLevelFilterOpen(false);
+                    }}
+                    style={{
+                      display: 'flex',
+                      width: '100%',
+                      maxWidth: '200px',
+                      height: '1.75rem',
+                      border: '1px solid #c9c9c9',
+                      borderRadius: '0.5rem',
+                      backgroundColor: '#ffffff',
+                      fontFamily: 'Salesforce Sans, Arial, sans-serif',
+                      overflow: 'hidden',
+                      alignItems: 'center',
+                      padding: '0 0.5rem',
+                      cursor: 'pointer',
+                      position: 'relative'
+                    }}
+                  >
+                    <span style={{
+                      fontSize: '0.6875rem',
+                      lineHeight: '1.5',
+                      color: '#080707',
+                      flex: 1,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      marginRight: '0.25rem'
+                    }}>
+                      {selectedKPISet}
+                    </span>
+                    <svg 
+                      className="slds-icon slds-icon_x-small" 
+                      aria-hidden="true"
+                      viewBox="0 0 24 24"
+                      style={{
+                        width: '0.75rem',
+                        height: '0.75rem',
+                        fill: '#706e6b',
+                        flexShrink: 0,
+                        marginLeft: '0.25rem',
+                        transform: kpiSetDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                        transition: 'transform 0.2s'
+                      }}
+                    >
+                      <path d="M12 15L6 9L18 9L12 15Z" fill="currentColor"/>
+                    </svg>
+                  </div>
+                  
+                  {/* KPI Set Dropdown */}
+                  {kpiSetDropdownOpen && (
+                    <div 
+                      className="kpi-set-dropdown slds-dropdown slds-dropdown_length-5 slds-dropdown_fluid"
+                      role="listbox"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                      }}
+                      onMouseDown={(e) => {
+                        e.stopPropagation();
+                      }}
+                      style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: '0',
+                        width: '200px',
+                        minWidth: '200px',
+                        zIndex: 10000,
+                        marginTop: '0.125rem',
+                        backgroundColor: '#ffffff',
+                        border: '1px solid #c9c9c9',
+                        borderRadius: '0.25rem',
+                        boxShadow: '0 2px 8px 0 rgba(0, 0, 0, 0.12)',
+                        padding: '0.25rem 0',
+                        maxHeight: '20rem',
+                        overflowY: 'auto'
+                      }}
+                    >
+                      <ul className="slds-listbox slds-listbox_vertical" role="group">
+                        {['Forecasting KPIs', 'Planning KPIs'].map((kpiSet) => (
+                          <li key={kpiSet} role="presentation" className="slds-listbox__item">
+                            <div
+                              className="slds-media slds-listbox__option slds-listbox__option_plain slds-media_small"
+                              role="option"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setSelectedKPISet(kpiSet);
+                                setKpiSetDropdownOpen(false);
+                                // Planning KPIs is non-functional for now
+                              }}
+                              style={{
+                                padding: '0.5rem 0.75rem',
+                                cursor: 'pointer',
+                                backgroundColor: selectedKPISet === kpiSet ? '#f3f2f2' : '#ffffff',
+                                transition: 'background-color 0.1s ease',
+                                display: 'flex',
+                                alignItems: 'center',
+                                minHeight: '2rem'
+                              }}
+                            >
+                              <span className="slds-media__body" style={{ flex: 1 }}>
+                                <span className="slds-listbox__option-text" style={{ whiteSpace: 'nowrap', overflow: 'visible' }}>{kpiSet}</span>
+                              </span>
+                              {selectedKPISet === kpiSet && (
+                                <svg 
+                                  className="slds-icon slds-icon_x-small slds-icon-text-default" 
+                                  aria-hidden="true"
+                                  style={{
+                                    width: '0.75rem',
+                                    height: '0.75rem',
+                                    fill: '#0176d3',
+                                    flexShrink: 0,
+                                    marginLeft: '0.5rem'
+                                  }}
+                                >
+                                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" fill="currentColor"/>
+                                </svg>
+                              )}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            {/* Global Filter Button */}
+            <div style={{ position: 'relative', display: 'inline-block' }}>
+              <button
+                onClick={() => setGlobalFilterPanelOpen(!globalFilterPanelOpen)}
+                style={{
+                  background: globalFilterPanelOpen ? '#0176d3' : '#ffffff',
+                  border: '1px solid #c9c9c9',
+                  borderRadius: '0.25rem',
+                  padding: '0.5rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  height: '1.75rem',
+                  width: '1.75rem',
+                  marginTop: '1.125rem',
+                  color: globalFilterPanelOpen ? '#ffffff' : '#706e6b',
+                  transition: 'all 0.2s ease'
+                }}
+                title={globalFilters.length > 0 ? `${globalFilters.length} filter${globalFilters.length > 1 ? 's' : ''} applied` : 'Add Filter'}
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M15 1H1L6 7.5V13.5L10 15.5V7.5L15 1Z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                </svg>
+              </button>
+              {globalFilters.length > 0 && (
+                <span style={{
+                  position: 'absolute',
+                  top: '8px',
+                  right: '-4px',
+                  backgroundColor: '#e74c3c',
+                  color: '#ffffff',
+                  borderRadius: '50%',
+                  width: '16px',
+                  height: '16px',
+                  fontSize: '10px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: '600'
+                }}>
+                  {globalFilters.length}
+                </span>
+              )}
+            </div>
           </div>
           </div>
+          
+          {/* Overlay when filter panel is open */}
+          {globalFilterPanelOpen && (
+            <div
+              onClick={() => setGlobalFilterPanelOpen(false)}
+              style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(0, 0, 0, 0.25)',
+                zIndex: 9999
+              }}
+            />
+          )}
           
           {/* Account Director View Content */}
           {selectedView === 'Specific Time' && (
@@ -6521,6 +8795,8 @@ function App() {
                   <div style={{ position: 'relative', marginTop: '4px', width: '100%', marginBottom: '8px' }}>
                     <input
                       type="text"
+                      id="hierarchy-filter-input"
+                      name="hierarchy-filter-input"
                       className="hierarchy-filter-input"
                       value={hierarchyFilter}
                       onChange={(e) => setHierarchyFilter(e.target.value)}
@@ -6529,9 +8805,10 @@ function App() {
                         width: '100%',
                         padding: '4px 20px 4px 6px',
                         fontSize: '11px',
-                        border: '1px solid #c9c9c9',
+                        border: hierarchyFilter ? '1px solid #0176d3' : '1px solid #c9c9c9',
                         borderRadius: '4px',
-                        boxSizing: 'border-box'
+                        boxSizing: 'border-box',
+                        backgroundColor: hierarchyFilter ? '#f0f8ff' : '#ffffff'
                       }}
                     />
                     {hierarchyFilter && (
@@ -6616,8 +8893,24 @@ function App() {
                     onClick={() => handleColumnHeaderClick('kpi:Baseline (Revenue) [Read-Only]')}
                     style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
                   >
-                    <div style={{ width: '100%' }}>
-                      Baseline (Revenue) [Read-Only]{renderSortIndicator('kpi:Baseline (Revenue) [Read-Only]')}
+                    <div style={{ 
+                      width: '100%', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'flex-end',
+                      gap: '4px',
+                      minWidth: 0
+                    }}>
+                      <span style={{ 
+                        overflow: 'hidden', 
+                        textOverflow: 'ellipsis', 
+                        whiteSpace: 'nowrap',
+                        flex: '1 1 auto',
+                        minWidth: 0
+                      }}>
+                        Baseline (Revenue) [Read-Only]
+                      </span>
+                      {renderSortIndicator('kpi:Baseline (Revenue) [Read-Only]')}
                     </div>
                     {renderFilterInput('kpi:Baseline (Revenue) [Read-Only]')}
                   </div>
@@ -6626,8 +8919,24 @@ function App() {
                     onClick={() => handleColumnHeaderClick('kpi:AM Adjusted (Revenue) [Editable]')}
                     style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
                   >
-                    <div style={{ width: '100%' }}>
-                      AM Adjusted (Revenue) [Editable]{renderSortIndicator('kpi:AM Adjusted (Revenue) [Editable]')}
+                    <div style={{ 
+                      width: '100%', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'flex-end',
+                      gap: '4px',
+                      minWidth: 0
+                    }}>
+                      <span style={{ 
+                        overflow: 'hidden', 
+                        textOverflow: 'ellipsis', 
+                        whiteSpace: 'nowrap',
+                        flex: '1 1 auto',
+                        minWidth: 0
+                      }}>
+                        AM Adjusted (Revenue) [Editable]
+                      </span>
+                      {renderSortIndicator('kpi:AM Adjusted (Revenue) [Editable]')}
                     </div>
                     {renderFilterInput('kpi:AM Adjusted (Revenue) [Editable]')}
                   </div>
@@ -6636,8 +8945,24 @@ function App() {
                     onClick={() => handleColumnHeaderClick('kpi:SM Adjustment [Read-Only]')}
                     style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
                   >
-                    <div style={{ width: '100%' }}>
-                      SM Adjustment [Read-Only]{renderSortIndicator('kpi:SM Adjustment [Read-Only]')}
+                    <div style={{ 
+                      width: '100%', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'flex-end',
+                      gap: '4px',
+                      minWidth: 0
+                    }}>
+                      <span style={{ 
+                        overflow: 'hidden', 
+                        textOverflow: 'ellipsis', 
+                        whiteSpace: 'nowrap',
+                        flex: '1 1 auto',
+                        minWidth: 0
+                      }}>
+                        SM Adjustment [Read-Only]
+                      </span>
+                      {renderSortIndicator('kpi:SM Adjustment [Read-Only]')}
                     </div>
                     {renderFilterInput('kpi:SM Adjustment [Read-Only]')}
                   </div>
@@ -6646,8 +8971,24 @@ function App() {
                     onClick={() => handleColumnHeaderClick('kpi:RSD Adjustment [Read-Only]')}
                     style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
                   >
-                    <div style={{ width: '100%' }}>
-                      RSD Adjustment [Read-Only]{renderSortIndicator('kpi:RSD Adjustment [Read-Only]')}
+                    <div style={{ 
+                      width: '100%', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'flex-end',
+                      gap: '4px',
+                      minWidth: 0
+                    }}>
+                      <span style={{ 
+                        overflow: 'hidden', 
+                        textOverflow: 'ellipsis', 
+                        whiteSpace: 'nowrap',
+                        flex: '1 1 auto',
+                        minWidth: 0
+                      }}>
+                        RSD Adjustment [Read-Only]
+                      </span>
+                      {renderSortIndicator('kpi:RSD Adjustment [Read-Only]')}
                     </div>
                     {renderFilterInput('kpi:RSD Adjustment [Read-Only]')}
                   </div>
@@ -6656,8 +8997,24 @@ function App() {
                     onClick={() => handleColumnHeaderClick('kpi:Final Forecast (Revenue) [Read-Only]')}
                     style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
                   >
-                    <div style={{ width: '100%' }}>
-                      Final Forecast (Revenue) [Read-Only]{renderSortIndicator('kpi:Final Forecast (Revenue) [Read-Only]')}
+                    <div style={{ 
+                      width: '100%', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'flex-end',
+                      gap: '4px',
+                      minWidth: 0
+                    }}>
+                      <span style={{ 
+                        overflow: 'hidden', 
+                        textOverflow: 'ellipsis', 
+                        whiteSpace: 'nowrap',
+                        flex: '1 1 auto',
+                        minWidth: 0
+                      }}>
+                        Final Forecast (Revenue) [Read-Only]
+                      </span>
+                      {renderSortIndicator('kpi:Final Forecast (Revenue) [Read-Only]')}
                     </div>
                     {renderFilterInput('kpi:Final Forecast (Revenue) [Read-Only]')}
                   </div>
@@ -6690,9 +9047,11 @@ function App() {
                   >
                     Name{renderSortIndicator('hierarchy:name')}
                   </div>
-                  <div style={{ position: 'relative', marginTop: '4px', width: '100%', marginBottom: '8px' }}>
+                  <div style={{ position: 'relative', marginTop: '4px', width: '100%', marginBottom: '8px', display: 'block', visibility: 'visible', opacity: 1, zIndex: 10 }}>
                     <input
                       type="text"
+                      id="hierarchy-filter-input"
+                      name="hierarchy-filter-input"
                       className="hierarchy-filter-input"
                       value={hierarchyFilter}
                       onChange={(e) => setHierarchyFilter(e.target.value)}
@@ -6701,9 +9060,15 @@ function App() {
                         width: '100%',
                         padding: '4px 20px 4px 6px',
                         fontSize: '11px',
-                        border: '1px solid #c9c9c9',
+                        border: hierarchyFilter ? '1px solid #0176d3' : '1px solid #c9c9c9',
                         borderRadius: '4px',
-                        boxSizing: 'border-box'
+                        boxSizing: 'border-box',
+                        backgroundColor: hierarchyFilter ? '#f0f8ff' : '#ffffff',
+                        display: 'block',
+                        visibility: 'visible',
+                        opacity: 1,
+                        position: 'relative',
+                        zIndex: 10
                       }}
                     />
                     {hierarchyFilter && (
@@ -6773,8 +9138,24 @@ function App() {
                     onClick={() => handleColumnHeaderClick('time:-2')}
                     style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
                   >
-                    <div style={{ width: '100%' }}>
-                      Q1 2025{renderSortIndicator('time:-2')}
+                    <div style={{ 
+                      width: '100%', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'flex-end',
+                      gap: '4px',
+                      minWidth: 0
+                    }}>
+                      <span style={{ 
+                        overflow: 'hidden', 
+                        textOverflow: 'ellipsis', 
+                        whiteSpace: 'nowrap',
+                        flex: '1 1 auto',
+                        minWidth: 0
+                      }}>
+                        Q1 2025
+                      </span>
+                      {renderSortIndicator('time:-2')}
                     </div>
                     {renderFilterInput('time:-2')}
                   </div>
@@ -6783,8 +9164,24 @@ function App() {
                     onClick={() => handleColumnHeaderClick('time:-3')}
                     style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
                   >
-                    <div style={{ width: '100%' }}>
-                      Q2 2025{renderSortIndicator('time:-3')}
+                    <div style={{ 
+                      width: '100%', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'flex-end',
+                      gap: '4px',
+                      minWidth: 0
+                    }}>
+                      <span style={{ 
+                        overflow: 'hidden', 
+                        textOverflow: 'ellipsis', 
+                        whiteSpace: 'nowrap',
+                        flex: '1 1 auto',
+                        minWidth: 0
+                      }}>
+                        Q2 2025
+                      </span>
+                      {renderSortIndicator('time:-3')}
                     </div>
                     {renderFilterInput('time:-3')}
                   </div>
@@ -6793,8 +9190,24 @@ function App() {
                     onClick={() => handleColumnHeaderClick('time:-4')}
                     style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
                   >
-                    <div style={{ width: '100%' }}>
-                      Q3 2025{renderSortIndicator('time:-4')}
+                    <div style={{ 
+                      width: '100%', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'flex-end',
+                      gap: '4px',
+                      minWidth: 0
+                    }}>
+                      <span style={{ 
+                        overflow: 'hidden', 
+                        textOverflow: 'ellipsis', 
+                        whiteSpace: 'nowrap',
+                        flex: '1 1 auto',
+                        minWidth: 0
+                      }}>
+                        Q3 2025
+                      </span>
+                      {renderSortIndicator('time:-4')}
                     </div>
                     {renderFilterInput('time:-4')}
                   </div>
@@ -6803,8 +9216,24 @@ function App() {
                     onClick={() => handleColumnHeaderClick('time:-5')}
                     style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
                   >
-                    <div style={{ width: '100%' }}>
-                      Q4 2025{renderSortIndicator('time:-5')}
+                    <div style={{ 
+                      width: '100%', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'flex-end',
+                      gap: '4px',
+                      minWidth: 0
+                    }}>
+                      <span style={{ 
+                        overflow: 'hidden', 
+                        textOverflow: 'ellipsis', 
+                        whiteSpace: 'nowrap',
+                        flex: '1 1 auto',
+                        minWidth: 0
+                      }}>
+                        Q4 2025
+                      </span>
+                      {renderSortIndicator('time:-5')}
                     </div>
                     {renderFilterInput('time:-5')}
                   </div>
@@ -6850,7 +9279,23 @@ function App() {
                       userSelect: 'none'
                     }}
                   >
-                    Time{renderSortIndicator('hierarchy:name')}
+                    <div style={{ 
+                  width: '100%', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '4px'
+                }}>
+                  <span style={{ 
+                    overflow: 'hidden', 
+                    textOverflow: 'ellipsis', 
+                    whiteSpace: 'nowrap',
+                    flex: '1 1 auto',
+                    minWidth: 0
+                  }}>
+                    Time
+                  </span>
+                  {renderSortIndicator('hierarchy:name')}
+                </div>
                   </div>
                   <div style={{ position: 'relative', marginTop: '4px', width: '100%', marginBottom: '8px' }}>
                     <input
