@@ -1,0 +1,1142 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'SF Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #f3f3f3;
+  overflow-x: hidden; /* Prevent page-level horizontal scroll */
+}
+
+.app-container {
+  width: 100%;
+  min-height: 100vh;
+  background-color: #f3f3f3;
+  padding-top: 0;
+  overflow-x: hidden; /* Prevent page-level horizontal scroll */
+}
+
+.title-and-buttons-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 24px;
+  margin: 0;
+}
+
+.header-title {
+  font-size: 20px;
+  font-weight: 400;
+  line-height: 28px;
+  color: #03234d;
+  margin: 4px 0 0 8px;
+}
+
+.button-group {
+  display: flex;
+  margin: 0;
+  background-color: #e5e5e5;
+  border-radius: 20px;
+  padding: 3px;
+  width: fit-content;
+}
+
+.view-button {
+  padding: 8px 20px;
+  border: none;
+  background-color: white;
+  color: #0250d9;
+  font-size: 13px;
+  font-weight: 590;
+  cursor: pointer;
+  font-family: 'SF Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  transition: all 0.2s ease;
+}
+
+.view-button.first {
+  border-radius: 17px 0 0 17px;
+}
+
+.view-button.last {
+  border-radius: 0 17px 17px 0;
+}
+
+.view-button:not(.first):not(.last) {
+  border-left: 1px solid #e5e5e5;
+  border-right: 1px solid #e5e5e5;
+}
+
+.view-button.active {
+  background-color: #0250d9;
+  color: white;
+}
+
+/* Grid Styles */
+.simple-grid-wrapper {
+  margin: 24px 24px 0 24px;
+  background-color: #ffffff;
+  border: 1px solid #c9c9c9;
+  border-radius: 8px;
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: calc(100vh - 150px);
+  padding-bottom: 60px; /* Add padding to prevent last row from being covered by footer */
+}
+
+.simple-grid {
+  margin: 24px 24px 0 24px;
+  background-color: #ffffff;
+  border: 1px solid #c9c9c9;
+  border-radius: 8px;
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: calc(100vh - 150px);
+  display: block;
+  position: relative;
+  padding-bottom: 60px; /* Add padding to prevent last row from being covered by footer */
+}
+
+.table-header {
+  display: grid;
+  /* grid-template-columns will be set via inline style with multiplier */
+  background-color: #f3f3f3;
+  border-bottom: 1px solid #e8e8e8;
+  position: sticky;
+  top: 0;
+  z-index: 150;
+  min-width: fit-content;
+  box-sizing: border-box;
+  box-shadow: none;
+}
+
+/* Time series view - dynamically change grid columns when there are 14 columns */
+.simple-grid.grid-timeseries .table-header,
+.simple-grid.grid-timeseries .table-row,
+.simple-grid.grid-timeseries .month-selector-header {
+  /* grid-template-columns will be set via inline style with multiplier */
+  min-width: fit-content;
+}
+
+.simple-grid.grid-timeseries .table-row.header-row {
+  /* grid-template-columns will be set via inline style with multiplier */
+  position: sticky;
+  top: 100px; /* Position below column headers - accounting for full header height */
+  z-index: 120;
+  height: 42px;
+  min-height: 42px;
+  overflow: visible;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+.table-content {
+  min-width: fit-content;
+  overflow: visible;
+}
+
+.header-fixed-section {
+  width: 280px; /* Fixed width - not affected by multiplier */
+  flex-shrink: 0;
+  border-right: 1px solid #e8e8e8;
+  background-color: #f3f3f3;
+  position: sticky;
+  left: 0;
+  z-index: 35;
+}
+
+.header-scrollable-section {
+  display: grid;
+  grid-template-columns: calc(200px * var(--column-width-multiplier, 1)) calc(200px * var(--column-width-multiplier, 1)) calc(200px * var(--column-width-multiplier, 1)) calc(200px * var(--column-width-multiplier, 1)) calc(200px * var(--column-width-multiplier, 1));
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background-color: #f3f3f3;
+}
+
+.header-fixed {
+  width: 280px; /* Fixed width - not affected by multiplier */
+  min-width: 280px; /* Fixed width - not affected by multiplier */
+  flex-shrink: 0;
+  border-right: 1px solid #e8e8e8;
+  background-color: #f3f3f3;
+  position: sticky;
+  left: 0;
+  z-index: 35;
+  box-shadow: none;
+}
+
+.header-scrollable {
+  display: grid;
+  grid-template-columns: calc(200px * var(--column-width-multiplier, 1)) calc(200px * var(--column-width-multiplier, 1)) calc(200px * var(--column-width-multiplier, 1)) calc(200px * var(--column-width-multiplier, 1)) calc(200px * var(--column-width-multiplier, 1));
+  flex: 1;
+  background-color: #f3f3f3;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.table-row {
+  display: grid;
+  /* grid-template-columns will be set via inline style with multiplier */
+  border-bottom: 1px solid #c9c9c9;
+  min-height: 42px;
+  align-items: center;
+  background-color: #ffffff;
+  min-width: fit-content;
+  grid-template-rows: auto;
+  grid-auto-flow: row;
+}
+
+.table-row.header-row {
+  background-color: #f3f2f2;
+  border-bottom: 1px solid #e8e8e8;
+  border-top: 1px solid #e8e8e8;
+  position: sticky;
+  top: 100px; /* Position below column headers - accounting for full header height (60px min-height + 16px padding + 24px for filter inputs) */
+  z-index: 120;
+  font-weight: 600;
+  min-height: 42px;
+  height: 42px;
+  align-items: center;
+  overflow: visible;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  box-shadow: none;
+}
+
+.table-row.header-row .cell {
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  background-color: #f3f2f2 !important;
+  min-height: 42px;
+  height: 42px;
+  overflow: visible;
+  box-sizing: border-box;
+  line-height: normal;
+  vertical-align: middle;
+}
+
+.table-row.header-row .cell.name-cell {
+  justify-content: flex-start;
+  padding-left: 20px;
+  background-color: #f3f2f2 !important;
+  min-height: 42px;
+  height: 42px;
+  overflow: visible;
+  box-sizing: border-box;
+  line-height: normal;
+  vertical-align: middle;
+}
+
+/* Ensure searchable dropdown menus are not clipped */
+.table-row.header-row .name-cell .searchable-dropdown {
+  overflow: visible;
+  position: relative;
+  z-index: 10001;
+}
+
+.row-fixed-section {
+  width: 280px; /* Fixed width - not affected by multiplier */
+  flex-shrink: 0;
+  border-right: 1px solid #e8e8e8;
+  position: sticky;
+  left: 0;
+  background-color: #ffffff;
+  z-index: 5;
+}
+
+.row-scrollable-section {
+  display: grid;
+  grid-template-columns: calc(200px * var(--column-width-multiplier, 1)) calc(200px * var(--column-width-multiplier, 1)) calc(200px * var(--column-width-multiplier, 1)) calc(200px * var(--column-width-multiplier, 1)) calc(200px * var(--column-width-multiplier, 1));
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.row-fixed {
+  width: 280px; /* Fixed width - not affected by multiplier */
+  min-width: 280px; /* Fixed width - not affected by multiplier */
+  flex-shrink: 0;
+  border-right: 1px solid #e8e8e8;
+  position: sticky;
+  left: 0;
+  background-color: #ffffff;
+  z-index: 5;
+  box-shadow: none;
+}
+
+.row-scrollable {
+  display: grid;
+  grid-template-columns: calc(200px * var(--column-width-multiplier, 1)) calc(200px * var(--column-width-multiplier, 1)) calc(200px * var(--column-width-multiplier, 1)) calc(200px * var(--column-width-multiplier, 1)) calc(200px * var(--column-width-multiplier, 1));
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.table-row:last-child {
+  border-bottom: none;
+}
+
+.parent-row {
+  background-color: #ffffff;
+}
+
+.child-row {
+  background-color: #ffffff;
+}
+
+.cell {
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 18px;
+  color: #5c5c5c;
+  background-color: #ffffff;
+  min-width: 0;
+  max-width: 100%;
+  width: auto;
+  box-sizing: border-box;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  grid-row: 1;
+  flex: 0 0 auto;
+  border-left: 1px solid #e8e8e8;
+}
+
+.name-cell {
+  padding-left: 8px;
+  position: sticky;
+  left: 0;
+  background-color: #ffffff;
+  z-index: 10;
+  border-right: 1px solid #e8e8e8;
+  box-shadow: none;
+  box-sizing: border-box;
+  width: 280px; /* Fixed width - not affected by multiplier */
+  min-width: 280px; /* Fixed width - not affected by multiplier */
+  max-width: 280px; /* Fixed width - not affected by multiplier */
+}
+
+/* Make the first column sticky */
+.table-row > :nth-child(1),
+.table-header > :nth-child(1) {
+  position: sticky;
+  left: 0;
+  z-index: 10;
+}
+
+.table-header > :nth-child(1) {
+  z-index: 35;
+  background-color: #f3f3f3;
+}
+
+.table-header .name-header {
+  position: sticky;
+  left: 0;
+  background-color: #f3f3f3;
+  z-index: 35;
+  border-right: 1px solid #e8e8e8;
+  box-shadow: none;
+  min-width: 280px; /* Fixed width - not affected by multiplier */
+}
+
+.header-cell {
+  font-weight: 590;
+  font-size: 12px;
+  line-height: 17px;
+  color: #5c5c5c;
+  background-color: #f3f3f3 !important;
+  text-align: right;
+  justify-content: flex-end;
+  grid-row: 1;
+  box-sizing: border-box;
+  min-height: 60px; /* Ensure enough height for header text + filter input */
+  padding: 8px 12px !important; /* Add padding for filter inputs */
+}
+
+.sortable-header {
+  user-select: none;
+  transition: background-color 0.2s ease;
+}
+
+.sortable-header:hover {
+  background-color: #e8e8e8 !important;
+}
+
+.column-filter-input {
+  background-color: white;
+  color: #111827;
+}
+
+.column-filter-input:focus {
+  outline: 2px solid #0250d9;
+  outline-offset: -2px;
+}
+
+.name-header {
+  padding-left: 20px;
+  text-align: left;
+  justify-content: flex-start;
+}
+
+.month-selector-header {
+  display: grid;
+  /* grid-template-columns will be set via inline style with multiplier */
+  background-color: #f3f3f3;
+  border-bottom: 1px solid #e0e0e0;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #03234d;
+  position: sticky;
+  top: 0;
+  z-index: 31;
+  min-width: fit-content;
+}
+
+.month-selector-header .cell {
+  background-color: transparent !important;
+}
+
+/* Headers wrapper - contains first column and headers */
+.headers-wrapper {
+  display: grid;
+  grid-template-columns: 280px 1fr; /* First column fixed, second column flexible */
+  grid-template-rows: auto auto;
+  position: sticky;
+  top: 0;
+  z-index: 200;
+  background-color: #f3f3f3;
+  box-sizing: border-box;
+}
+
+.first-column-header {
+  grid-column: 1;
+  grid-row: 1 / 3;
+  background-color: #f3f3f3;
+  border-bottom: 1px solid #e8e8e8;
+  border-right: 1px solid #e8e8e8;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: flex-start;
+  font-size: 12px;
+  font-weight: 600;
+  color: #03234d;
+  position: sticky;
+  left: 0;
+  top: 0;
+  z-index: 250;
+  box-shadow: none;
+  min-height: 100px; /* Ensure it spans both rows */
+  box-sizing: border-box;
+  width: 280px; /* Fixed width - not affected by multiplier */
+  min-width: 280px; /* Fixed width - not affected by multiplier */
+  max-width: 280px; /* Fixed width - not affected by multiplier */
+  overflow: visible;
+}
+
+/* Ensure dropdowns in first column header are not clipped */
+.first-column-header .searchable-dropdown,
+.header-row .name-cell .searchable-dropdown {
+  overflow: visible;
+  z-index: 10001;
+}
+
+.first-column-header > div {
+  display: block !important;
+  visibility: visible !important;
+  width: 100%;
+}
+
+.first-column-header input.hierarchy-filter-input {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  width: 100% !important;
+}
+
+.headers-wrapper .month-selector-header {
+  grid-column: 2;
+  grid-row: 1;
+  grid-template-columns: 1fr;
+  top: 0;
+  padding: 8px 12px;
+}
+
+.headers-wrapper .table-header {
+  grid-column: 2;
+  grid-row: 2;
+  /* grid-template-columns will be set via inline style with multiplier */
+  position: sticky;
+  top: 0;
+  z-index: 150;
+  padding: 8px 12px;
+}
+
+/* Time series specific headers wrapper */
+/* Account Manager Time Series only - exclude Account Director */
+.grid-timeseries:not(.account-director-timeseries) .headers-wrapper {
+  grid-template-columns: 280px calc(1590px * var(--column-width-multiplier, 1)) !important; /* First column fixed */
+  min-width: calc(280px + 1590px * var(--column-width-multiplier, 1)) !important; /* 280px fixed + variable width */
+  width: fit-content !important;
+  max-width: none !important;
+}
+
+.grid-timeseries .headers-wrapper .month-selector-header {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 12px 12px 12px 0; /* Remove left padding so FY 25 starts immediately */
+  min-height: 50px;
+  width: fit-content;
+  min-width: calc(1590px * var(--column-width-multiplier, 1)); /* 150px (FY 25) + 12 * 120px (months) */
+  max-width: none;
+}
+
+/* Account Manager Time Series only - exclude Account Director */
+.grid-timeseries:not(.account-director-timeseries) .headers-wrapper .table-header {
+  grid-column: 2 !important;
+  grid-row: 2 !important;
+  /* Dynamic columns based on selectedTimeLevels - will be overridden by inline style */
+  /* Removed fixed grid-template-columns to allow inline style to control column widths */
+  width: fit-content !important;
+  min-width: calc(1590px * var(--column-width-multiplier, 1)) !important;
+  max-width: none !important;
+  padding: 0 !important; /* Remove all padding for precise alignment */
+  display: grid !important;
+  grid-template-rows: auto !important;
+  box-sizing: border-box !important;
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 150 !important;
+}
+
+/* Account Director Time Series */
+.account-director-timeseries .headers-wrapper {
+  grid-template-columns: 280px calc(2040px * var(--column-width-multiplier, 1)) !important; /* First column fixed */
+  min-width: calc(280px + 2040px * var(--column-width-multiplier, 1)) !important; /* 280px fixed + variable width */
+  width: fit-content !important;
+  max-width: none !important;
+  grid-column-gap: 0 !important;
+  grid-row-gap: 0 !important;
+  gap: 0 !important;
+  overflow: visible; /* Allow dropdown menus to show */
+}
+
+.account-director-timeseries .headers-wrapper .month-selector-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 12px 8px 0; /* Remove left padding so FY 25 starts immediately */
+  min-height: auto;
+  gap: 8px;
+  width: fit-content;
+  min-width: calc(2040px * var(--column-width-multiplier, 1)); /* 120px (FY 25) + 4 * 120px (quarters) + 12 * 120px (months) */
+  max-width: none;
+  overflow: visible; /* Allow dropdown to show */
+}
+
+.account-director-timeseries .headers-wrapper .table-header {
+  grid-column: 2 !important;
+  grid-row: 2 !important;
+  /* grid-template-columns will be set via inline style with multiplier */
+  width: fit-content !important;
+  min-width: calc(2040px * var(--column-width-multiplier, 1)) !important;
+  max-width: none !important;
+  overflow: visible;
+  padding: 8px 0 !important; /* Add vertical padding for filter inputs */
+  margin: 0 !important;
+  display: grid !important;
+  grid-template-rows: auto !important;
+  min-height: auto !important;
+  box-sizing: border-box !important;
+  grid-column-gap: 0 !important;
+  grid-row-gap: 0 !important;
+  gap: 0 !important;
+  border-bottom: 1px solid #e8e8e8 !important;
+  box-shadow: none !important;
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 150 !important;
+}
+
+/* Ensure header cells in Account Director Time Series can accommodate filter inputs */
+.account-director-timeseries .table-header .header-cell {
+  min-height: auto !important;
+  padding: 8px 12px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-end !important;
+}
+
+/* Ensure FY 25 header cell in Account Director view matches column width */
+.account-director-timeseries .headers-wrapper .table-header > .header-cell:first-child {
+  width: calc(120px * var(--column-width-multiplier, 1)) !important;
+  min-width: calc(120px * var(--column-width-multiplier, 1)) !important;
+  max-width: calc(120px * var(--column-width-multiplier, 1)) !important;
+  box-sizing: border-box !important;
+}
+
+/* Ensure first column header and hierarchy filter are visible in Account Director Time Series */
+.account-director-timeseries .headers-wrapper .first-column-header {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  justify-content: flex-end !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  height: auto !important;
+  min-height: 100px !important;
+  overflow: visible !important;
+  padding: 8px 12px !important;
+}
+
+.account-director-timeseries .headers-wrapper .first-column-header > div {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  width: 100% !important;
+}
+
+.account-director-timeseries .headers-wrapper .first-column-header input.hierarchy-filter-input,
+.account-director-timeseries .headers-wrapper .first-column-header input[id="hierarchy-filter-input"],
+.account-director-timeseries .headers-wrapper .first-column-header input[name="hierarchy-filter-input"] {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  width: 100% !important;
+  position: relative !important;
+  z-index: 10 !important;
+  height: auto !important;
+  min-height: 24px !important;
+}
+
+.account-director-timeseries .headers-wrapper .first-column-header > div {
+  min-height: 24px !important;
+}
+
+/* Ensure hierarchy filter is visible in Account Manager Time Series */
+.grid-timeseries .first-column-header input.hierarchy-filter-input,
+.grid-timeseries .first-column-header input[id="hierarchy-filter-input"],
+.grid-timeseries .first-column-header input[name="hierarchy-filter-input"] {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  width: 100% !important;
+  height: auto !important;
+  min-height: 24px !important;
+}
+
+/* Time series header centered on screen */
+.grid-timeseries .month-selector-header {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 12px 12px;
+  min-height: 50px;
+}
+
+.timeseries-header-center {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  background-color: transparent;
+  display: flex;
+  align-items: center;
+}
+
+/* Account Director Time Series specific fix */
+.account-director-timeseries .month-selector-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 12px;
+  min-height: auto;
+  gap: 8px;
+}
+
+.account-director-timeseries .timeseries-header-center {
+  position: relative;
+  left: auto;
+  transform: none;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: transparent;
+  order: 1;
+}
+
+.account-director-timeseries .month-headers-row {
+  display: grid;
+  /* grid-template-columns will be set via inline style with multiplier */
+  width: 100%;
+  order: 2;
+  min-width: fit-content;
+}
+
+.account-director-timeseries .month-header {
+  padding: 8px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: #5c5c5c;
+  background-color: #f3f3f3;
+  border-right: 1px solid #c9c9c9;
+}
+
+/* Time Series views use same width settings as Specific Time and Roll-up views */
+/* No width constraints needed - inherits from base .simple-grid */
+
+.simple-grid.account-director-timeseries .table-row {
+  display: grid !important;
+  /* grid-template-columns will be set dynamically via inline style */
+  grid-template-rows: auto !important;
+  grid-auto-flow: row !important;
+  min-width: fit-content; /* Same as base .table-row */
+  box-sizing: border-box !important;
+  grid-column-gap: 0 !important;
+  grid-row-gap: 0 !important;
+  gap: 0 !important;
+}
+
+.simple-grid.account-director-timeseries .table-row.header-row {
+  /* grid-template-columns will be set via inline style with multiplier */
+  position: sticky !important;
+  top: 100px !important; /* Position below column headers - accounting for full header height */
+  z-index: 120 !important;
+  height: 42px !important;
+  min-height: 42px !important;
+  overflow: visible !important;
+  box-sizing: border-box !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Account Manager Time Series only - exclude Account Director */
+.simple-grid.grid-timeseries:not(.account-director-timeseries) .table-row {
+  display: grid !important;
+  /* grid-template-columns will be set dynamically via inline style */
+  grid-template-rows: auto !important;
+  grid-auto-flow: row !important;
+  min-width: fit-content; /* Same as base .table-row */
+  box-sizing: border-box !important;
+}
+
+/* Time Series views use same table-content settings as base .table-content */
+
+/* Removed - conflicting rule. The table-header inside headers-wrapper should not include the 280px name column */
+
+
+.month-selector {
+  border: none;
+  background: transparent;
+  font-weight: 600;
+  font-size: 16px;
+  font-family: 'SF Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #5C5C5C;
+  cursor: pointer;
+  outline: none;
+}
+
+.month-selector option {
+  font-size: 8px !important;
+  font-family: 'SF Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+  color: #03234d !important;
+  padding: 2px 8px;
+}
+
+.expand-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: #3b82f6;
+  padding: 2px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.expand-button:hover {
+  background-color: rgba(59, 130, 246, 0.1);
+}
+
+.parent-text {
+  color: #0250d9;
+  font-weight: 590;
+  cursor: pointer;
+}
+
+.parent-text:hover {
+  color: #0140b0;
+}
+
+.child-text {
+  color: #1f2937;
+  font-weight: 400;
+}
+
+.cell.editable {
+  cursor: pointer;
+  border: 2px solid #0250d9;
+  border-radius: 2px;
+}
+
+.cell:not(.name-cell) {
+  justify-content: flex-end;
+}
+
+/* Enhanced styling for frozen elements */
+.name-cell,
+.table-header .name-header {
+  transition: background-color 0.2s ease;
+}
+
+.name-cell:hover {
+  background-color: #ffffff;
+}
+
+.table-row:hover .name-cell {
+  background-color: #ffffff;
+}
+
+.table-row:hover {
+  background-color: #f8f9fa;
+}
+
+.table-row:hover .name-cell {
+  background-color: #f8f9fa;
+}
+
+.cell.selected {
+  outline: 2px solid black;
+  outline-offset: -2px;
+  z-index: 10;
+  position: relative;
+}
+
+/* Searchable Dropdown Styles */
+.searchable-dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.searchable-dropdown-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.searchable-dropdown-input {
+  border: none;
+  background: transparent;
+  font-weight: 600;
+  font-size: 16px;
+  font-family: 'SF Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #5C5C5C;
+  cursor: pointer;
+  outline: none;
+  padding: 4px 8px;
+  min-width: 200px;
+  width: auto;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* Style for header row dropdown inputs to match parent row styling */
+.table-row.header-row .name-cell .searchable-dropdown-input {
+  font-size: 14px;
+  color: #0250d9;
+  font-weight: bold;
+  text-align: left;
+  text-decoration: underline;
+  padding: 4px 4px;
+  min-width: auto;
+  width: 100%;
+}
+
+/* KPI Header Row Styling */
+.table-row.header-row.kpi-header-row {
+  background-color: #f3f2f2;
+  border-bottom: 1px solid #e8e8e8;
+  border-top: 1px solid #e8e8e8;
+  display: grid !important;
+}
+
+/* Grid columns for KPI header rows are now set dynamically via inline styles based on selectedTimeLevels */
+
+.table-row.header-row.kpi-header-row:hover {
+  background-color: #ececec;
+}
+
+.kpi-table-content {
+  background-color: #ffffff;
+}
+
+.kpi-table-content .table-row {
+  display: grid !important;
+}
+
+.searchable-dropdown-input:focus {
+  background: white;
+  border: 1px solid #0250d9;
+  border-radius: 4px;
+  cursor: text;
+}
+
+.searchable-dropdown-icon {
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+  cursor: pointer;
+}
+
+.searchable-dropdown-container:hover .searchable-dropdown-icon {
+  transform: translateY(2px);
+}
+
+.searchable-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: white;
+  border: 1px solid #c9c9c9;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  max-height: 300px;
+  overflow-y: auto;
+  overflow-x: visible;
+  z-index: 10000;
+  min-width: 250px;
+  max-width: 400px;
+}
+
+/* Fixed positioning is handled via inline styles in the SearchableDropdown component when useFixedPosition is true */
+
+.searchable-dropdown-option {
+  padding: 10px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: 'SF Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #111827;
+  border-bottom: 1px solid #f3f3f3;
+}
+
+.searchable-dropdown-option:last-child {
+  border-bottom: none;
+}
+
+.searchable-dropdown-option:hover {
+  background-color: #f3f4f6;
+}
+
+.searchable-dropdown-option.selected {
+  background-color: #e8f0fe;
+  font-weight: 600;
+}
+
+.searchable-dropdown-option .searchable-dropdown-option-meta {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #6c757d;
+}
+
+/* KAM View Styles - Salesforce Lightning Design System Tabs */
+.kam-view-container {
+  margin: 0;
+  background-color: transparent;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
+  border: none;
+}
+
+.kam-view-tabs {
+  display: flex;
+  background-color: #f3f2f2;
+  border-bottom: 1px solid #dddbda;
+  width: 100%;
+  margin-bottom: 0;
+  padding: 0 1rem;
+}
+
+.kam-view-button {
+  padding: 0.75rem 1rem;
+  border: none;
+  background-color: transparent;
+  color: #3e3e3c;
+  font-size: 0.875rem;
+  font-weight: 400;
+  cursor: pointer;
+  font-family: 'Salesforce Sans', Arial, sans-serif;
+  transition: all 0.15s ease;
+  border-radius: 0;
+  position: relative;
+  min-width: 120px;
+  text-align: center;
+  border-bottom: 2px solid transparent;
+  margin-right: 0.5rem;
+}
+
+.kam-view-button:last-child {
+  margin-right: 0;
+}
+
+.kam-view-button.active {
+  color: #0176d3;
+  border-bottom-color: #0176d3;
+  font-weight: 700;
+  background-color: transparent;
+}
+
+.kam-view-button:hover:not(.active) {
+  color: #0176d3;
+  background-color: #f3f2f2;
+}
+
+.kam-view-button:focus {
+  outline: 2px solid #0176d3;
+  outline-offset: -2px;
+  border-radius: 0.25rem;
+}
+
+.kam-view-content {
+  margin: 24px;
+  padding: 1.5rem;
+  background-color: #ffffff;
+  border-radius: 0.25rem;
+  box-shadow: 0 2px 2px 0 rgba(0, 0, 0, 0.1);
+  border: 1px solid #dddbda;
+}
+
+.kam-view-content h2 {
+  color: #181818;
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  font-family: 'Salesforce Sans', Arial, sans-serif;
+}
+
+.kam-view-content p {
+  color: #3e3e3c;
+  font-size: 1rem;
+  margin-bottom: 1.5rem;
+  font-family: 'Salesforce Sans', Arial, sans-serif;
+  line-height: 1.5;
+}
+
+.placeholder-content {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1rem;
+}
+
+.placeholder-card {
+  background-color: #f3f2f2;
+  border: 1px solid #dddbda;
+}
+
+/* SLDS Grouped Combobox Styles */
+.slds-combobox-group {
+  display: flex;
+  align-items: stretch;
+  border-radius: 0.25rem;
+  overflow: visible;
+}
+
+.slds-combobox-group .slds-combobox {
+  flex: 1;
+  position: relative;
+}
+
+.slds-combobox-group .slds-input,
+.slds-combobox-group .slds-combobox__input {
+  height: 2.5rem;
+  border-radius: 0;
+  border-right: none;
+}
+
+.slds-combobox-group .slds-combobox:first-child .slds-combobox__input {
+  border-top-left-radius: 0.25rem;
+  border-bottom-left-radius: 0.25rem;
+  border-right: none;
+}
+
+.slds-combobox-group .slds-input:last-child {
+  border-top-right-radius: 0.25rem;
+  border-bottom-right-radius: 0.25rem;
+  border-left: none;
+}
+
+.slds-combobox-group .slds-input:focus,
+.slds-combobox-group .slds-combobox__input:focus {
+  outline: none;
+  border-color: #0176d3;
+  box-shadow: 0 0 0 1px #0176d3;
+  z-index: 1;
+}
+
+.slds-combobox-group .slds-input:hover,
+.slds-combobox-group .slds-combobox__input:hover {
+  border-color: #706e6b;
+}
+
+.slds-dropdown_fluid {
+  width: 100%;
+}
+
+.slds-listbox__option {
+  transition: background-color 0.1s ease;
+}
+
+.slds-listbox__option:hover {
+  background-color: #f3f2f2 !important;
+}
+
+.placeholder-card:hover {
+  border-color: #0176d3;
+  background-color: #e5f3ff;
+  box-shadow: 0 2px 2px 0 rgba(0, 0, 0, 0.1);
+}
+
+.placeholder-card h3 {
+  color: #181818;
+  font-size: 1.125rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  font-family: 'Salesforce Sans', Arial, sans-serif;
+}
+
+.placeholder-card p {
+  color: #3e3e3c;
+  font-size: 0.875rem;
+  margin: 0;
+  font-family: 'Salesforce Sans', Arial, sans-serif;
+  line-height: 1.4;
+}
+
