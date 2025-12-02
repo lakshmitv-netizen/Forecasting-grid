@@ -7,5 +7,15 @@ dist
 .env.development.local
 .env.test.local
 .env.production.local
+*.pdf
+*.zip
+*.dmg
+*.blockmap
+figma_data.json
+figmatest
+*.py
+__pycache__
+*.pyc
+build/
 
 
