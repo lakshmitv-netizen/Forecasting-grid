@@ -11,10 +11,19 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, isDev ? 'preload.js' : 'preload.js')
+      preload: path.join(__dirname, isDev ? 'preload.js' : 'preload.js'),
+      // Disable web security only in production to allow local file access
+      webSecurity: !isDev
     },
     backgroundColor: '#f3f3f3',
-    title: 'Manufacturing Cloud Forecast'
+    title: 'nov24_proto',
+    // Ensure app works offline
+    show: false // Don't show until ready
+  });
+
+  // Show window when ready to prevent flash
+  win.once('ready-to-show', () => {
+    win.show();
   });
 
   // Load the app
@@ -24,26 +33,28 @@ function createWindow() {
     win.webContents.openDevTools();
   } else {
     // Production: Load from built files
-    // In packaged app, files are in app.asar/build
-    const indexPath = path.join(__dirname, 'build', 'index.html');
-    
-    // Try to load the file
-    if (fs.existsSync(indexPath)) {
-      win.loadFile(indexPath);
-    } else {
-      // Fallback: try alternative paths for packaged app
-      const fallbackPaths = [
+    // In packaged app, files are in app.asar/build or Resources/build
+    const possiblePaths = [
+      // Development build path
+      path.join(__dirname, 'build', 'index.html'),
+      // Packaged app paths
         path.join(process.resourcesPath, 'app.asar', 'build', 'index.html'),
         path.join(process.resourcesPath, 'app', 'build', 'index.html'),
+      path.join(process.resourcesPath, 'build', 'index.html'),
+      path.join(app.getAppPath(), 'build', 'index.html'),
+      path.join(app.getAppPath(), '..', 'build', 'index.html'),
         path.join(process.cwd(), 'build', 'index.html'),
-        path.join(app.getAppPath(), 'build', 'index.html')
+      // Try Resources/build directly
+      path.join(__dirname, '..', 'build', 'index.html'),
+      path.join(__dirname, '..', '..', 'build', 'index.html')
       ];
       
       let loaded = false;
-      for (const fallbackPath of fallbackPaths) {
+    for (const indexPath of possiblePaths) {
         try {
-          if (fs.existsSync(fallbackPath)) {
-            win.loadFile(fallbackPath);
+        if (fs.existsSync(indexPath)) {
+          console.log('Loading from:', indexPath);
+          win.loadFile(indexPath);
             loaded = true;
             break;
           }
@@ -53,9 +64,12 @@ function createWindow() {
       }
       
       if (!loaded) {
-        console.error('Could not find index.html. Tried:', indexPath, ...fallbackPaths);
-        win.loadURL('data:text/html,<h1>Error: Could not find index.html</h1><p>Please rebuild the application.</p>');
-      }
+      console.error('Could not find index.html. Tried paths:', possiblePaths);
+      console.error('__dirname:', __dirname);
+      console.error('process.resourcesPath:', process.resourcesPath);
+      console.error('app.getAppPath():', app.getAppPath());
+      console.error('process.cwd():', process.cwd());
+      win.loadURL('data:text/html,<h1>Error: Could not find index.html</h1><p>Please rebuild the application.</p><p>Checked paths: ' + possiblePaths.join('<br>') + '</p>');
     }
   }
 

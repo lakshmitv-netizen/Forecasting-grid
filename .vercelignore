@@ -16,6 +16,5 @@ figmatest
 *.py
 __pycache__
 *.pyc
-build/
 
 

@@ -1,5 +1,5 @@
 {
-  "name": "nov22-clone",
+  "name": "nov24_proto",
   "version": "1.0.0",
   "private": true,
   "main": "electron.js",
@@ -27,11 +27,12 @@
     "electron-pack": "npm run build && electron-builder",
     "dist": "npm run build && electron-builder --mac",
     "dist-mac": "NODE_OPTIONS='--localstorage-file=/tmp/localstorage.json' npm run build && cp public/electron.js electron.js && cp public/preload.js preload.js && electron-builder --mac && rm electron.js preload.js",
-    "package-mac": "NODE_OPTIONS='--localstorage-file=/tmp/localstorage.json' npm run build && electron-builder --mac --dir"
+    "package-mac": "NODE_OPTIONS='--localstorage-file=/tmp/localstorage.json' npm run build && electron-builder --mac --dir",
+    "build-nov24-proto": "NODE_OPTIONS='--localstorage-file=/tmp/localstorage.json' npm run build && cp public/electron.js electron.js && cp public/preload.js preload.js && electron-builder --mac && rm electron.js preload.js"
   },
   "build": {
-    "appId": "com.nov22clone.app",
-    "productName": "Manufacturing Cloud Forecast",
+    "appId": "com.nov24proto.app",
+    "productName": "nov24_proto",
     "extraMetadata": {
       "main": "electron.js"
     },
