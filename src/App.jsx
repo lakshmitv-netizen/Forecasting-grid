@@ -384,6 +384,11 @@ function App() {
   const [viewDropdownOpen, setViewDropdownOpen] = useState(false); // Whether the view dropdown is open
   const viewDropdownRef = useRef(null); // Ref for view dropdown positioning
   const [viewDropdownSearch, setViewDropdownSearch] = useState(''); // Search term for view dropdown
+  const [createViewModalOpen, setCreateViewModalOpen] = useState(false); // Whether the create view modal is open
+  const [newViewName, setNewViewName] = useState(''); // Name for the new view
+  const [availableHierarchies, setAvailableHierarchies] = useState(['Location', 'Region', 'Territory', 'User']); // Available hierarchies for duelling picklist
+  const [selectedHierarchies, setSelectedHierarchies] = useState(['Account', 'Product', 'Location']); // Selected hierarchies for duelling picklist
+  const [selectedHierarchyIndex, setSelectedHierarchyIndex] = useState(null); // Track which selected hierarchy is highlighted
   const prevViewRef = useRef(selectedView);
   const prevViewForScrollRef = useRef(selectedView); // Track previous view for auto-scroll detection
   const manualToggleTimestampRef = useRef(0); // Track when a manual toggle happened
@@ -852,7 +857,9 @@ function App() {
           // For Account Director View, check for "Account Director UI Definition"
           const headerTitle = btn.closest('.title-and-buttons-container')?.querySelector('.header-title')?.textContent || '';
           const isInActiveView = selectedKAMView === 'Account Manager View' 
-            ? headerTitle.includes('Monthly Forecast Update')
+            ? (headerTitle.includes('Monthly Forecast Update') || 
+               headerTitle.includes('Product Performance') || 
+               headerTitle.includes('Account Performance'))
             : headerTitle === 'Account Director UI Definition';
           if (isInActiveView) {
             targetButton = btn;
@@ -2536,24 +2543,42 @@ function App() {
     prevViewForScrollRef.current = selectedView;
   }, [selectedCell.hierarchy, selectedCell.time, selectedCell.kpi, selectedMonth, selectedKAMView, selectedView, manuallyExpandedRows]);
   
-  // KPI options for the dropdown in Time Series view - dynamic based on selectedKPISet
-  const kpiOptions = React.useMemo(() => {
-    if (selectedKPISet === 'Revenue and Quantity Metrics' || selectedKPISet === 'Revenue and Quantity Measures') {
-      return [
-        'Sales Agreement Quantity [Editable]',
-        'Sales Agreement Revenue [Editable]',
-        'Opportunity Quantity [Editable]',
-        'Opportunity Revenue [Editable]',
-        'Order Quantity [Editable]',
-        'Order Revenue [Editable]',
-        'Last Year Order Quantity [Read-Only]',
-        'Last Years Order Revenue [Read-Only]',
-        'Forecasted Quantity [Editable]',
-        'Forecasted Revenue [Editable]'
-      ];
-    } else {
-      // Forecast Adjustments (default)
-      return [
+  // KPI options for the dropdown in Time Series view
+  // Get KPIs based on selected measure group
+  const getKPIOptions = () => {
+    switch (selectedKPISet) {
+      case 'Revenue Metrics':
+        return [
+          'Sales Agreement Revenue [Editable]',
+          'Opportunity Revenue [Editable]',
+          'Order Revenue [Editable]',
+          'Last Years Order Revenue [Read-Only]',
+          'Forecasted Revenue [Editable]'
+        ];
+      case 'Quantity Metrics':
+        return [
+          'Sales Agreement Quantity [Editable]',
+          'Opportunity Quantity [Editable]',
+          'Order Quantity [Editable]',
+          'Last Year Order Quantity [Read-Only]',
+          'Forecasted Quantity [Editable]'
+        ];
+      case 'Revenue and Quantity Metrics':
+        return [
+          'Sales Agreement Quantity [Editable]',
+          'Sales Agreement Revenue [Editable]',
+          'Opportunity Quantity [Editable]',
+          'Opportunity Revenue [Editable]',
+          'Order Quantity [Editable]',
+          'Order Revenue [Editable]',
+          'Last Year Order Quantity [Read-Only]',
+          'Last Years Order Revenue [Read-Only]',
+          'Forecasted Quantity [Editable]',
+          'Forecasted Revenue [Editable]'
+        ];
+      case 'Forecast Adjustments':
+      default:
+        return [
     'Baseline (Revenue) [Read-Only]',
     'AM Adjusted (Revenue) [Editable]',
     'SM Adjustment [Read-Only]',
@@ -2561,7 +2586,9 @@ function App() {
     'Final Forecast (Revenue) [Read-Only]'
   ];
     }
-  }, [selectedKPISet]);
+  };
+
+  const kpiOptions = getKPIOptions();
 
   // Initialize expandedKPIs with all KPIs on mount (for Account Manager)
   // Removed default expansion for Account Director + KPI view to prevent interference with keyboard navigation
@@ -2655,24 +2682,65 @@ function App() {
     };
 
     // Helper function to collect all parent node IDs (nodes with children) recursively
-    // Removed default expansion of all parent time nodes to prevent interference with keyboard navigation
-    // setExpandedSpecificTimeHeaders will only be set when user manually expands or when needed for selected cell
+    // When a cell is selected, expand the time hierarchy to show the selected cell's time period
+    // and expand the inner dimension table with the selected cell's parent hierarchy
 
     // Determine which time period contains the selected cell for inner table expansion
     if (selectedCell && selectedCell.time !== undefined) {
     let timePeriodId = null;
+      let parentTimePeriodIds = []; // Track parent time periods that need to be expanded
 
-    // Map time value to time period ID
+      // Map time value to time period ID and determine parent hierarchy
     if (selectedCell.time === -1) {
-      // FY 25
+        // FY 25 - no parent
       timePeriodId = 'fy2025';
     } else if (selectedCell.time >= -5 && selectedCell.time <= -2) {
-      // Quarter
+        // Quarter - parent is FY
       const quarterMap = { '-2': 'q1', '-3': 'q2', '-4': 'q3', '-5': 'q4' };
       timePeriodId = quarterMap[String(selectedCell.time)];
+        if (selectedTimeLevels === 'Year') {
+          parentTimePeriodIds.push('fy2025'); // Expand FY to show quarter
+        }
     } else if (selectedCell.time >= 0 && selectedCell.time <= 11) {
-      // Month
+        // Month - parent could be Quarter or FY
       timePeriodId = `month-${selectedCell.time}`;
+        if (selectedTimeLevels === 'Quarter') {
+          // Determine which quarter this month belongs to
+          const quarterMap = {
+            0: 'q1', 1: 'q1', 2: 'q1',   // Jan-Mar -> Q1
+            3: 'q2', 4: 'q2', 5: 'q2',   // Apr-Jun -> Q2
+            6: 'q3', 7: 'q3', 8: 'q3',   // Jul-Sep -> Q3
+            9: 'q4', 10: 'q4', 11: 'q4'  // Oct-Dec -> Q4
+          };
+          const quarterId = quarterMap[selectedCell.time];
+          if (quarterId) {
+            parentTimePeriodIds.push(quarterId); // Expand quarter to show month
+          }
+        } else if (selectedTimeLevels === 'Year') {
+          // If Year is selected, expand FY to show month (through quarter)
+          parentTimePeriodIds.push('fy2025');
+          // Also determine quarter
+          const quarterMap = {
+            0: 'q1', 1: 'q1', 2: 'q1',
+            3: 'q2', 4: 'q2', 5: 'q2',
+            6: 'q3', 7: 'q3', 8: 'q3',
+            9: 'q4', 10: 'q4', 11: 'q4'
+          };
+          const quarterId = quarterMap[selectedCell.time];
+          if (quarterId) {
+            parentTimePeriodIds.push(quarterId);
+          }
+        }
+      }
+
+      // Expand time hierarchy headers to show the selected cell's time period
+      if (timePeriodId || parentTimePeriodIds.length > 0) {
+        setExpandedSpecificTimeHeaders(prev => {
+          const next = new Set(prev); // Preserve existing expansions
+          // Add all parent time periods
+          parentTimePeriodIds.forEach(id => next.add(id));
+          return next;
+        });
       }
 
       // Open the inner dimension table for the time period containing the selected cell
@@ -2684,8 +2752,12 @@ function App() {
         return next;
       });
       }
+
+      // Expand parent hierarchy in the inner dimension table for the selected cell
+      // Note: allMonthsData is defined later in the component, so we'll handle this in a separate effect
+      // that runs after allMonthsData is available
     }
-  }, [selectedView, selectedCell?.time, selectedTimeLevels]);
+  }, [selectedView, selectedCell?.time, selectedCell?.hierarchy, selectedTimeLevels, selectedKAMView]);
 
   // When switching to Dimensions or Time view, update selectedMonth to match selectedCell.time if it exists
   // This ensures the main grid shows the correct time period when transitioning from KPI view
@@ -2809,6 +2881,18 @@ function App() {
       }
       return next;
     });
+
+    // Expand header hierarchy to show the selected cell's parent
+    // Expand all parent nodes in the path (except the selected cell itself)
+    if (pathToSelected && pathToSelected.length > 1) {
+      setExpandedHeaderHierarchy(prev => {
+        const next = new Set(prev); // Preserve existing expansions
+        // Expand all parent nodes (all IDs in path except the last one, which is the selected cell)
+        const parentIds = pathToSelected.slice(0, -1);
+        parentIds.forEach(id => next.add(id));
+        return next;
+      });
+    }
 
   }, [selectedView, selectedCell, selectedMonth, selectedKAMView, groupedComboboxValue, selectedLevels]);
 
@@ -3095,20 +3179,56 @@ function App() {
 
   // Generate data based on selected month
   const generateDataForMonth = (month, includeOhio = false) => {
+    // Helper function to generate revenue and quantity metrics
+    const generateRevenueQuantityMeasures = (productIndex, uniqueMultipliers, baseRevenue) => {
+      const seed = productIndex * 211; // Different prime for variety
+      // Generate quantities (typically smaller numbers)
+      const salesAgreementQty = 50 + (seed % 100); // 50-150
+      const opportunityQty = 40 + ((seed * 3) % 80); // 40-120
+      const orderQty = 30 + ((seed * 5) % 70); // 30-100
+      const lastYearOrderQty = 25 + ((seed * 7) % 60); // 25-85
+      const forecastedQty = 45 + ((seed * 11) % 90); // 45-135
+      
+      // Generate revenues (based on quantities and unit prices)
+      const unitPrice = baseRevenue / 100; // Approximate unit price
+      const salesAgreementRev = Math.round(salesAgreementQty * unitPrice * 0.9); // 90% of base
+      const opportunityRev = Math.round(opportunityQty * unitPrice * 0.85); // 85% of base
+      const orderRev = Math.round(orderQty * unitPrice * 0.95); // 95% of base
+      const lastYearOrderRev = Math.round(lastYearOrderQty * unitPrice * 0.88); // 88% of base
+      const forecastedRev = Math.round(forecastedQty * unitPrice * 0.92); // 92% of base
+      
+      return {
+        salesAgreementQuantity: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(salesAgreementQty * mult), 0),
+        salesAgreementRevenue: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(salesAgreementRev * mult), 0),
+        opportunityQuantity: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(opportunityQty * mult), 0),
+        opportunityRevenue: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(opportunityRev * mult), 0),
+        orderQuantity: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(orderQty * mult), 0),
+        orderRevenue: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(orderRev * mult), 0),
+        lastYearOrderQuantity: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(lastYearOrderQty * mult), 0),
+        lastYearsOrderRevenue: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(lastYearOrderRev * mult), 0),
+        forecastedQuantity: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(forecastedQty * mult), 0),
+        forecastedRevenue: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(forecastedRev * mult), 0)
+      };
+    };
+
     // Helper function to generate TRN product sums (used for both FY and monthly)
     const generateTRNProductSums = (productIndex, uniqueMultipliers) => {
       const seed = productIndex * 137; // Prime number for better distribution
       const baseline = 400000 + (seed % 450000); // 400k-850k range
-      const amAdjusted = baseline + 20000 + ((seed * 7) % 100000); // baseline+20k to baseline+120k
-      const smAdjustment = 15000 + ((seed * 11) % 25000); // 15k-40k
-      const rsdAdjustment = ((seed * 13) % 53000); // 0-52k
-      const finalForecast = baseline + (amAdjusted - baseline) + smAdjustment + rsdAdjustment;
+      // Calculate AM adjustment first, then multiply SM and RSD by 20
+      const amAdjustment = 20000 + ((seed * 7) % 5000); // 20k-25k
+      const smAdjustment = amAdjustment * 20; // 20x AM adjustment
+      const rsdAdjustment = amAdjustment * 20; // 20x AM adjustment
+      const amAdjusted = baseline + amAdjustment;
+      const finalForecast = baseline + amAdjustment + smAdjustment + rsdAdjustment;
+      const revenueQuantity = generateRevenueQuantityMeasures(productIndex, uniqueMultipliers, baseline);
       return {
         baseline: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(baseline * mult), 0),
         amAdjusted: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(amAdjusted * mult), 0),
         smAdjustment: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(smAdjustment * mult), 0),
         rsdAdjustment: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(rsdAdjustment * mult), 0),
-        finalForecast: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(finalForecast * mult), 0)
+        finalForecast: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(finalForecast * mult), 0),
+        ...revenueQuantity
       };
     };
     
@@ -3116,51 +3236,20 @@ function App() {
     const generateChassisProductSums = (productIndex, uniqueMultipliers) => {
       const seed = productIndex * 197; // Prime number for better distribution
       const baseline = 290000 + (seed % 90000); // 290k-380k range
-      const amAdjusted = baseline + 10000 + ((seed * 5) % 130000); // baseline+10k to baseline+140k
-      const smAdjustment = 16000 + ((seed * 3) % 2000); // 16k-18k
-      const rsdAdjustment = 22000 + ((seed * 7) % 8000); // 22k-30k
-      const finalForecast = baseline + (amAdjusted - baseline) + smAdjustment + rsdAdjustment;
+      // Calculate AM adjustment first, then multiply SM and RSD by 20
+      const amAdjustment = 18000 + ((seed * 5) % 5000); // 18k-23k
+      const smAdjustment = amAdjustment * 20; // 20x AM adjustment
+      const rsdAdjustment = amAdjustment * 20; // 20x AM adjustment
+      const amAdjusted = baseline + amAdjustment;
+      const finalForecast = baseline + amAdjustment + smAdjustment + rsdAdjustment;
+      const revenueQuantity = generateRevenueQuantityMeasures(productIndex, uniqueMultipliers, baseline);
       return {
         baseline: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(baseline * mult), 0),
         amAdjusted: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(amAdjusted * mult), 0),
         smAdjustment: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(smAdjustment * mult), 0),
         rsdAdjustment: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(rsdAdjustment * mult), 0),
-        finalForecast: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(finalForecast * mult), 0)
-      };
-    };
-    
-    // Helper function to generate Revenue and Quantity Measures KPIs (used for both FY and monthly)
-    const generateRevenueQuantityMeasures = (productIndex, uniqueMultipliers) => {
-      const seed = productIndex * 211; // Prime number for better distribution
-      
-      // Generate realistic quantities (units)
-      const salesAgreementQuantity = 150 + (seed % 350); // 150-500 units
-      const opportunityQuantity = 200 + (seed % 400); // 200-600 units
-      const orderQuantity = 100 + (seed % 300); // 100-400 units
-      const lastYearOrderQuantity = 80 + (seed % 250); // 80-330 units (slightly lower)
-      const forecastedQuantity = 180 + (seed % 380); // 180-560 units
-      
-      // Generate realistic revenue values (dollars)
-      // Average price per unit varies by product type
-      const avgPricePerUnit = 2500 + ((seed * 3) % 3000); // $2,500-$5,500 per unit
-      
-      const salesAgreementRevenue = Math.round(salesAgreementQuantity * avgPricePerUnit);
-      const opportunityRevenue = Math.round(opportunityQuantity * avgPricePerUnit * 0.85); // Opportunities typically 85% of agreement value
-      const orderRevenue = Math.round(orderQuantity * avgPricePerUnit);
-      const lastYearsOrderRevenue = Math.round(lastYearOrderQuantity * avgPricePerUnit * 0.92); // Last year slightly lower price
-      const forecastedRevenue = Math.round(forecastedQuantity * avgPricePerUnit * 1.05); // Forecast slightly higher
-      
-      return {
-        salesAgreementQuantity: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(salesAgreementQuantity * mult), 0),
-        salesAgreementRevenue: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(salesAgreementRevenue * mult), 0),
-        opportunityQuantity: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(opportunityQuantity * mult), 0),
-        opportunityRevenue: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(opportunityRevenue * mult), 0),
-        orderQuantity: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(orderQuantity * mult), 0),
-        orderRevenue: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(orderRevenue * mult), 0),
-        lastYearOrderQuantity: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(lastYearOrderQuantity * mult), 0),
-        lastYearsOrderRevenue: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(lastYearsOrderRevenue * mult), 0),
-        forecastedQuantity: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(forecastedQuantity * mult), 0),
-        forecastedRevenue: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(forecastedRevenue * mult), 0)
+        finalForecast: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(finalForecast * mult), 0),
+        ...revenueQuantity
       };
     };
     
@@ -3169,88 +3258,136 @@ function App() {
       // Calculate actual sum by generating each month and summing the rounded values
       const uniqueMultipliers = [1.15, 0.92, 1.05, 1.18, 0.88, 1.10, 1.20, 0.85, 1.12, 0.95, 1.08, 1.00];
       
-      // Calculate sums for each metric
+      // Calculate sums for each metric - calculate AM adjustment first, then multiply SM and RSD by 20
       const aggregateBaseline = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(5000000 * mult), 0);
-      const aggregateAmAdjusted = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(5500000 * mult), 0);
-      const aggregateSmAdjustment = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(200000 * mult), 0);
-      const aggregateRsdAdjustment = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(280000 * mult), 0);
-      const aggregateFinalForecast = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(5980000 * mult), 0);
+      const aggregateAmAdjusted = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(5250000 * mult), 0);
+      const aggregateAmAdjustment = aggregateAmAdjusted - aggregateBaseline; // Calculate AM adjustment
+      const aggregateSmAdjustment = aggregateAmAdjustment * 20; // 20x AM adjustment
+      const aggregateRsdAdjustment = aggregateAmAdjustment * 20; // 20x AM adjustment
+      const aggregateFinalForecast = aggregateBaseline + aggregateAmAdjustment + aggregateSmAdjustment + aggregateRsdAdjustment;
       
       const transmissionBaseline = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(4000000 * mult), 0);
-      const transmissionAmAdjusted = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(4400000 * mult), 0);
-      const transmissionSmAdjustment = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(150000 * mult), 0);
-      const transmissionRsdAdjustment = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(200000 * mult), 0);
-      const transmissionFinalForecast = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(4750000 * mult), 0);
+      const transmissionAmAdjusted = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(4200000 * mult), 0);
+      const transmissionAmAdjustment = transmissionAmAdjusted - transmissionBaseline; // Calculate AM adjustment
+      const transmissionSmAdjustment = transmissionAmAdjustment * 20; // 20x AM adjustment
+      const transmissionRsdAdjustment = transmissionAmAdjustment * 20; // 20x AM adjustment
+      const transmissionFinalForecast = transmissionBaseline + transmissionAmAdjustment + transmissionSmAdjustment + transmissionRsdAdjustment;
       
       const chassisBaseline = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(1000000 * mult), 0);
-      const chassisAmAdjusted = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(1100000 * mult), 0);
-      const chassisSmAdjustment = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(50000 * mult), 0);
-      const chassisRsdAdjustment = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(80000 * mult), 0);
-      const chassisFinalForecast = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(1230000 * mult), 0);
+      const chassisAmAdjusted = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(1050000 * mult), 0);
+      const chassisAmAdjustment = chassisAmAdjusted - chassisBaseline; // Calculate AM adjustment
+      const chassisSmAdjustment = chassisAmAdjustment * 20; // 20x AM adjustment
+      const chassisRsdAdjustment = chassisAmAdjustment * 20; // 20x AM adjustment
+      const chassisFinalForecast = chassisBaseline + chassisAmAdjustment + chassisSmAdjustment + chassisRsdAdjustment;
       
-      // Calculate product sums
+      // Calculate product sums - calculate AM adjustment first, then multiply SM and RSD by 20
+      const productABaseline = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(850000 * mult), 0);
+      const productAAmAdjusted = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(885000 * mult), 0);
+      const productAAmAdjustment = productAAmAdjusted - productABaseline; // Calculate AM adjustment
+      const productARevQty = generateRevenueQuantityMeasures(1, uniqueMultipliers, productABaseline);
       const productASums = {
-        baseline: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(850000 * mult), 0),
-        amAdjusted: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(920000 * mult), 0),
-        smAdjustment: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(30000 * mult), 0),
-        rsdAdjustment: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(45000 * mult), 0),
-        finalForecast: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(995000 * mult), 0)
+        baseline: productABaseline,
+        amAdjusted: productAAmAdjusted,
+        smAdjustment: productAAmAdjustment * 20, // 20x AM adjustment
+        rsdAdjustment: productAAmAdjustment * 20, // 20x AM adjustment
+        finalForecast: productABaseline + productAAmAdjustment + (productAAmAdjustment * 20) + (productAAmAdjustment * 20),
+        ...productARevQty
       };
+      const productBBaseline = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(820000 * mult), 0);
+      const productBAmAdjusted = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(855000 * mult), 0);
+      const productBAmAdjustment = productBAmAdjusted - productBBaseline; // Calculate AM adjustment
+      const productBRevQty = generateRevenueQuantityMeasures(2, uniqueMultipliers, productBBaseline);
       const productBSums = {
-        baseline: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(820000 * mult), 0),
-        amAdjusted: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(900000 * mult), 0),
-        smAdjustment: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(40000 * mult), 0),
-        rsdAdjustment: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(38000 * mult), 0),
-        finalForecast: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(978000 * mult), 0)
+        baseline: productBBaseline,
+        amAdjusted: productBAmAdjusted,
+        smAdjustment: productBAmAdjustment * 20, // 20x AM adjustment
+        rsdAdjustment: productBAmAdjustment * 20, // 20x AM adjustment
+        finalForecast: productBBaseline + productBAmAdjustment + (productBAmAdjustment * 20) + (productBAmAdjustment * 20),
+        ...productBRevQty
       };
+      const productCBaseline = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(750000 * mult), 0);
+      const productCAmAdjusted = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(780000 * mult), 0);
+      const productCAmAdjustment = productCAmAdjusted - productCBaseline; // Calculate AM adjustment
+      const productCRevQty = generateRevenueQuantityMeasures(3, uniqueMultipliers, productCBaseline);
       const productCSums = {
-        baseline: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(750000 * mult), 0),
-        amAdjusted: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(830000 * mult), 0),
-        smAdjustment: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(28000 * mult), 0),
-        rsdAdjustment: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(52000 * mult), 0),
-        finalForecast: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(910000 * mult), 0)
+        baseline: productCBaseline,
+        amAdjusted: productCAmAdjusted,
+        smAdjustment: productCAmAdjustment * 20, // 20x AM adjustment
+        rsdAdjustment: productCAmAdjustment * 20, // 20x AM adjustment
+        finalForecast: productCBaseline + productCAmAdjustment + (productCAmAdjustment * 20) + (productCAmAdjustment * 20),
+        ...productCRevQty
       };
+      const productDBaseline = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(680000 * mult), 0);
+      const productDAmAdjusted = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(710000 * mult), 0);
+      const productDAmAdjustment = productDAmAdjusted - productDBaseline; // Calculate AM adjustment
+      const productDRevQty = generateRevenueQuantityMeasures(4, uniqueMultipliers, productDBaseline);
       const productDSums = {
-        baseline: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(680000 * mult), 0),
-        amAdjusted: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(750000 * mult), 0),
-        smAdjustment: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(25000 * mult), 0),
-        rsdAdjustment: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(45000 * mult), 0),
-        finalForecast: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(820000 * mult), 0)
+        baseline: productDBaseline,
+        amAdjusted: productDAmAdjusted,
+        smAdjustment: productDAmAdjustment * 20, // 20x AM adjustment
+        rsdAdjustment: productDAmAdjustment * 20, // 20x AM adjustment
+        finalForecast: productDBaseline + productDAmAdjustment + (productDAmAdjustment * 20) + (productDAmAdjustment * 20),
+        ...productDRevQty
       };
+      const productEBaseline = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(500000 * mult), 0);
+      const productEAmAdjusted = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(525000 * mult), 0);
+      const productEAmAdjustment = productEAmAdjusted - productEBaseline; // Calculate AM adjustment
+      const productERevQty = generateRevenueQuantityMeasures(5, uniqueMultipliers, productEBaseline);
       const productESums = {
-        baseline: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(500000 * mult), 0),
-        amAdjusted: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(580000 * mult), 0),
-        smAdjustment: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(15000 * mult), 0),
-        rsdAdjustment: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(20000 * mult), 0),
-        finalForecast: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(615000 * mult), 0)
+        baseline: productEBaseline,
+        amAdjusted: productEAmAdjusted,
+        smAdjustment: productEAmAdjustment * 20, // 20x AM adjustment
+        rsdAdjustment: productEAmAdjustment * 20, // 20x AM adjustment
+        finalForecast: productEBaseline + productEAmAdjustment + (productEAmAdjustment * 20) + (productEAmAdjustment * 20),
+        ...productERevQty
       };
+      const productFBaseline = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(400000 * mult), 0);
+      const productFAmAdjusted = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(420000 * mult), 0);
+      const productFAmAdjustment = productFAmAdjusted - productFBaseline; // Calculate AM adjustment
+      const productFRevQty = generateRevenueQuantityMeasures(6, uniqueMultipliers, productFBaseline);
       const productFSums = {
-        baseline: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(400000 * mult), 0),
-        amAdjusted: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(420000 * mult), 0),
-        smAdjustment: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(22000 * mult), 0),
-        rsdAdjustment: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(0 * mult), 0),
-        finalForecast: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(442000 * mult), 0)
+        baseline: productFBaseline,
+        amAdjusted: productFAmAdjusted,
+        smAdjustment: productFAmAdjustment * 20, // 20x AM adjustment
+        rsdAdjustment: productFAmAdjustment * 20, // 20x AM adjustment
+        finalForecast: productFBaseline + productFAmAdjustment + (productFAmAdjustment * 20) + (productFAmAdjustment * 20),
+        ...productFRevQty
       };
+      const chassis1Baseline = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(380000 * mult), 0);
+      const chassis1AmAdjusted = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(400000 * mult), 0);
+      const chassis1AmAdjustment = chassis1AmAdjusted - chassis1Baseline; // Calculate AM adjustment
+      const chassis1RevQty = generateRevenueQuantityMeasures(101, uniqueMultipliers, chassis1Baseline);
       const chassis1Sums = {
-        baseline: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(380000 * mult), 0),
-        amAdjusted: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(420000 * mult), 0),
-        smAdjustment: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(18000 * mult), 0),
-        rsdAdjustment: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(22000 * mult), 0),
-        finalForecast: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(460000 * mult), 0)
+        baseline: chassis1Baseline,
+        amAdjusted: chassis1AmAdjusted,
+        smAdjustment: chassis1AmAdjustment * 20, // 20x AM adjustment
+        rsdAdjustment: chassis1AmAdjustment * 20, // 20x AM adjustment
+        finalForecast: chassis1Baseline + chassis1AmAdjustment + (chassis1AmAdjustment * 20) + (chassis1AmAdjustment * 20),
+        ...chassis1RevQty
       };
+      const chassis2Baseline = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(330000 * mult), 0);
+      const chassis2AmAdjusted = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(350000 * mult), 0);
+      const chassis2AmAdjustment = chassis2AmAdjusted - chassis2Baseline; // Calculate AM adjustment
+      const chassis2RevQty = generateRevenueQuantityMeasures(102, uniqueMultipliers, chassis2Baseline);
       const chassis2Sums = {
-        baseline: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(330000 * mult), 0),
-        amAdjusted: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(380000 * mult), 0),
-        smAdjustment: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(16000 * mult), 0),
-        rsdAdjustment: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(30000 * mult), 0),
-        finalForecast: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(426000 * mult), 0)
+        baseline: chassis2Baseline,
+        amAdjusted: chassis2AmAdjusted,
+        smAdjustment: chassis2AmAdjustment * 20, // 20x AM adjustment
+        rsdAdjustment: chassis2AmAdjustment * 20, // 20x AM adjustment
+        finalForecast: chassis2Baseline + chassis2AmAdjustment + (chassis2AmAdjustment * 20) + (chassis2AmAdjustment * 20),
+        ...chassis2RevQty
       };
+      const chassis3Baseline = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(290000 * mult), 0);
+      const chassis3AmAdjusted = uniqueMultipliers.reduce((sum, mult) => sum + Math.round(310000 * mult), 0);
+      const chassis3AmAdjustment = chassis3AmAdjusted - chassis3Baseline; // Calculate AM adjustment
+      const chassis3RevQty = generateRevenueQuantityMeasures(103, uniqueMultipliers, chassis3Baseline);
       const chassis3Sums = {
-        baseline: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(290000 * mult), 0),
-        amAdjusted: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(300000 * mult), 0),
-        smAdjustment: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(16000 * mult), 0),
-        rsdAdjustment: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(28000 * mult), 0),
-        finalForecast: uniqueMultipliers.reduce((sum, mult) => sum + Math.round(344000 * mult), 0)
+        baseline: chassis3Baseline,
+        amAdjusted: chassis3AmAdjusted,
+        smAdjustment: chassis3AmAdjustment * 20, // 20x AM adjustment
+        rsdAdjustment: chassis3AmAdjustment * 20, // 20x AM adjustment
+        finalForecast: chassis3Baseline + chassis3AmAdjustment + (chassis3AmAdjustment * 20) + (chassis3AmAdjustment * 20),
+        ...chassis3RevQty
       };
       
       // Generate product sums for TRN products 7-50
@@ -3263,34 +3400,6 @@ function App() {
       const chassisProductSums = [];
       for (let i = 4; i <= 45; i++) {
         chassisProductSums.push(generateChassisProductSums(i, uniqueMultipliers));
-      }
-      
-      // Generate Revenue and Quantity Measures for aggregate level
-      const aggregateRevenueQuantity = generateRevenueQuantityMeasures(100, uniqueMultipliers);
-      const transmissionRevenueQuantity = generateRevenueQuantityMeasures(50, uniqueMultipliers);
-      const chassisRevenueQuantity = generateRevenueQuantityMeasures(75, uniqueMultipliers);
-      
-      // Generate revenue/quantity data for individual products (1-6 for TRN, 1-3 for Chassis)
-      const productARevenueQuantity = generateRevenueQuantityMeasures(1, uniqueMultipliers);
-      const productBRevenueQuantity = generateRevenueQuantityMeasures(2, uniqueMultipliers);
-      const productCRevenueQuantity = generateRevenueQuantityMeasures(3, uniqueMultipliers);
-      const productDRevenueQuantity = generateRevenueQuantityMeasures(4, uniqueMultipliers);
-      const productERevenueQuantity = generateRevenueQuantityMeasures(5, uniqueMultipliers);
-      const productFRevenueQuantity = generateRevenueQuantityMeasures(6, uniqueMultipliers);
-      const chassis1RevenueQuantity = generateRevenueQuantityMeasures(101, uniqueMultipliers);
-      const chassis2RevenueQuantity = generateRevenueQuantityMeasures(102, uniqueMultipliers);
-      const chassis3RevenueQuantity = generateRevenueQuantityMeasures(103, uniqueMultipliers);
-      
-      // Generate revenue/quantity for TRN products 7-50
-      const trnProductRevenueQuantity = [];
-      for (let i = 7; i <= 50; i++) {
-        trnProductRevenueQuantity.push(generateRevenueQuantityMeasures(i, uniqueMultipliers));
-      }
-      
-      // Generate revenue/quantity for Chassis products 4-45
-      const chassisProductRevenueQuantity = [];
-      for (let i = 4; i <= 45; i++) {
-        chassisProductRevenueQuantity.push(generateRevenueQuantityMeasures(i + 100, uniqueMultipliers));
       }
       
       // Split aggregate across Michigan and Ohio plants (60% / 40%)
@@ -3306,16 +3415,6 @@ function App() {
         smAdjustment: aggregateSmAdjustment,
         rsdAdjustment: aggregateRsdAdjustment,
         finalForecast: aggregateFinalForecast,
-        salesAgreementQuantity: aggregateRevenueQuantity.salesAgreementQuantity,
-        salesAgreementRevenue: aggregateRevenueQuantity.salesAgreementRevenue,
-        opportunityQuantity: aggregateRevenueQuantity.opportunityQuantity,
-        opportunityRevenue: aggregateRevenueQuantity.opportunityRevenue,
-        orderQuantity: aggregateRevenueQuantity.orderQuantity,
-        orderRevenue: aggregateRevenueQuantity.orderRevenue,
-        lastYearOrderQuantity: aggregateRevenueQuantity.lastYearOrderQuantity,
-        lastYearsOrderRevenue: aggregateRevenueQuantity.lastYearsOrderRevenue,
-        forecastedQuantity: aggregateRevenueQuantity.forecastedQuantity,
-        forecastedRevenue: aggregateRevenueQuantity.forecastedRevenue,
         children: [
           {
             id: 'magnadrive',
@@ -3326,16 +3425,6 @@ function App() {
             smAdjustment: Math.round(aggregateSmAdjustment * plantSplit.mi),
             rsdAdjustment: Math.round(aggregateRsdAdjustment * plantSplit.mi),
             finalForecast: Math.round(aggregateFinalForecast * plantSplit.mi),
-            salesAgreementQuantity: Math.round(aggregateRevenueQuantity.salesAgreementQuantity * plantSplit.mi),
-            salesAgreementRevenue: Math.round(aggregateRevenueQuantity.salesAgreementRevenue * plantSplit.mi),
-            opportunityQuantity: Math.round(aggregateRevenueQuantity.opportunityQuantity * plantSplit.mi),
-            opportunityRevenue: Math.round(aggregateRevenueQuantity.opportunityRevenue * plantSplit.mi),
-            orderQuantity: Math.round(aggregateRevenueQuantity.orderQuantity * plantSplit.mi),
-            orderRevenue: Math.round(aggregateRevenueQuantity.orderRevenue * plantSplit.mi),
-            lastYearOrderQuantity: Math.round(aggregateRevenueQuantity.lastYearOrderQuantity * plantSplit.mi),
-            lastYearsOrderRevenue: Math.round(aggregateRevenueQuantity.lastYearsOrderRevenue * plantSplit.mi),
-            forecastedQuantity: Math.round(aggregateRevenueQuantity.forecastedQuantity * plantSplit.mi),
-            forecastedRevenue: Math.round(aggregateRevenueQuantity.forecastedRevenue * plantSplit.mi),
             children: [
               {
                 id: 'transmission',
@@ -3346,16 +3435,6 @@ function App() {
                 smAdjustment: Math.round(transmissionSmAdjustment * plantSplit.mi),
                 rsdAdjustment: Math.round(transmissionRsdAdjustment * plantSplit.mi),
                 finalForecast: Math.round(transmissionFinalForecast * plantSplit.mi),
-                salesAgreementQuantity: Math.round(transmissionRevenueQuantity.salesAgreementQuantity * plantSplit.mi),
-                salesAgreementRevenue: Math.round(transmissionRevenueQuantity.salesAgreementRevenue * plantSplit.mi),
-                opportunityQuantity: Math.round(transmissionRevenueQuantity.opportunityQuantity * plantSplit.mi),
-                opportunityRevenue: Math.round(transmissionRevenueQuantity.opportunityRevenue * plantSplit.mi),
-                orderQuantity: Math.round(transmissionRevenueQuantity.orderQuantity * plantSplit.mi),
-                orderRevenue: Math.round(transmissionRevenueQuantity.orderRevenue * plantSplit.mi),
-                lastYearOrderQuantity: Math.round(transmissionRevenueQuantity.lastYearOrderQuantity * plantSplit.mi),
-                lastYearsOrderRevenue: Math.round(transmissionRevenueQuantity.lastYearsOrderRevenue * plantSplit.mi),
-                forecastedQuantity: Math.round(transmissionRevenueQuantity.forecastedQuantity * plantSplit.mi),
-                forecastedRevenue: Math.round(transmissionRevenueQuantity.forecastedRevenue * plantSplit.mi),
               children: [
                 { 
                   id: 'product-1', 
@@ -3366,16 +3445,16 @@ function App() {
                   smAdjustment: Math.round(productASums.smAdjustment * plantSplit.mi),
                   rsdAdjustment: Math.round(productASums.rsdAdjustment * plantSplit.mi),
                   finalForecast: Math.round(productASums.finalForecast * plantSplit.mi),
-                  salesAgreementQuantity: Math.round(productARevenueQuantity.salesAgreementQuantity * plantSplit.mi),
-                  salesAgreementRevenue: Math.round(productARevenueQuantity.salesAgreementRevenue * plantSplit.mi),
-                  opportunityQuantity: Math.round(productARevenueQuantity.opportunityQuantity * plantSplit.mi),
-                  opportunityRevenue: Math.round(productARevenueQuantity.opportunityRevenue * plantSplit.mi),
-                  orderQuantity: Math.round(productARevenueQuantity.orderQuantity * plantSplit.mi),
-                  orderRevenue: Math.round(productARevenueQuantity.orderRevenue * plantSplit.mi),
-                  lastYearOrderQuantity: Math.round(productARevenueQuantity.lastYearOrderQuantity * plantSplit.mi),
-                  lastYearsOrderRevenue: Math.round(productARevenueQuantity.lastYearsOrderRevenue * plantSplit.mi),
-                  forecastedQuantity: Math.round(productARevenueQuantity.forecastedQuantity * plantSplit.mi),
-                  forecastedRevenue: Math.round(productARevenueQuantity.forecastedRevenue * plantSplit.mi)
+                  salesAgreementQuantity: Math.round(productASums.salesAgreementQuantity * plantSplit.mi),
+                  salesAgreementRevenue: Math.round(productASums.salesAgreementRevenue * plantSplit.mi),
+                  opportunityQuantity: Math.round(productASums.opportunityQuantity * plantSplit.mi),
+                  opportunityRevenue: Math.round(productASums.opportunityRevenue * plantSplit.mi),
+                  orderQuantity: Math.round(productASums.orderQuantity * plantSplit.mi),
+                  orderRevenue: Math.round(productASums.orderRevenue * plantSplit.mi),
+                  lastYearOrderQuantity: Math.round(productASums.lastYearOrderQuantity * plantSplit.mi),
+                  lastYearsOrderRevenue: Math.round(productASums.lastYearsOrderRevenue * plantSplit.mi),
+                  forecastedQuantity: Math.round(productASums.forecastedQuantity * plantSplit.mi),
+                  forecastedRevenue: Math.round(productASums.forecastedRevenue * plantSplit.mi)
                 },
                 { 
                   id: 'product-2', 
@@ -3386,16 +3465,16 @@ function App() {
                   smAdjustment: Math.round(productBSums.smAdjustment * plantSplit.mi),
                   rsdAdjustment: Math.round(productBSums.rsdAdjustment * plantSplit.mi),
                   finalForecast: Math.round(productBSums.finalForecast * plantSplit.mi),
-                  salesAgreementQuantity: Math.round(productBRevenueQuantity.salesAgreementQuantity * plantSplit.mi),
-                  salesAgreementRevenue: Math.round(productBRevenueQuantity.salesAgreementRevenue * plantSplit.mi),
-                  opportunityQuantity: Math.round(productBRevenueQuantity.opportunityQuantity * plantSplit.mi),
-                  opportunityRevenue: Math.round(productBRevenueQuantity.opportunityRevenue * plantSplit.mi),
-                  orderQuantity: Math.round(productBRevenueQuantity.orderQuantity * plantSplit.mi),
-                  orderRevenue: Math.round(productBRevenueQuantity.orderRevenue * plantSplit.mi),
-                  lastYearOrderQuantity: Math.round(productBRevenueQuantity.lastYearOrderQuantity * plantSplit.mi),
-                  lastYearsOrderRevenue: Math.round(productBRevenueQuantity.lastYearsOrderRevenue * plantSplit.mi),
-                  forecastedQuantity: Math.round(productBRevenueQuantity.forecastedQuantity * plantSplit.mi),
-                  forecastedRevenue: Math.round(productBRevenueQuantity.forecastedRevenue * plantSplit.mi)
+                  salesAgreementQuantity: Math.round(productBSums.salesAgreementQuantity * plantSplit.mi),
+                  salesAgreementRevenue: Math.round(productBSums.salesAgreementRevenue * plantSplit.mi),
+                  opportunityQuantity: Math.round(productBSums.opportunityQuantity * plantSplit.mi),
+                  opportunityRevenue: Math.round(productBSums.opportunityRevenue * plantSplit.mi),
+                  orderQuantity: Math.round(productBSums.orderQuantity * plantSplit.mi),
+                  orderRevenue: Math.round(productBSums.orderRevenue * plantSplit.mi),
+                  lastYearOrderQuantity: Math.round(productBSums.lastYearOrderQuantity * plantSplit.mi),
+                  lastYearsOrderRevenue: Math.round(productBSums.lastYearsOrderRevenue * plantSplit.mi),
+                  forecastedQuantity: Math.round(productBSums.forecastedQuantity * plantSplit.mi),
+                  forecastedRevenue: Math.round(productBSums.forecastedRevenue * plantSplit.mi)
                 },
                 { 
                   id: 'product-3', 
@@ -3406,16 +3485,16 @@ function App() {
                   smAdjustment: Math.round(productCSums.smAdjustment * plantSplit.mi),
                   rsdAdjustment: Math.round(productCSums.rsdAdjustment * plantSplit.mi),
                   finalForecast: Math.round(productCSums.finalForecast * plantSplit.mi),
-                  salesAgreementQuantity: Math.round(productCRevenueQuantity.salesAgreementQuantity * plantSplit.mi),
-                  salesAgreementRevenue: Math.round(productCRevenueQuantity.salesAgreementRevenue * plantSplit.mi),
-                  opportunityQuantity: Math.round(productCRevenueQuantity.opportunityQuantity * plantSplit.mi),
-                  opportunityRevenue: Math.round(productCRevenueQuantity.opportunityRevenue * plantSplit.mi),
-                  orderQuantity: Math.round(productCRevenueQuantity.orderQuantity * plantSplit.mi),
-                  orderRevenue: Math.round(productCRevenueQuantity.orderRevenue * plantSplit.mi),
-                  lastYearOrderQuantity: Math.round(productCRevenueQuantity.lastYearOrderQuantity * plantSplit.mi),
-                  lastYearsOrderRevenue: Math.round(productCRevenueQuantity.lastYearsOrderRevenue * plantSplit.mi),
-                  forecastedQuantity: Math.round(productCRevenueQuantity.forecastedQuantity * plantSplit.mi),
-                  forecastedRevenue: Math.round(productCRevenueQuantity.forecastedRevenue * plantSplit.mi)
+                  salesAgreementQuantity: Math.round(productCSums.salesAgreementQuantity * plantSplit.mi),
+                  salesAgreementRevenue: Math.round(productCSums.salesAgreementRevenue * plantSplit.mi),
+                  opportunityQuantity: Math.round(productCSums.opportunityQuantity * plantSplit.mi),
+                  opportunityRevenue: Math.round(productCSums.opportunityRevenue * plantSplit.mi),
+                  orderQuantity: Math.round(productCSums.orderQuantity * plantSplit.mi),
+                  orderRevenue: Math.round(productCSums.orderRevenue * plantSplit.mi),
+                  lastYearOrderQuantity: Math.round(productCSums.lastYearOrderQuantity * plantSplit.mi),
+                  lastYearsOrderRevenue: Math.round(productCSums.lastYearsOrderRevenue * plantSplit.mi),
+                  forecastedQuantity: Math.round(productCSums.forecastedQuantity * plantSplit.mi),
+                  forecastedRevenue: Math.round(productCSums.forecastedRevenue * plantSplit.mi)
                 },
                 { 
                   id: 'product-4', 
@@ -3426,16 +3505,16 @@ function App() {
                   smAdjustment: Math.round(productDSums.smAdjustment * plantSplit.mi),
                   rsdAdjustment: Math.round(productDSums.rsdAdjustment * plantSplit.mi),
                   finalForecast: Math.round(productDSums.finalForecast * plantSplit.mi),
-                  salesAgreementQuantity: Math.round(productDRevenueQuantity.salesAgreementQuantity * plantSplit.mi),
-                  salesAgreementRevenue: Math.round(productDRevenueQuantity.salesAgreementRevenue * plantSplit.mi),
-                  opportunityQuantity: Math.round(productDRevenueQuantity.opportunityQuantity * plantSplit.mi),
-                  opportunityRevenue: Math.round(productDRevenueQuantity.opportunityRevenue * plantSplit.mi),
-                  orderQuantity: Math.round(productDRevenueQuantity.orderQuantity * plantSplit.mi),
-                  orderRevenue: Math.round(productDRevenueQuantity.orderRevenue * plantSplit.mi),
-                  lastYearOrderQuantity: Math.round(productDRevenueQuantity.lastYearOrderQuantity * plantSplit.mi),
-                  lastYearsOrderRevenue: Math.round(productDRevenueQuantity.lastYearsOrderRevenue * plantSplit.mi),
-                  forecastedQuantity: Math.round(productDRevenueQuantity.forecastedQuantity * plantSplit.mi),
-                  forecastedRevenue: Math.round(productDRevenueQuantity.forecastedRevenue * plantSplit.mi)
+                  salesAgreementQuantity: Math.round(productDSums.salesAgreementQuantity * plantSplit.mi),
+                  salesAgreementRevenue: Math.round(productDSums.salesAgreementRevenue * plantSplit.mi),
+                  opportunityQuantity: Math.round(productDSums.opportunityQuantity * plantSplit.mi),
+                  opportunityRevenue: Math.round(productDSums.opportunityRevenue * plantSplit.mi),
+                  orderQuantity: Math.round(productDSums.orderQuantity * plantSplit.mi),
+                  orderRevenue: Math.round(productDSums.orderRevenue * plantSplit.mi),
+                  lastYearOrderQuantity: Math.round(productDSums.lastYearOrderQuantity * plantSplit.mi),
+                  lastYearsOrderRevenue: Math.round(productDSums.lastYearsOrderRevenue * plantSplit.mi),
+                  forecastedQuantity: Math.round(productDSums.forecastedQuantity * plantSplit.mi),
+                  forecastedRevenue: Math.round(productDSums.forecastedRevenue * plantSplit.mi)
                 },
                 { 
                   id: 'product-5', 
@@ -3446,16 +3525,16 @@ function App() {
                   smAdjustment: Math.round(productESums.smAdjustment * plantSplit.mi),
                   rsdAdjustment: Math.round(productESums.rsdAdjustment * plantSplit.mi),
                   finalForecast: Math.round(productESums.finalForecast * plantSplit.mi),
-                  salesAgreementQuantity: Math.round(productERevenueQuantity.salesAgreementQuantity * plantSplit.mi),
-                  salesAgreementRevenue: Math.round(productERevenueQuantity.salesAgreementRevenue * plantSplit.mi),
-                  opportunityQuantity: Math.round(productERevenueQuantity.opportunityQuantity * plantSplit.mi),
-                  opportunityRevenue: Math.round(productERevenueQuantity.opportunityRevenue * plantSplit.mi),
-                  orderQuantity: Math.round(productERevenueQuantity.orderQuantity * plantSplit.mi),
-                  orderRevenue: Math.round(productERevenueQuantity.orderRevenue * plantSplit.mi),
-                  lastYearOrderQuantity: Math.round(productERevenueQuantity.lastYearOrderQuantity * plantSplit.mi),
-                  lastYearsOrderRevenue: Math.round(productERevenueQuantity.lastYearsOrderRevenue * plantSplit.mi),
-                  forecastedQuantity: Math.round(productERevenueQuantity.forecastedQuantity * plantSplit.mi),
-                  forecastedRevenue: Math.round(productERevenueQuantity.forecastedRevenue * plantSplit.mi)
+                  salesAgreementQuantity: Math.round(productESums.salesAgreementQuantity * plantSplit.mi),
+                  salesAgreementRevenue: Math.round(productESums.salesAgreementRevenue * plantSplit.mi),
+                  opportunityQuantity: Math.round(productESums.opportunityQuantity * plantSplit.mi),
+                  opportunityRevenue: Math.round(productESums.opportunityRevenue * plantSplit.mi),
+                  orderQuantity: Math.round(productESums.orderQuantity * plantSplit.mi),
+                  orderRevenue: Math.round(productESums.orderRevenue * plantSplit.mi),
+                  lastYearOrderQuantity: Math.round(productESums.lastYearOrderQuantity * plantSplit.mi),
+                  lastYearsOrderRevenue: Math.round(productESums.lastYearsOrderRevenue * plantSplit.mi),
+                  forecastedQuantity: Math.round(productESums.forecastedQuantity * plantSplit.mi),
+                  forecastedRevenue: Math.round(productESums.forecastedRevenue * plantSplit.mi)
                 },
                 { 
                   id: 'product-6', 
@@ -3466,16 +3545,16 @@ function App() {
                   smAdjustment: Math.round(productFSums.smAdjustment * plantSplit.mi),
                   rsdAdjustment: Math.round(productFSums.rsdAdjustment * plantSplit.mi),
                   finalForecast: Math.round(productFSums.finalForecast * plantSplit.mi),
-                  salesAgreementQuantity: Math.round(productFRevenueQuantity.salesAgreementQuantity * plantSplit.mi),
-                  salesAgreementRevenue: Math.round(productFRevenueQuantity.salesAgreementRevenue * plantSplit.mi),
-                  opportunityQuantity: Math.round(productFRevenueQuantity.opportunityQuantity * plantSplit.mi),
-                  opportunityRevenue: Math.round(productFRevenueQuantity.opportunityRevenue * plantSplit.mi),
-                  orderQuantity: Math.round(productFRevenueQuantity.orderQuantity * plantSplit.mi),
-                  orderRevenue: Math.round(productFRevenueQuantity.orderRevenue * plantSplit.mi),
-                  lastYearOrderQuantity: Math.round(productFRevenueQuantity.lastYearOrderQuantity * plantSplit.mi),
-                  lastYearsOrderRevenue: Math.round(productFRevenueQuantity.lastYearsOrderRevenue * plantSplit.mi),
-                  forecastedQuantity: Math.round(productFRevenueQuantity.forecastedQuantity * plantSplit.mi),
-                  forecastedRevenue: Math.round(productFRevenueQuantity.forecastedRevenue * plantSplit.mi)
+                  salesAgreementQuantity: Math.round(productFSums.salesAgreementQuantity * plantSplit.mi),
+                  salesAgreementRevenue: Math.round(productFSums.salesAgreementRevenue * plantSplit.mi),
+                  opportunityQuantity: Math.round(productFSums.opportunityQuantity * plantSplit.mi),
+                  opportunityRevenue: Math.round(productFSums.opportunityRevenue * plantSplit.mi),
+                  orderQuantity: Math.round(productFSums.orderQuantity * plantSplit.mi),
+                  orderRevenue: Math.round(productFSums.orderRevenue * plantSplit.mi),
+                  lastYearOrderQuantity: Math.round(productFSums.lastYearOrderQuantity * plantSplit.mi),
+                  lastYearsOrderRevenue: Math.round(productFSums.lastYearsOrderRevenue * plantSplit.mi),
+                  forecastedQuantity: Math.round(productFSums.forecastedQuantity * plantSplit.mi),
+                  forecastedRevenue: Math.round(productFSums.forecastedRevenue * plantSplit.mi)
                 },
                 // Additional TRN products 7-50
                 ...trnProductSums.map((sums, idx) => {
@@ -3486,7 +3565,6 @@ function App() {
                   const baseNum = baseNumbers[(productNum - 7) % baseNumbers.length];
                   const letter = letters[Math.floor((productNum - 7) / baseNumbers.length) % letters.length];
                   const name = `TRN-${baseNum}-${letter}`;
-                  const revenueQuantity = trnProductRevenueQuantity[idx];
                   return {
                     id: `product-${productNum}`,
                     name: name,
@@ -3496,16 +3574,16 @@ function App() {
                     smAdjustment: Math.round(sums.smAdjustment * plantSplit.mi),
                     rsdAdjustment: Math.round(sums.rsdAdjustment * plantSplit.mi),
                     finalForecast: Math.round(sums.finalForecast * plantSplit.mi),
-                    salesAgreementQuantity: Math.round(revenueQuantity.salesAgreementQuantity * plantSplit.mi),
-                    salesAgreementRevenue: Math.round(revenueQuantity.salesAgreementRevenue * plantSplit.mi),
-                    opportunityQuantity: Math.round(revenueQuantity.opportunityQuantity * plantSplit.mi),
-                    opportunityRevenue: Math.round(revenueQuantity.opportunityRevenue * plantSplit.mi),
-                    orderQuantity: Math.round(revenueQuantity.orderQuantity * plantSplit.mi),
-                    orderRevenue: Math.round(revenueQuantity.orderRevenue * plantSplit.mi),
-                    lastYearOrderQuantity: Math.round(revenueQuantity.lastYearOrderQuantity * plantSplit.mi),
-                    lastYearsOrderRevenue: Math.round(revenueQuantity.lastYearsOrderRevenue * plantSplit.mi),
-                    forecastedQuantity: Math.round(revenueQuantity.forecastedQuantity * plantSplit.mi),
-                    forecastedRevenue: Math.round(revenueQuantity.forecastedRevenue * plantSplit.mi)
+                    salesAgreementQuantity: Math.round(sums.salesAgreementQuantity * plantSplit.mi),
+                    salesAgreementRevenue: Math.round(sums.salesAgreementRevenue * plantSplit.mi),
+                    opportunityQuantity: Math.round(sums.opportunityQuantity * plantSplit.mi),
+                    opportunityRevenue: Math.round(sums.opportunityRevenue * plantSplit.mi),
+                    orderQuantity: Math.round(sums.orderQuantity * plantSplit.mi),
+                    orderRevenue: Math.round(sums.orderRevenue * plantSplit.mi),
+                    lastYearOrderQuantity: Math.round(sums.lastYearOrderQuantity * plantSplit.mi),
+                    lastYearsOrderRevenue: Math.round(sums.lastYearsOrderRevenue * plantSplit.mi),
+                    forecastedQuantity: Math.round(sums.forecastedQuantity * plantSplit.mi),
+                    forecastedRevenue: Math.round(sums.forecastedRevenue * plantSplit.mi)
                   };
                 }),
               ],
@@ -3519,16 +3597,6 @@ function App() {
                 smAdjustment: Math.round(chassisSmAdjustment * plantSplit.mi),
                 rsdAdjustment: Math.round(chassisRsdAdjustment * plantSplit.mi),
                 finalForecast: Math.round(chassisFinalForecast * plantSplit.mi),
-                salesAgreementQuantity: Math.round(chassisRevenueQuantity.salesAgreementQuantity * plantSplit.mi),
-                salesAgreementRevenue: Math.round(chassisRevenueQuantity.salesAgreementRevenue * plantSplit.mi),
-                opportunityQuantity: Math.round(chassisRevenueQuantity.opportunityQuantity * plantSplit.mi),
-                opportunityRevenue: Math.round(chassisRevenueQuantity.opportunityRevenue * plantSplit.mi),
-                orderQuantity: Math.round(chassisRevenueQuantity.orderQuantity * plantSplit.mi),
-                orderRevenue: Math.round(chassisRevenueQuantity.orderRevenue * plantSplit.mi),
-                lastYearOrderQuantity: Math.round(chassisRevenueQuantity.lastYearOrderQuantity * plantSplit.mi),
-                lastYearsOrderRevenue: Math.round(chassisRevenueQuantity.lastYearsOrderRevenue * plantSplit.mi),
-                forecastedQuantity: Math.round(chassisRevenueQuantity.forecastedQuantity * plantSplit.mi),
-                forecastedRevenue: Math.round(chassisRevenueQuantity.forecastedRevenue * plantSplit.mi),
                 children: [
                   { 
                     id: 'chassis-1', 
@@ -3539,16 +3607,16 @@ function App() {
                     smAdjustment: Math.round(chassis1Sums.smAdjustment * plantSplit.mi),
                     rsdAdjustment: Math.round(chassis1Sums.rsdAdjustment * plantSplit.mi),
                     finalForecast: Math.round(chassis1Sums.finalForecast * plantSplit.mi),
-                    salesAgreementQuantity: Math.round(chassis1RevenueQuantity.salesAgreementQuantity * plantSplit.mi),
-                    salesAgreementRevenue: Math.round(chassis1RevenueQuantity.salesAgreementRevenue * plantSplit.mi),
-                    opportunityQuantity: Math.round(chassis1RevenueQuantity.opportunityQuantity * plantSplit.mi),
-                    opportunityRevenue: Math.round(chassis1RevenueQuantity.opportunityRevenue * plantSplit.mi),
-                    orderQuantity: Math.round(chassis1RevenueQuantity.orderQuantity * plantSplit.mi),
-                    orderRevenue: Math.round(chassis1RevenueQuantity.orderRevenue * plantSplit.mi),
-                    lastYearOrderQuantity: Math.round(chassis1RevenueQuantity.lastYearOrderQuantity * plantSplit.mi),
-                    lastYearsOrderRevenue: Math.round(chassis1RevenueQuantity.lastYearsOrderRevenue * plantSplit.mi),
-                    forecastedQuantity: Math.round(chassis1RevenueQuantity.forecastedQuantity * plantSplit.mi),
-                    forecastedRevenue: Math.round(chassis1RevenueQuantity.forecastedRevenue * plantSplit.mi)
+                    salesAgreementQuantity: Math.round(chassis1Sums.salesAgreementQuantity * plantSplit.mi),
+                    salesAgreementRevenue: Math.round(chassis1Sums.salesAgreementRevenue * plantSplit.mi),
+                    opportunityQuantity: Math.round(chassis1Sums.opportunityQuantity * plantSplit.mi),
+                    opportunityRevenue: Math.round(chassis1Sums.opportunityRevenue * plantSplit.mi),
+                    orderQuantity: Math.round(chassis1Sums.orderQuantity * plantSplit.mi),
+                    orderRevenue: Math.round(chassis1Sums.orderRevenue * plantSplit.mi),
+                    lastYearOrderQuantity: Math.round(chassis1Sums.lastYearOrderQuantity * plantSplit.mi),
+                    lastYearsOrderRevenue: Math.round(chassis1Sums.lastYearsOrderRevenue * plantSplit.mi),
+                    forecastedQuantity: Math.round(chassis1Sums.forecastedQuantity * plantSplit.mi),
+                    forecastedRevenue: Math.round(chassis1Sums.forecastedRevenue * plantSplit.mi)
                   },
                   { 
                     id: 'chassis-2', 
@@ -3559,16 +3627,16 @@ function App() {
                     smAdjustment: Math.round(chassis2Sums.smAdjustment * plantSplit.mi),
                     rsdAdjustment: Math.round(chassis2Sums.rsdAdjustment * plantSplit.mi),
                     finalForecast: Math.round(chassis2Sums.finalForecast * plantSplit.mi),
-                    salesAgreementQuantity: Math.round(chassis2RevenueQuantity.salesAgreementQuantity * plantSplit.mi),
-                    salesAgreementRevenue: Math.round(chassis2RevenueQuantity.salesAgreementRevenue * plantSplit.mi),
-                    opportunityQuantity: Math.round(chassis2RevenueQuantity.opportunityQuantity * plantSplit.mi),
-                    opportunityRevenue: Math.round(chassis2RevenueQuantity.opportunityRevenue * plantSplit.mi),
-                    orderQuantity: Math.round(chassis2RevenueQuantity.orderQuantity * plantSplit.mi),
-                    orderRevenue: Math.round(chassis2RevenueQuantity.orderRevenue * plantSplit.mi),
-                    lastYearOrderQuantity: Math.round(chassis2RevenueQuantity.lastYearOrderQuantity * plantSplit.mi),
-                    lastYearsOrderRevenue: Math.round(chassis2RevenueQuantity.lastYearsOrderRevenue * plantSplit.mi),
-                    forecastedQuantity: Math.round(chassis2RevenueQuantity.forecastedQuantity * plantSplit.mi),
-                    forecastedRevenue: Math.round(chassis2RevenueQuantity.forecastedRevenue * plantSplit.mi)
+                    salesAgreementQuantity: Math.round(chassis2Sums.salesAgreementQuantity * plantSplit.mi),
+                    salesAgreementRevenue: Math.round(chassis2Sums.salesAgreementRevenue * plantSplit.mi),
+                    opportunityQuantity: Math.round(chassis2Sums.opportunityQuantity * plantSplit.mi),
+                    opportunityRevenue: Math.round(chassis2Sums.opportunityRevenue * plantSplit.mi),
+                    orderQuantity: Math.round(chassis2Sums.orderQuantity * plantSplit.mi),
+                    orderRevenue: Math.round(chassis2Sums.orderRevenue * plantSplit.mi),
+                    lastYearOrderQuantity: Math.round(chassis2Sums.lastYearOrderQuantity * plantSplit.mi),
+                    lastYearsOrderRevenue: Math.round(chassis2Sums.lastYearsOrderRevenue * plantSplit.mi),
+                    forecastedQuantity: Math.round(chassis2Sums.forecastedQuantity * plantSplit.mi),
+                    forecastedRevenue: Math.round(chassis2Sums.forecastedRevenue * plantSplit.mi)
                   },
                   { 
                     id: 'chassis-3', 
@@ -3579,21 +3647,20 @@ function App() {
                     smAdjustment: Math.round(chassis3Sums.smAdjustment * plantSplit.mi),
                     rsdAdjustment: Math.round(chassis3Sums.rsdAdjustment * plantSplit.mi),
                     finalForecast: Math.round(chassis3Sums.finalForecast * plantSplit.mi),
-                    salesAgreementQuantity: Math.round(chassis3RevenueQuantity.salesAgreementQuantity * plantSplit.mi),
-                    salesAgreementRevenue: Math.round(chassis3RevenueQuantity.salesAgreementRevenue * plantSplit.mi),
-                    opportunityQuantity: Math.round(chassis3RevenueQuantity.opportunityQuantity * plantSplit.mi),
-                    opportunityRevenue: Math.round(chassis3RevenueQuantity.opportunityRevenue * plantSplit.mi),
-                    orderQuantity: Math.round(chassis3RevenueQuantity.orderQuantity * plantSplit.mi),
-                    orderRevenue: Math.round(chassis3RevenueQuantity.orderRevenue * plantSplit.mi),
-                    lastYearOrderQuantity: Math.round(chassis3RevenueQuantity.lastYearOrderQuantity * plantSplit.mi),
-                    lastYearsOrderRevenue: Math.round(chassis3RevenueQuantity.lastYearsOrderRevenue * plantSplit.mi),
-                    forecastedQuantity: Math.round(chassis3RevenueQuantity.forecastedQuantity * plantSplit.mi),
-                    forecastedRevenue: Math.round(chassis3RevenueQuantity.forecastedRevenue * plantSplit.mi)
+                    salesAgreementQuantity: Math.round(chassis3Sums.salesAgreementQuantity * plantSplit.mi),
+                    salesAgreementRevenue: Math.round(chassis3Sums.salesAgreementRevenue * plantSplit.mi),
+                    opportunityQuantity: Math.round(chassis3Sums.opportunityQuantity * plantSplit.mi),
+                    opportunityRevenue: Math.round(chassis3Sums.opportunityRevenue * plantSplit.mi),
+                    orderQuantity: Math.round(chassis3Sums.orderQuantity * plantSplit.mi),
+                    orderRevenue: Math.round(chassis3Sums.orderRevenue * plantSplit.mi),
+                    lastYearOrderQuantity: Math.round(chassis3Sums.lastYearOrderQuantity * plantSplit.mi),
+                    lastYearsOrderRevenue: Math.round(chassis3Sums.lastYearsOrderRevenue * plantSplit.mi),
+                    forecastedQuantity: Math.round(chassis3Sums.forecastedQuantity * plantSplit.mi),
+                    forecastedRevenue: Math.round(chassis3Sums.forecastedRevenue * plantSplit.mi)
                   },
                   // Additional Chassis products 4-45
                   ...chassisProductSums.map((sums, idx) => {
                     const productNum = idx + 4;
-                    const revenueQuantity = chassisProductRevenueQuantity[idx];
                     return {
                       id: `chassis-${productNum}`,
                       name: `Chassis Product ${productNum}`,
@@ -3603,16 +3670,16 @@ function App() {
                       smAdjustment: Math.round(sums.smAdjustment * plantSplit.mi),
                       rsdAdjustment: Math.round(sums.rsdAdjustment * plantSplit.mi),
                       finalForecast: Math.round(sums.finalForecast * plantSplit.mi),
-                      salesAgreementQuantity: Math.round(revenueQuantity.salesAgreementQuantity * plantSplit.mi),
-                      salesAgreementRevenue: Math.round(revenueQuantity.salesAgreementRevenue * plantSplit.mi),
-                      opportunityQuantity: Math.round(revenueQuantity.opportunityQuantity * plantSplit.mi),
-                      opportunityRevenue: Math.round(revenueQuantity.opportunityRevenue * plantSplit.mi),
-                      orderQuantity: Math.round(revenueQuantity.orderQuantity * plantSplit.mi),
-                      orderRevenue: Math.round(revenueQuantity.orderRevenue * plantSplit.mi),
-                      lastYearOrderQuantity: Math.round(revenueQuantity.lastYearOrderQuantity * plantSplit.mi),
-                      lastYearsOrderRevenue: Math.round(revenueQuantity.lastYearsOrderRevenue * plantSplit.mi),
-                      forecastedQuantity: Math.round(revenueQuantity.forecastedQuantity * plantSplit.mi),
-                      forecastedRevenue: Math.round(revenueQuantity.forecastedRevenue * plantSplit.mi)
+                      salesAgreementQuantity: Math.round(sums.salesAgreementQuantity * plantSplit.mi),
+                      salesAgreementRevenue: Math.round(sums.salesAgreementRevenue * plantSplit.mi),
+                      opportunityQuantity: Math.round(sums.opportunityQuantity * plantSplit.mi),
+                      opportunityRevenue: Math.round(sums.opportunityRevenue * plantSplit.mi),
+                      orderQuantity: Math.round(sums.orderQuantity * plantSplit.mi),
+                      orderRevenue: Math.round(sums.orderRevenue * plantSplit.mi),
+                      lastYearOrderQuantity: Math.round(sums.lastYearOrderQuantity * plantSplit.mi),
+                      lastYearsOrderRevenue: Math.round(sums.lastYearsOrderRevenue * plantSplit.mi),
+                      forecastedQuantity: Math.round(sums.forecastedQuantity * plantSplit.mi),
+                      forecastedRevenue: Math.round(sums.forecastedRevenue * plantSplit.mi)
                     };
                   }),
                 ],
@@ -3644,37 +3711,97 @@ function App() {
                     amAdjusted: Math.round(productASums.amAdjusted * plantSplit.oh),
                     smAdjustment: Math.round(productASums.smAdjustment * plantSplit.oh),
                     rsdAdjustment: Math.round(productASums.rsdAdjustment * plantSplit.oh),
-                    finalForecast: Math.round(productASums.finalForecast * plantSplit.oh) },
+                    finalForecast: Math.round(productASums.finalForecast * plantSplit.oh),
+                    salesAgreementQuantity: Math.round(productASums.salesAgreementQuantity * plantSplit.oh),
+                    salesAgreementRevenue: Math.round(productASums.salesAgreementRevenue * plantSplit.oh),
+                    opportunityQuantity: Math.round(productASums.opportunityQuantity * plantSplit.oh),
+                    opportunityRevenue: Math.round(productASums.opportunityRevenue * plantSplit.oh),
+                    orderQuantity: Math.round(productASums.orderQuantity * plantSplit.oh),
+                    orderRevenue: Math.round(productASums.orderRevenue * plantSplit.oh),
+                    lastYearOrderQuantity: Math.round(productASums.lastYearOrderQuantity * plantSplit.oh),
+                    lastYearsOrderRevenue: Math.round(productASums.lastYearsOrderRevenue * plantSplit.oh),
+                    forecastedQuantity: Math.round(productASums.forecastedQuantity * plantSplit.oh),
+                    forecastedRevenue: Math.round(productASums.forecastedRevenue * plantSplit.oh) },
                   { id: 'oh-product-2', name: 'TRN-860-M', hasChildren: false,
                     baseline: Math.round(productBSums.baseline * plantSplit.oh),
                     amAdjusted: Math.round(productBSums.amAdjusted * plantSplit.oh),
                     smAdjustment: Math.round(productBSums.smAdjustment * plantSplit.oh),
                     rsdAdjustment: Math.round(productBSums.rsdAdjustment * plantSplit.oh),
-                    finalForecast: Math.round(productBSums.finalForecast * plantSplit.oh) },
+                    finalForecast: Math.round(productBSums.finalForecast * plantSplit.oh),
+                    salesAgreementQuantity: Math.round(productBSums.salesAgreementQuantity * plantSplit.oh),
+                    salesAgreementRevenue: Math.round(productBSums.salesAgreementRevenue * plantSplit.oh),
+                    opportunityQuantity: Math.round(productBSums.opportunityQuantity * plantSplit.oh),
+                    opportunityRevenue: Math.round(productBSums.opportunityRevenue * plantSplit.oh),
+                    orderQuantity: Math.round(productBSums.orderQuantity * plantSplit.oh),
+                    orderRevenue: Math.round(productBSums.orderRevenue * plantSplit.oh),
+                    lastYearOrderQuantity: Math.round(productBSums.lastYearOrderQuantity * plantSplit.oh),
+                    lastYearsOrderRevenue: Math.round(productBSums.lastYearsOrderRevenue * plantSplit.oh),
+                    forecastedQuantity: Math.round(productBSums.forecastedQuantity * plantSplit.oh),
+                    forecastedRevenue: Math.round(productBSums.forecastedRevenue * plantSplit.oh) },
                   { id: 'oh-product-3', name: 'TRN-850-P', hasChildren: false,
                     baseline: Math.round(productCSums.baseline * plantSplit.oh),
                     amAdjusted: Math.round(productCSums.amAdjusted * plantSplit.oh),
                     smAdjustment: Math.round(productCSums.smAdjustment * plantSplit.oh),
                     rsdAdjustment: Math.round(productCSums.rsdAdjustment * plantSplit.oh),
-                    finalForecast: Math.round(productCSums.finalForecast * plantSplit.oh) },
+                    finalForecast: Math.round(productCSums.finalForecast * plantSplit.oh),
+                    salesAgreementQuantity: Math.round(productCSums.salesAgreementQuantity * plantSplit.oh),
+                    salesAgreementRevenue: Math.round(productCSums.salesAgreementRevenue * plantSplit.oh),
+                    opportunityQuantity: Math.round(productCSums.opportunityQuantity * plantSplit.oh),
+                    opportunityRevenue: Math.round(productCSums.opportunityRevenue * plantSplit.oh),
+                    orderQuantity: Math.round(productCSums.orderQuantity * plantSplit.oh),
+                    orderRevenue: Math.round(productCSums.orderRevenue * plantSplit.oh),
+                    lastYearOrderQuantity: Math.round(productCSums.lastYearOrderQuantity * plantSplit.oh),
+                    lastYearsOrderRevenue: Math.round(productCSums.lastYearsOrderRevenue * plantSplit.oh),
+                    forecastedQuantity: Math.round(productCSums.forecastedQuantity * plantSplit.oh),
+                    forecastedRevenue: Math.round(productCSums.forecastedRevenue * plantSplit.oh) },
                   { id: 'oh-product-4', name: 'TRN-850-T', hasChildren: false,
                     baseline: Math.round(productDSums.baseline * plantSplit.oh),
                     amAdjusted: Math.round(productDSums.amAdjusted * plantSplit.oh),
                     smAdjustment: Math.round(productDSums.smAdjustment * plantSplit.oh),
                     rsdAdjustment: Math.round(productDSums.rsdAdjustment * plantSplit.oh),
-                    finalForecast: Math.round(productDSums.finalForecast * plantSplit.oh) },
+                    finalForecast: Math.round(productDSums.finalForecast * plantSplit.oh),
+                    salesAgreementQuantity: Math.round(productDSums.salesAgreementQuantity * plantSplit.oh),
+                    salesAgreementRevenue: Math.round(productDSums.salesAgreementRevenue * plantSplit.oh),
+                    opportunityQuantity: Math.round(productDSums.opportunityQuantity * plantSplit.oh),
+                    opportunityRevenue: Math.round(productDSums.opportunityRevenue * plantSplit.oh),
+                    orderQuantity: Math.round(productDSums.orderQuantity * plantSplit.oh),
+                    orderRevenue: Math.round(productDSums.orderRevenue * plantSplit.oh),
+                    lastYearOrderQuantity: Math.round(productDSums.lastYearOrderQuantity * plantSplit.oh),
+                    lastYearsOrderRevenue: Math.round(productDSums.lastYearsOrderRevenue * plantSplit.oh),
+                    forecastedQuantity: Math.round(productDSums.forecastedQuantity * plantSplit.oh),
+                    forecastedRevenue: Math.round(productDSums.forecastedRevenue * plantSplit.oh) },
                   { id: 'oh-product-5', name: 'TRN-750-M', hasChildren: false,
                     baseline: Math.round(productESums.baseline * plantSplit.oh),
                     amAdjusted: Math.round(productESums.amAdjusted * plantSplit.oh),
                     smAdjustment: Math.round(productESums.smAdjustment * plantSplit.oh),
                     rsdAdjustment: Math.round(productESums.rsdAdjustment * plantSplit.oh),
-                    finalForecast: Math.round(productESums.finalForecast * plantSplit.oh) },
+                    finalForecast: Math.round(productESums.finalForecast * plantSplit.oh),
+                    salesAgreementQuantity: Math.round(productESums.salesAgreementQuantity * plantSplit.oh),
+                    salesAgreementRevenue: Math.round(productESums.salesAgreementRevenue * plantSplit.oh),
+                    opportunityQuantity: Math.round(productESums.opportunityQuantity * plantSplit.oh),
+                    opportunityRevenue: Math.round(productESums.opportunityRevenue * plantSplit.oh),
+                    orderQuantity: Math.round(productESums.orderQuantity * plantSplit.oh),
+                    orderRevenue: Math.round(productESums.orderRevenue * plantSplit.oh),
+                    lastYearOrderQuantity: Math.round(productESums.lastYearOrderQuantity * plantSplit.oh),
+                    lastYearsOrderRevenue: Math.round(productESums.lastYearsOrderRevenue * plantSplit.oh),
+                    forecastedQuantity: Math.round(productESums.forecastedQuantity * plantSplit.oh),
+                    forecastedRevenue: Math.round(productESums.forecastedRevenue * plantSplit.oh) },
                   { id: 'oh-product-6', name: 'TRN-750-X', hasChildren: false,
                     baseline: Math.round(productFSums.baseline * plantSplit.oh),
                     amAdjusted: Math.round(productFSums.amAdjusted * plantSplit.oh),
                     smAdjustment: Math.round(productFSums.smAdjustment * plantSplit.oh),
                     rsdAdjustment: Math.round(productFSums.rsdAdjustment * plantSplit.oh),
-                    finalForecast: Math.round(productFSums.finalForecast * plantSplit.oh) },
+                    finalForecast: Math.round(productFSums.finalForecast * plantSplit.oh),
+                    salesAgreementQuantity: Math.round(productFSums.salesAgreementQuantity * plantSplit.oh),
+                    salesAgreementRevenue: Math.round(productFSums.salesAgreementRevenue * plantSplit.oh),
+                    opportunityQuantity: Math.round(productFSums.opportunityQuantity * plantSplit.oh),
+                    opportunityRevenue: Math.round(productFSums.opportunityRevenue * plantSplit.oh),
+                    orderQuantity: Math.round(productFSums.orderQuantity * plantSplit.oh),
+                    orderRevenue: Math.round(productFSums.orderRevenue * plantSplit.oh),
+                    lastYearOrderQuantity: Math.round(productFSums.lastYearOrderQuantity * plantSplit.oh),
+                    lastYearsOrderRevenue: Math.round(productFSums.lastYearsOrderRevenue * plantSplit.oh),
+                    forecastedQuantity: Math.round(productFSums.forecastedQuantity * plantSplit.oh),
+                    forecastedRevenue: Math.round(productFSums.forecastedRevenue * plantSplit.oh) },
                   // Additional TRN products 7-50 for Ohio
                   ...trnProductSums.map((sums, idx) => {
                     const productNum = idx + 7;
@@ -3691,7 +3818,17 @@ function App() {
                       amAdjusted: Math.round(sums.amAdjusted * plantSplit.oh),
                       smAdjustment: Math.round(sums.smAdjustment * plantSplit.oh),
                       rsdAdjustment: Math.round(sums.rsdAdjustment * plantSplit.oh),
-                      finalForecast: Math.round(sums.finalForecast * plantSplit.oh)
+                      finalForecast: Math.round(sums.finalForecast * plantSplit.oh),
+                      salesAgreementQuantity: Math.round(sums.salesAgreementQuantity * plantSplit.oh),
+                      salesAgreementRevenue: Math.round(sums.salesAgreementRevenue * plantSplit.oh),
+                      opportunityQuantity: Math.round(sums.opportunityQuantity * plantSplit.oh),
+                      opportunityRevenue: Math.round(sums.opportunityRevenue * plantSplit.oh),
+                      orderQuantity: Math.round(sums.orderQuantity * plantSplit.oh),
+                      orderRevenue: Math.round(sums.orderRevenue * plantSplit.oh),
+                      lastYearOrderQuantity: Math.round(sums.lastYearOrderQuantity * plantSplit.oh),
+                      lastYearsOrderRevenue: Math.round(sums.lastYearsOrderRevenue * plantSplit.oh),
+                      forecastedQuantity: Math.round(sums.forecastedQuantity * plantSplit.oh),
+                      forecastedRevenue: Math.round(sums.forecastedRevenue * plantSplit.oh)
                     };
                   }),
                 ]
@@ -3780,36 +3917,27 @@ function App() {
       chassisProductSumsMonthly.push(generateChassisProductSums(i, uniqueMultipliers));
     }
     
-    // Generate Revenue and Quantity Measures for monthly data
-    const aggregateRevenueQuantityMonthly = generateRevenueQuantityMeasures(100, [seasonalMultiplier]);
-    const transmissionRevenueQuantityMonthly = generateRevenueQuantityMeasures(50, [seasonalMultiplier]);
-    const chassisRevenueQuantityMonthly = generateRevenueQuantityMeasures(75, [seasonalMultiplier]);
-    
-    // Generate revenue/quantity data for individual products (1-6 for TRN, 1-3 for Chassis)
-    const productARevenueQuantityMonthly = generateRevenueQuantityMeasures(1, [seasonalMultiplier]);
-    const productBRevenueQuantityMonthly = generateRevenueQuantityMeasures(2, [seasonalMultiplier]);
-    const productCRevenueQuantityMonthly = generateRevenueQuantityMeasures(3, [seasonalMultiplier]);
-    const productDRevenueQuantityMonthly = generateRevenueQuantityMeasures(4, [seasonalMultiplier]);
-    const productERevenueQuantityMonthly = generateRevenueQuantityMeasures(5, [seasonalMultiplier]);
-    const productFRevenueQuantityMonthly = generateRevenueQuantityMeasures(6, [seasonalMultiplier]);
-    const chassis1RevenueQuantityMonthly = generateRevenueQuantityMeasures(101, [seasonalMultiplier]);
-    const chassis2RevenueQuantityMonthly = generateRevenueQuantityMeasures(102, [seasonalMultiplier]);
-    const chassis3RevenueQuantityMonthly = generateRevenueQuantityMeasures(103, [seasonalMultiplier]);
-    
-    // Generate revenue/quantity for TRN products 7-50 (monthly)
-    const trnProductRevenueQuantityMonthly = [];
-    for (let i = 7; i <= 50; i++) {
-      trnProductRevenueQuantityMonthly.push(generateRevenueQuantityMeasures(i, [seasonalMultiplier]));
-    }
-    
-    // Generate revenue/quantity for Chassis products 4-45 (monthly)
-    const chassisProductRevenueQuantityMonthly = [];
-    for (let i = 4; i <= 45; i++) {
-      chassisProductRevenueQuantityMonthly.push(generateRevenueQuantityMeasures(i + 100, [seasonalMultiplier]));
-    }
-    
     // Split aggregate across Michigan and Ohio plants (60% / 40%) for monthly
     const plantSplit = { mi: 0.6, oh: 0.4 };
+    
+    // Generate revenue/quantity for products 1-6 (monthly)
+    const product1RevQty = generateRevenueQuantityMeasures(1, uniqueMultipliers, 850000);
+    const product2RevQty = generateRevenueQuantityMeasures(2, uniqueMultipliers, 820000);
+    const product3RevQty = generateRevenueQuantityMeasures(3, uniqueMultipliers, 750000);
+    const product4RevQty = generateRevenueQuantityMeasures(4, uniqueMultipliers, 680000);
+    const product5RevQty = generateRevenueQuantityMeasures(5, uniqueMultipliers, 500000);
+    const product6RevQty = generateRevenueQuantityMeasures(6, uniqueMultipliers, 400000);
+    const chassis1RevQtyMonthly = generateRevenueQuantityMeasures(101, uniqueMultipliers, 380000);
+    const chassis2RevQtyMonthly = generateRevenueQuantityMeasures(102, uniqueMultipliers, 330000);
+    const chassis3RevQtyMonthly = generateRevenueQuantityMeasures(103, uniqueMultipliers, 290000);
+    
+    // Define which months and products should show red badges (2-3 months, 2-3 products)
+    // Only for Final Forecast Revenue - use 2 months, 2 products
+    // Months: January (0), February (1) - 2 months
+    // Products: product-1, product-2 - 2 products
+    const redBadgeMonths = [0, 1]; // January, February - 2 months
+    const redBadgeProducts = ['product-1', 'product-2']; // 2 products
+    const shouldShowRedBadge = monthIndex >= 0 && redBadgeMonths.includes(monthIndex);
 
     return [
     {
@@ -3821,16 +3949,6 @@ function App() {
       smAdjustment: Math.round(200000 * seasonalMultiplier),
       rsdAdjustment: Math.round(280000 * seasonalMultiplier),
       finalForecast: Math.round(5980000 * seasonalMultiplier),
-      salesAgreementQuantity: aggregateRevenueQuantityMonthly.salesAgreementQuantity,
-      salesAgreementRevenue: aggregateRevenueQuantityMonthly.salesAgreementRevenue,
-      opportunityQuantity: aggregateRevenueQuantityMonthly.opportunityQuantity,
-      opportunityRevenue: aggregateRevenueQuantityMonthly.opportunityRevenue,
-      orderQuantity: aggregateRevenueQuantityMonthly.orderQuantity,
-      orderRevenue: aggregateRevenueQuantityMonthly.orderRevenue,
-      lastYearOrderQuantity: aggregateRevenueQuantityMonthly.lastYearOrderQuantity,
-      lastYearsOrderRevenue: aggregateRevenueQuantityMonthly.lastYearsOrderRevenue,
-      forecastedQuantity: aggregateRevenueQuantityMonthly.forecastedQuantity,
-      forecastedRevenue: aggregateRevenueQuantityMonthly.forecastedRevenue,
       children: [
         {
           id: 'magnadrive',
@@ -3841,16 +3959,6 @@ function App() {
           smAdjustment: Math.round(200000 * seasonalMultiplier * plantSplit.mi),
           rsdAdjustment: Math.round(280000 * seasonalMultiplier * plantSplit.mi),
           finalForecast: Math.round(5980000 * seasonalMultiplier * plantSplit.mi),
-          salesAgreementQuantity: Math.round(aggregateRevenueQuantityMonthly.salesAgreementQuantity * plantSplit.mi),
-          salesAgreementRevenue: Math.round(aggregateRevenueQuantityMonthly.salesAgreementRevenue * plantSplit.mi),
-          opportunityQuantity: Math.round(aggregateRevenueQuantityMonthly.opportunityQuantity * plantSplit.mi),
-          opportunityRevenue: Math.round(aggregateRevenueQuantityMonthly.opportunityRevenue * plantSplit.mi),
-          orderQuantity: Math.round(aggregateRevenueQuantityMonthly.orderQuantity * plantSplit.mi),
-          orderRevenue: Math.round(aggregateRevenueQuantityMonthly.orderRevenue * plantSplit.mi),
-          lastYearOrderQuantity: Math.round(aggregateRevenueQuantityMonthly.lastYearOrderQuantity * plantSplit.mi),
-          lastYearsOrderRevenue: Math.round(aggregateRevenueQuantityMonthly.lastYearsOrderRevenue * plantSplit.mi),
-          forecastedQuantity: Math.round(aggregateRevenueQuantityMonthly.forecastedQuantity * plantSplit.mi),
-          forecastedRevenue: Math.round(aggregateRevenueQuantityMonthly.forecastedRevenue * plantSplit.mi),
           children: [
             {
               id: 'transmission',
@@ -3861,16 +3969,6 @@ function App() {
               smAdjustment: Math.round(150000 * seasonalMultiplier * plantSplit.mi),
               rsdAdjustment: Math.round(200000 * seasonalMultiplier * plantSplit.mi),
               finalForecast: Math.round(4750000 * seasonalMultiplier * plantSplit.mi),
-              salesAgreementQuantity: Math.round(transmissionRevenueQuantityMonthly.salesAgreementQuantity * plantSplit.mi),
-              salesAgreementRevenue: Math.round(transmissionRevenueQuantityMonthly.salesAgreementRevenue * plantSplit.mi),
-              opportunityQuantity: Math.round(transmissionRevenueQuantityMonthly.opportunityQuantity * plantSplit.mi),
-              opportunityRevenue: Math.round(transmissionRevenueQuantityMonthly.opportunityRevenue * plantSplit.mi),
-              orderQuantity: Math.round(transmissionRevenueQuantityMonthly.orderQuantity * plantSplit.mi),
-              orderRevenue: Math.round(transmissionRevenueQuantityMonthly.orderRevenue * plantSplit.mi),
-              lastYearOrderQuantity: Math.round(transmissionRevenueQuantityMonthly.lastYearOrderQuantity * plantSplit.mi),
-              lastYearsOrderRevenue: Math.round(transmissionRevenueQuantityMonthly.lastYearsOrderRevenue * plantSplit.mi),
-              forecastedQuantity: Math.round(transmissionRevenueQuantityMonthly.forecastedQuantity * plantSplit.mi),
-              forecastedRevenue: Math.round(transmissionRevenueQuantityMonthly.forecastedRevenue * plantSplit.mi),
               children: [
                 { 
                   id: 'product-1', 
@@ -3880,17 +3978,25 @@ function App() {
                   amAdjusted: Math.round(920000 * seasonalMultiplier * plantSplit.mi),
                   smAdjustment: Math.round(30000 * seasonalMultiplier * plantSplit.mi),
                   rsdAdjustment: Math.round(45000 * seasonalMultiplier * plantSplit.mi),
-                  finalForecast: Math.round(995000 * seasonalMultiplier * plantSplit.mi),
-                  salesAgreementQuantity: Math.round(productARevenueQuantityMonthly.salesAgreementQuantity * plantSplit.mi),
-                  salesAgreementRevenue: Math.round(productARevenueQuantityMonthly.salesAgreementRevenue * plantSplit.mi),
-                  opportunityQuantity: Math.round(productARevenueQuantityMonthly.opportunityQuantity * plantSplit.mi),
-                  opportunityRevenue: Math.round(productARevenueQuantityMonthly.opportunityRevenue * plantSplit.mi),
-                  orderQuantity: Math.round(productARevenueQuantityMonthly.orderQuantity * plantSplit.mi),
-                  orderRevenue: Math.round(productARevenueQuantityMonthly.orderRevenue * plantSplit.mi),
-                  lastYearOrderQuantity: Math.round(productARevenueQuantityMonthly.lastYearOrderQuantity * plantSplit.mi),
-                  lastYearsOrderRevenue: Math.round(productARevenueQuantityMonthly.lastYearsOrderRevenue * plantSplit.mi),
-                  forecastedQuantity: Math.round(productARevenueQuantityMonthly.forecastedQuantity * plantSplit.mi),
-                  forecastedRevenue: Math.round(productARevenueQuantityMonthly.forecastedRevenue * plantSplit.mi)
+                  finalForecast: (() => {
+                    const baseBaseline = Math.round(850000 * seasonalMultiplier * plantSplit.mi);
+                    // For red badge months and products, make Final Forecast deviate >400% from baseline
+                    if (shouldShowRedBadge && redBadgeProducts.includes('product-1')) {
+                      return Math.round(baseBaseline * 5.0); // 400% increase = >400% deviation
+                    }
+                    // For other months/products, keep Final Forecast close to baseline (within 30%)
+                    return Math.round(995000 * seasonalMultiplier * plantSplit.mi);
+                  })(),
+                  salesAgreementQuantity: Math.round(product1RevQty.salesAgreementQuantity * plantSplit.mi),
+                  salesAgreementRevenue: Math.round(product1RevQty.salesAgreementRevenue * plantSplit.mi),
+                  opportunityQuantity: Math.round(product1RevQty.opportunityQuantity * plantSplit.mi),
+                  opportunityRevenue: Math.round(product1RevQty.opportunityRevenue * plantSplit.mi),
+                  orderQuantity: Math.round(product1RevQty.orderQuantity * plantSplit.mi),
+                  orderRevenue: Math.round(product1RevQty.orderRevenue * plantSplit.mi),
+                  lastYearOrderQuantity: Math.round(product1RevQty.lastYearOrderQuantity * plantSplit.mi),
+                  lastYearsOrderRevenue: Math.round(product1RevQty.lastYearsOrderRevenue * plantSplit.mi),
+                  forecastedQuantity: Math.round(product1RevQty.forecastedQuantity * plantSplit.mi),
+                  forecastedRevenue: Math.round(product1RevQty.forecastedRevenue * plantSplit.mi)
                 },
                 { 
                   id: 'product-2', 
@@ -3900,17 +4006,25 @@ function App() {
                   amAdjusted: Math.round(900000 * seasonalMultiplier * plantSplit.mi),
                   smAdjustment: Math.round(40000 * seasonalMultiplier * plantSplit.mi),
                   rsdAdjustment: Math.round(38000 * seasonalMultiplier * plantSplit.mi),
-                  finalForecast: Math.round(978000 * seasonalMultiplier * plantSplit.mi),
-                  salesAgreementQuantity: Math.round(productBRevenueQuantityMonthly.salesAgreementQuantity * plantSplit.mi),
-                  salesAgreementRevenue: Math.round(productBRevenueQuantityMonthly.salesAgreementRevenue * plantSplit.mi),
-                  opportunityQuantity: Math.round(productBRevenueQuantityMonthly.opportunityQuantity * plantSplit.mi),
-                  opportunityRevenue: Math.round(productBRevenueQuantityMonthly.opportunityRevenue * plantSplit.mi),
-                  orderQuantity: Math.round(productBRevenueQuantityMonthly.orderQuantity * plantSplit.mi),
-                  orderRevenue: Math.round(productBRevenueQuantityMonthly.orderRevenue * plantSplit.mi),
-                  lastYearOrderQuantity: Math.round(productBRevenueQuantityMonthly.lastYearOrderQuantity * plantSplit.mi),
-                  lastYearsOrderRevenue: Math.round(productBRevenueQuantityMonthly.lastYearsOrderRevenue * plantSplit.mi),
-                  forecastedQuantity: Math.round(productBRevenueQuantityMonthly.forecastedQuantity * plantSplit.mi),
-                  forecastedRevenue: Math.round(productBRevenueQuantityMonthly.forecastedRevenue * plantSplit.mi)
+                  finalForecast: (() => {
+                    const baseBaseline = Math.round(820000 * seasonalMultiplier * plantSplit.mi);
+                    // For red badge months and products, make Final Forecast deviate >400% from baseline
+                    if (shouldShowRedBadge && redBadgeProducts.includes('product-2')) {
+                      return Math.round(baseBaseline * 5.0); // 400% increase = >400% deviation
+                    }
+                    // For other months/products, keep Final Forecast close to baseline (within 30%)
+                    return Math.round(978000 * seasonalMultiplier * plantSplit.mi);
+                  })(),
+                  salesAgreementQuantity: Math.round(product2RevQty.salesAgreementQuantity * plantSplit.mi),
+                  salesAgreementRevenue: Math.round(product2RevQty.salesAgreementRevenue * plantSplit.mi),
+                  opportunityQuantity: Math.round(product2RevQty.opportunityQuantity * plantSplit.mi),
+                  opportunityRevenue: Math.round(product2RevQty.opportunityRevenue * plantSplit.mi),
+                  orderQuantity: Math.round(product2RevQty.orderQuantity * plantSplit.mi),
+                  orderRevenue: Math.round(product2RevQty.orderRevenue * plantSplit.mi),
+                  lastYearOrderQuantity: Math.round(product2RevQty.lastYearOrderQuantity * plantSplit.mi),
+                  lastYearsOrderRevenue: Math.round(product2RevQty.lastYearsOrderRevenue * plantSplit.mi),
+                  forecastedQuantity: Math.round(product2RevQty.forecastedQuantity * plantSplit.mi),
+                  forecastedRevenue: Math.round(product2RevQty.forecastedRevenue * plantSplit.mi)
                 },
                 { 
                   id: 'product-3', 
@@ -3920,17 +4034,27 @@ function App() {
                   amAdjusted: Math.round(830000 * seasonalMultiplier * plantSplit.mi),
                   smAdjustment: Math.round(28000 * seasonalMultiplier * plantSplit.mi),
                   rsdAdjustment: Math.round(52000 * seasonalMultiplier * plantSplit.mi),
-                  finalForecast: Math.round(910000 * seasonalMultiplier * plantSplit.mi),
-                  salesAgreementQuantity: Math.round(productCRevenueQuantityMonthly.salesAgreementQuantity * plantSplit.mi),
-                  salesAgreementRevenue: Math.round(productCRevenueQuantityMonthly.salesAgreementRevenue * plantSplit.mi),
-                  opportunityQuantity: Math.round(productCRevenueQuantityMonthly.opportunityQuantity * plantSplit.mi),
-                  opportunityRevenue: Math.round(productCRevenueQuantityMonthly.opportunityRevenue * plantSplit.mi),
-                  orderQuantity: Math.round(productCRevenueQuantityMonthly.orderQuantity * plantSplit.mi),
-                  orderRevenue: Math.round(productCRevenueQuantityMonthly.orderRevenue * plantSplit.mi),
-                  lastYearOrderQuantity: Math.round(productCRevenueQuantityMonthly.lastYearOrderQuantity * plantSplit.mi),
-                  lastYearsOrderRevenue: Math.round(productCRevenueQuantityMonthly.lastYearsOrderRevenue * plantSplit.mi),
-                  forecastedQuantity: Math.round(productCRevenueQuantityMonthly.forecastedQuantity * plantSplit.mi),
-                  forecastedRevenue: Math.round(productCRevenueQuantityMonthly.forecastedRevenue * plantSplit.mi)
+                  finalForecast: (() => {
+                    const baseBaseline = Math.round(750000 * seasonalMultiplier * plantSplit.mi);
+                    // For red badge months and products, make Final Forecast deviate >400% from baseline
+                    // Only product-1 and product-2 should show red badges
+                    if (shouldShowRedBadge && redBadgeProducts.includes('product-3')) {
+                      // product-3 is NOT in redBadgeProducts, so keep it close to baseline
+                      return Math.round(910000 * seasonalMultiplier * plantSplit.mi);
+                    }
+                    // For other months/products, keep Final Forecast close to baseline (within 30%)
+                    return Math.round(910000 * seasonalMultiplier * plantSplit.mi);
+                  })(),
+                  salesAgreementQuantity: Math.round(product3RevQty.salesAgreementQuantity * plantSplit.mi),
+                  salesAgreementRevenue: Math.round(product3RevQty.salesAgreementRevenue * plantSplit.mi),
+                  opportunityQuantity: Math.round(product3RevQty.opportunityQuantity * plantSplit.mi),
+                  opportunityRevenue: Math.round(product3RevQty.opportunityRevenue * plantSplit.mi),
+                  orderQuantity: Math.round(product3RevQty.orderQuantity * plantSplit.mi),
+                  orderRevenue: Math.round(product3RevQty.orderRevenue * plantSplit.mi),
+                  lastYearOrderQuantity: Math.round(product3RevQty.lastYearOrderQuantity * plantSplit.mi),
+                  lastYearsOrderRevenue: Math.round(product3RevQty.lastYearsOrderRevenue * plantSplit.mi),
+                  forecastedQuantity: Math.round(product3RevQty.forecastedQuantity * plantSplit.mi),
+                  forecastedRevenue: Math.round(product3RevQty.forecastedRevenue * plantSplit.mi)
                 },
                 { 
                   id: 'product-4', 
@@ -3941,16 +4065,16 @@ function App() {
                   smAdjustment: Math.round(25000 * seasonalMultiplier * plantSplit.mi),
                   rsdAdjustment: Math.round(45000 * seasonalMultiplier * plantSplit.mi),
                   finalForecast: Math.round(820000 * seasonalMultiplier * plantSplit.mi),
-                  salesAgreementQuantity: Math.round(productDRevenueQuantityMonthly.salesAgreementQuantity * plantSplit.mi),
-                  salesAgreementRevenue: Math.round(productDRevenueQuantityMonthly.salesAgreementRevenue * plantSplit.mi),
-                  opportunityQuantity: Math.round(productDRevenueQuantityMonthly.opportunityQuantity * plantSplit.mi),
-                  opportunityRevenue: Math.round(productDRevenueQuantityMonthly.opportunityRevenue * plantSplit.mi),
-                  orderQuantity: Math.round(productDRevenueQuantityMonthly.orderQuantity * plantSplit.mi),
-                  orderRevenue: Math.round(productDRevenueQuantityMonthly.orderRevenue * plantSplit.mi),
-                  lastYearOrderQuantity: Math.round(productDRevenueQuantityMonthly.lastYearOrderQuantity * plantSplit.mi),
-                  lastYearsOrderRevenue: Math.round(productDRevenueQuantityMonthly.lastYearsOrderRevenue * plantSplit.mi),
-                  forecastedQuantity: Math.round(productDRevenueQuantityMonthly.forecastedQuantity * plantSplit.mi),
-                  forecastedRevenue: Math.round(productDRevenueQuantityMonthly.forecastedRevenue * plantSplit.mi)
+                  salesAgreementQuantity: Math.round(product4RevQty.salesAgreementQuantity * plantSplit.mi),
+                  salesAgreementRevenue: Math.round(product4RevQty.salesAgreementRevenue * plantSplit.mi),
+                  opportunityQuantity: Math.round(product4RevQty.opportunityQuantity * plantSplit.mi),
+                  opportunityRevenue: Math.round(product4RevQty.opportunityRevenue * plantSplit.mi),
+                  orderQuantity: Math.round(product4RevQty.orderQuantity * plantSplit.mi),
+                  orderRevenue: Math.round(product4RevQty.orderRevenue * plantSplit.mi),
+                  lastYearOrderQuantity: Math.round(product4RevQty.lastYearOrderQuantity * plantSplit.mi),
+                  lastYearsOrderRevenue: Math.round(product4RevQty.lastYearsOrderRevenue * plantSplit.mi),
+                  forecastedQuantity: Math.round(product4RevQty.forecastedQuantity * plantSplit.mi),
+                  forecastedRevenue: Math.round(product4RevQty.forecastedRevenue * plantSplit.mi)
                 },
                 { 
                   id: 'product-5', 
@@ -3961,16 +4085,16 @@ function App() {
                   smAdjustment: Math.round(15000 * seasonalMultiplier * plantSplit.mi),
                   rsdAdjustment: Math.round(20000 * seasonalMultiplier * plantSplit.mi),
                   finalForecast: Math.round(615000 * seasonalMultiplier * plantSplit.mi),
-                  salesAgreementQuantity: Math.round(productERevenueQuantityMonthly.salesAgreementQuantity * plantSplit.mi),
-                  salesAgreementRevenue: Math.round(productERevenueQuantityMonthly.salesAgreementRevenue * plantSplit.mi),
-                  opportunityQuantity: Math.round(productERevenueQuantityMonthly.opportunityQuantity * plantSplit.mi),
-                  opportunityRevenue: Math.round(productERevenueQuantityMonthly.opportunityRevenue * plantSplit.mi),
-                  orderQuantity: Math.round(productERevenueQuantityMonthly.orderQuantity * plantSplit.mi),
-                  orderRevenue: Math.round(productERevenueQuantityMonthly.orderRevenue * plantSplit.mi),
-                  lastYearOrderQuantity: Math.round(productERevenueQuantityMonthly.lastYearOrderQuantity * plantSplit.mi),
-                  lastYearsOrderRevenue: Math.round(productERevenueQuantityMonthly.lastYearsOrderRevenue * plantSplit.mi),
-                  forecastedQuantity: Math.round(productERevenueQuantityMonthly.forecastedQuantity * plantSplit.mi),
-                  forecastedRevenue: Math.round(productERevenueQuantityMonthly.forecastedRevenue * plantSplit.mi)
+                  salesAgreementQuantity: Math.round(product5RevQty.salesAgreementQuantity * plantSplit.mi),
+                  salesAgreementRevenue: Math.round(product5RevQty.salesAgreementRevenue * plantSplit.mi),
+                  opportunityQuantity: Math.round(product5RevQty.opportunityQuantity * plantSplit.mi),
+                  opportunityRevenue: Math.round(product5RevQty.opportunityRevenue * plantSplit.mi),
+                  orderQuantity: Math.round(product5RevQty.orderQuantity * plantSplit.mi),
+                  orderRevenue: Math.round(product5RevQty.orderRevenue * plantSplit.mi),
+                  lastYearOrderQuantity: Math.round(product5RevQty.lastYearOrderQuantity * plantSplit.mi),
+                  lastYearsOrderRevenue: Math.round(product5RevQty.lastYearsOrderRevenue * plantSplit.mi),
+                  forecastedQuantity: Math.round(product5RevQty.forecastedQuantity * plantSplit.mi),
+                  forecastedRevenue: Math.round(product5RevQty.forecastedRevenue * plantSplit.mi)
                 },
                 { 
                   id: 'product-6', 
@@ -3981,16 +4105,16 @@ function App() {
                   smAdjustment: Math.round(22000 * seasonalMultiplier * plantSplit.mi),
                   rsdAdjustment: Math.round(0 * seasonalMultiplier * plantSplit.mi),
                   finalForecast: Math.round(442000 * seasonalMultiplier * plantSplit.mi),
-                  salesAgreementQuantity: Math.round(productFRevenueQuantityMonthly.salesAgreementQuantity * plantSplit.mi),
-                  salesAgreementRevenue: Math.round(productFRevenueQuantityMonthly.salesAgreementRevenue * plantSplit.mi),
-                  opportunityQuantity: Math.round(productFRevenueQuantityMonthly.opportunityQuantity * plantSplit.mi),
-                  opportunityRevenue: Math.round(productFRevenueQuantityMonthly.opportunityRevenue * plantSplit.mi),
-                  orderQuantity: Math.round(productFRevenueQuantityMonthly.orderQuantity * plantSplit.mi),
-                  orderRevenue: Math.round(productFRevenueQuantityMonthly.orderRevenue * plantSplit.mi),
-                  lastYearOrderQuantity: Math.round(productFRevenueQuantityMonthly.lastYearOrderQuantity * plantSplit.mi),
-                  lastYearsOrderRevenue: Math.round(productFRevenueQuantityMonthly.lastYearsOrderRevenue * plantSplit.mi),
-                  forecastedQuantity: Math.round(productFRevenueQuantityMonthly.forecastedQuantity * plantSplit.mi),
-                  forecastedRevenue: Math.round(productFRevenueQuantityMonthly.forecastedRevenue * plantSplit.mi)
+                  salesAgreementQuantity: Math.round(product6RevQty.salesAgreementQuantity * plantSplit.mi),
+                  salesAgreementRevenue: Math.round(product6RevQty.salesAgreementRevenue * plantSplit.mi),
+                  opportunityQuantity: Math.round(product6RevQty.opportunityQuantity * plantSplit.mi),
+                  opportunityRevenue: Math.round(product6RevQty.opportunityRevenue * plantSplit.mi),
+                  orderQuantity: Math.round(product6RevQty.orderQuantity * plantSplit.mi),
+                  orderRevenue: Math.round(product6RevQty.orderRevenue * plantSplit.mi),
+                  lastYearOrderQuantity: Math.round(product6RevQty.lastYearOrderQuantity * plantSplit.mi),
+                  lastYearsOrderRevenue: Math.round(product6RevQty.lastYearsOrderRevenue * plantSplit.mi),
+                  forecastedQuantity: Math.round(product6RevQty.forecastedQuantity * plantSplit.mi),
+                  forecastedRevenue: Math.round(product6RevQty.forecastedRevenue * plantSplit.mi)
                 },
                 // Additional TRN products 7-50
                 ...trnProductSumsMonthly.map((sums, idx) => {
@@ -4007,26 +4131,31 @@ function App() {
                   const monthlySmAdjustment = sums.smAdjustment / 12;
                   const monthlyRsdAdjustment = sums.rsdAdjustment / 12;
                   const monthlyFinalForecast = sums.finalForecast / 12;
-                  const revenueQuantity = trnProductRevenueQuantityMonthly[idx];
+                  const productId = `product-${productNum}`;
+                  const baseBaseline = Math.round(monthlyBaseline * seasonalMultiplier * plantSplit.mi);
                   return {
-                    id: `product-${productNum}`,
+                    id: productId,
                     name: name,
                     hasChildren: false,
-                    baseline: Math.round(monthlyBaseline * seasonalMultiplier * plantSplit.mi),
+                    baseline: baseBaseline,
                     amAdjusted: Math.round(monthlyAmAdjusted * seasonalMultiplier * plantSplit.mi),
                     smAdjustment: Math.round(monthlySmAdjustment * seasonalMultiplier * plantSplit.mi),
                     rsdAdjustment: Math.round(monthlyRsdAdjustment * seasonalMultiplier * plantSplit.mi),
-                    finalForecast: Math.round(monthlyFinalForecast * seasonalMultiplier * plantSplit.mi),
-                    salesAgreementQuantity: Math.round(revenueQuantity.salesAgreementQuantity * plantSplit.mi),
-                    salesAgreementRevenue: Math.round(revenueQuantity.salesAgreementRevenue * plantSplit.mi),
-                    opportunityQuantity: Math.round(revenueQuantity.opportunityQuantity * plantSplit.mi),
-                    opportunityRevenue: Math.round(revenueQuantity.opportunityRevenue * plantSplit.mi),
-                    orderQuantity: Math.round(revenueQuantity.orderQuantity * plantSplit.mi),
-                    orderRevenue: Math.round(revenueQuantity.orderRevenue * plantSplit.mi),
-                    lastYearOrderQuantity: Math.round(revenueQuantity.lastYearOrderQuantity * plantSplit.mi),
-                    lastYearsOrderRevenue: Math.round(revenueQuantity.lastYearsOrderRevenue * plantSplit.mi),
-                    forecastedQuantity: Math.round(revenueQuantity.forecastedQuantity * plantSplit.mi),
-                    forecastedRevenue: Math.round(revenueQuantity.forecastedRevenue * plantSplit.mi)
+                    // For red badge months and products, make Final Forecast deviate >400% from baseline
+                    // For others, keep it close to baseline (within 400%)
+                    finalForecast: (shouldShowRedBadge && redBadgeProducts.includes(productId)) 
+                      ? Math.round(baseBaseline * 5.0) // 400% increase = >400% deviation
+                      : Math.round(monthlyFinalForecast * seasonalMultiplier * plantSplit.mi),
+                    salesAgreementQuantity: Math.round(sums.salesAgreementQuantity / 12 * seasonalMultiplier * plantSplit.mi),
+                    salesAgreementRevenue: Math.round(sums.salesAgreementRevenue / 12 * seasonalMultiplier * plantSplit.mi),
+                    opportunityQuantity: Math.round(sums.opportunityQuantity / 12 * seasonalMultiplier * plantSplit.mi),
+                    opportunityRevenue: Math.round(sums.opportunityRevenue / 12 * seasonalMultiplier * plantSplit.mi),
+                    orderQuantity: Math.round(sums.orderQuantity / 12 * seasonalMultiplier * plantSplit.mi),
+                    orderRevenue: Math.round(sums.orderRevenue / 12 * seasonalMultiplier * plantSplit.mi),
+                    lastYearOrderQuantity: Math.round(sums.lastYearOrderQuantity / 12 * seasonalMultiplier * plantSplit.mi),
+                    lastYearsOrderRevenue: Math.round(sums.lastYearsOrderRevenue / 12 * seasonalMultiplier * plantSplit.mi),
+                    forecastedQuantity: Math.round(sums.forecastedQuantity / 12 * seasonalMultiplier * plantSplit.mi),
+                    forecastedRevenue: Math.round(sums.forecastedRevenue / 12 * seasonalMultiplier * plantSplit.mi)
                   };
                 }),
               ],
@@ -4040,16 +4169,6 @@ function App() {
               smAdjustment: Math.round(50000 * seasonalMultiplier * plantSplit.mi),
               rsdAdjustment: Math.round(80000 * seasonalMultiplier * plantSplit.mi),
               finalForecast: Math.round(1230000 * seasonalMultiplier * plantSplit.mi),
-              salesAgreementQuantity: Math.round(chassisRevenueQuantityMonthly.salesAgreementQuantity * plantSplit.mi),
-              salesAgreementRevenue: Math.round(chassisRevenueQuantityMonthly.salesAgreementRevenue * plantSplit.mi),
-              opportunityQuantity: Math.round(chassisRevenueQuantityMonthly.opportunityQuantity * plantSplit.mi),
-              opportunityRevenue: Math.round(chassisRevenueQuantityMonthly.opportunityRevenue * plantSplit.mi),
-              orderQuantity: Math.round(chassisRevenueQuantityMonthly.orderQuantity * plantSplit.mi),
-              orderRevenue: Math.round(chassisRevenueQuantityMonthly.orderRevenue * plantSplit.mi),
-              lastYearOrderQuantity: Math.round(chassisRevenueQuantityMonthly.lastYearOrderQuantity * plantSplit.mi),
-              lastYearsOrderRevenue: Math.round(chassisRevenueQuantityMonthly.lastYearsOrderRevenue * plantSplit.mi),
-              forecastedQuantity: Math.round(chassisRevenueQuantityMonthly.forecastedQuantity * plantSplit.mi),
-              forecastedRevenue: Math.round(chassisRevenueQuantityMonthly.forecastedRevenue * plantSplit.mi),
               children: [
                 { 
                   id: 'chassis-1', 
@@ -4060,16 +4179,16 @@ function App() {
                   smAdjustment: Math.round(18000 * seasonalMultiplier * plantSplit.mi),
                   rsdAdjustment: Math.round(22000 * seasonalMultiplier * plantSplit.mi),
                   finalForecast: Math.round(460000 * seasonalMultiplier * plantSplit.mi),
-                  salesAgreementQuantity: Math.round(chassis1RevenueQuantityMonthly.salesAgreementQuantity * plantSplit.mi),
-                  salesAgreementRevenue: Math.round(chassis1RevenueQuantityMonthly.salesAgreementRevenue * plantSplit.mi),
-                  opportunityQuantity: Math.round(chassis1RevenueQuantityMonthly.opportunityQuantity * plantSplit.mi),
-                  opportunityRevenue: Math.round(chassis1RevenueQuantityMonthly.opportunityRevenue * plantSplit.mi),
-                  orderQuantity: Math.round(chassis1RevenueQuantityMonthly.orderQuantity * plantSplit.mi),
-                  orderRevenue: Math.round(chassis1RevenueQuantityMonthly.orderRevenue * plantSplit.mi),
-                  lastYearOrderQuantity: Math.round(chassis1RevenueQuantityMonthly.lastYearOrderQuantity * plantSplit.mi),
-                  lastYearsOrderRevenue: Math.round(chassis1RevenueQuantityMonthly.lastYearsOrderRevenue * plantSplit.mi),
-                  forecastedQuantity: Math.round(chassis1RevenueQuantityMonthly.forecastedQuantity * plantSplit.mi),
-                  forecastedRevenue: Math.round(chassis1RevenueQuantityMonthly.forecastedRevenue * plantSplit.mi)
+                  salesAgreementQuantity: Math.round(chassis1RevQtyMonthly.salesAgreementQuantity * plantSplit.mi),
+                  salesAgreementRevenue: Math.round(chassis1RevQtyMonthly.salesAgreementRevenue * plantSplit.mi),
+                  opportunityQuantity: Math.round(chassis1RevQtyMonthly.opportunityQuantity * plantSplit.mi),
+                  opportunityRevenue: Math.round(chassis1RevQtyMonthly.opportunityRevenue * plantSplit.mi),
+                  orderQuantity: Math.round(chassis1RevQtyMonthly.orderQuantity * plantSplit.mi),
+                  orderRevenue: Math.round(chassis1RevQtyMonthly.orderRevenue * plantSplit.mi),
+                  lastYearOrderQuantity: Math.round(chassis1RevQtyMonthly.lastYearOrderQuantity * plantSplit.mi),
+                  lastYearsOrderRevenue: Math.round(chassis1RevQtyMonthly.lastYearsOrderRevenue * plantSplit.mi),
+                  forecastedQuantity: Math.round(chassis1RevQtyMonthly.forecastedQuantity * plantSplit.mi),
+                  forecastedRevenue: Math.round(chassis1RevQtyMonthly.forecastedRevenue * plantSplit.mi)
                 },
                 { 
                   id: 'chassis-2', 
@@ -4080,16 +4199,16 @@ function App() {
                   smAdjustment: Math.round(16000 * seasonalMultiplier * plantSplit.mi),
                   rsdAdjustment: Math.round(30000 * seasonalMultiplier * plantSplit.mi),
                   finalForecast: Math.round(426000 * seasonalMultiplier * plantSplit.mi),
-                  salesAgreementQuantity: Math.round(chassis2RevenueQuantityMonthly.salesAgreementQuantity * plantSplit.mi),
-                  salesAgreementRevenue: Math.round(chassis2RevenueQuantityMonthly.salesAgreementRevenue * plantSplit.mi),
-                  opportunityQuantity: Math.round(chassis2RevenueQuantityMonthly.opportunityQuantity * plantSplit.mi),
-                  opportunityRevenue: Math.round(chassis2RevenueQuantityMonthly.opportunityRevenue * plantSplit.mi),
-                  orderQuantity: Math.round(chassis2RevenueQuantityMonthly.orderQuantity * plantSplit.mi),
-                  orderRevenue: Math.round(chassis2RevenueQuantityMonthly.orderRevenue * plantSplit.mi),
-                  lastYearOrderQuantity: Math.round(chassis2RevenueQuantityMonthly.lastYearOrderQuantity * plantSplit.mi),
-                  lastYearsOrderRevenue: Math.round(chassis2RevenueQuantityMonthly.lastYearsOrderRevenue * plantSplit.mi),
-                  forecastedQuantity: Math.round(chassis2RevenueQuantityMonthly.forecastedQuantity * plantSplit.mi),
-                  forecastedRevenue: Math.round(chassis2RevenueQuantityMonthly.forecastedRevenue * plantSplit.mi)
+                  salesAgreementQuantity: Math.round(chassis2RevQtyMonthly.salesAgreementQuantity * plantSplit.mi),
+                  salesAgreementRevenue: Math.round(chassis2RevQtyMonthly.salesAgreementRevenue * plantSplit.mi),
+                  opportunityQuantity: Math.round(chassis2RevQtyMonthly.opportunityQuantity * plantSplit.mi),
+                  opportunityRevenue: Math.round(chassis2RevQtyMonthly.opportunityRevenue * plantSplit.mi),
+                  orderQuantity: Math.round(chassis2RevQtyMonthly.orderQuantity * plantSplit.mi),
+                  orderRevenue: Math.round(chassis2RevQtyMonthly.orderRevenue * plantSplit.mi),
+                  lastYearOrderQuantity: Math.round(chassis2RevQtyMonthly.lastYearOrderQuantity * plantSplit.mi),
+                  lastYearsOrderRevenue: Math.round(chassis2RevQtyMonthly.lastYearsOrderRevenue * plantSplit.mi),
+                  forecastedQuantity: Math.round(chassis2RevQtyMonthly.forecastedQuantity * plantSplit.mi),
+                  forecastedRevenue: Math.round(chassis2RevQtyMonthly.forecastedRevenue * plantSplit.mi)
                 },
                 { 
                   id: 'chassis-3', 
@@ -4100,16 +4219,16 @@ function App() {
                   smAdjustment: Math.round(16000 * seasonalMultiplier * plantSplit.mi),
                   rsdAdjustment: Math.round(28000 * seasonalMultiplier * plantSplit.mi),
                   finalForecast: Math.round(344000 * seasonalMultiplier * plantSplit.mi),
-                  salesAgreementQuantity: Math.round(chassis3RevenueQuantityMonthly.salesAgreementQuantity * plantSplit.mi),
-                  salesAgreementRevenue: Math.round(chassis3RevenueQuantityMonthly.salesAgreementRevenue * plantSplit.mi),
-                  opportunityQuantity: Math.round(chassis3RevenueQuantityMonthly.opportunityQuantity * plantSplit.mi),
-                  opportunityRevenue: Math.round(chassis3RevenueQuantityMonthly.opportunityRevenue * plantSplit.mi),
-                  orderQuantity: Math.round(chassis3RevenueQuantityMonthly.orderQuantity * plantSplit.mi),
-                  orderRevenue: Math.round(chassis3RevenueQuantityMonthly.orderRevenue * plantSplit.mi),
-                  lastYearOrderQuantity: Math.round(chassis3RevenueQuantityMonthly.lastYearOrderQuantity * plantSplit.mi),
-                  lastYearsOrderRevenue: Math.round(chassis3RevenueQuantityMonthly.lastYearsOrderRevenue * plantSplit.mi),
-                  forecastedQuantity: Math.round(chassis3RevenueQuantityMonthly.forecastedQuantity * plantSplit.mi),
-                  forecastedRevenue: Math.round(chassis3RevenueQuantityMonthly.forecastedRevenue * plantSplit.mi)
+                  salesAgreementQuantity: Math.round(chassis3RevQtyMonthly.salesAgreementQuantity * plantSplit.mi),
+                  salesAgreementRevenue: Math.round(chassis3RevQtyMonthly.salesAgreementRevenue * plantSplit.mi),
+                  opportunityQuantity: Math.round(chassis3RevQtyMonthly.opportunityQuantity * plantSplit.mi),
+                  opportunityRevenue: Math.round(chassis3RevQtyMonthly.opportunityRevenue * plantSplit.mi),
+                  orderQuantity: Math.round(chassis3RevQtyMonthly.orderQuantity * plantSplit.mi),
+                  orderRevenue: Math.round(chassis3RevQtyMonthly.orderRevenue * plantSplit.mi),
+                  lastYearOrderQuantity: Math.round(chassis3RevQtyMonthly.lastYearOrderQuantity * plantSplit.mi),
+                  lastYearsOrderRevenue: Math.round(chassis3RevQtyMonthly.lastYearsOrderRevenue * plantSplit.mi),
+                  forecastedQuantity: Math.round(chassis3RevQtyMonthly.forecastedQuantity * plantSplit.mi),
+                  forecastedRevenue: Math.round(chassis3RevQtyMonthly.forecastedRevenue * plantSplit.mi)
                 },
                 // Additional Chassis products 4-45
                 ...chassisProductSumsMonthly.map((sums, idx) => {
@@ -4128,7 +4247,17 @@ function App() {
                     amAdjusted: Math.round(monthlyAmAdjusted * seasonalMultiplier * plantSplit.mi),
                     smAdjustment: Math.round(monthlySmAdjustment * seasonalMultiplier * plantSplit.mi),
                     rsdAdjustment: Math.round(monthlyRsdAdjustment * seasonalMultiplier * plantSplit.mi),
-                    finalForecast: Math.round(monthlyFinalForecast * seasonalMultiplier * plantSplit.mi)
+                    finalForecast: Math.round(monthlyFinalForecast * seasonalMultiplier * plantSplit.mi),
+                    salesAgreementQuantity: Math.round(sums.salesAgreementQuantity / 12 * seasonalMultiplier * plantSplit.mi),
+                    salesAgreementRevenue: Math.round(sums.salesAgreementRevenue / 12 * seasonalMultiplier * plantSplit.mi),
+                    opportunityQuantity: Math.round(sums.opportunityQuantity / 12 * seasonalMultiplier * plantSplit.mi),
+                    opportunityRevenue: Math.round(sums.opportunityRevenue / 12 * seasonalMultiplier * plantSplit.mi),
+                    orderQuantity: Math.round(sums.orderQuantity / 12 * seasonalMultiplier * plantSplit.mi),
+                    orderRevenue: Math.round(sums.orderRevenue / 12 * seasonalMultiplier * plantSplit.mi),
+                    lastYearOrderQuantity: Math.round(sums.lastYearOrderQuantity / 12 * seasonalMultiplier * plantSplit.mi),
+                    lastYearsOrderRevenue: Math.round(sums.lastYearsOrderRevenue / 12 * seasonalMultiplier * plantSplit.mi),
+                    forecastedQuantity: Math.round(sums.forecastedQuantity / 12 * seasonalMultiplier * plantSplit.mi),
+                    forecastedRevenue: Math.round(sums.forecastedRevenue / 12 * seasonalMultiplier * plantSplit.mi)
                   };
                 }),
               ],
@@ -5417,16 +5546,6 @@ function App() {
         existingRow.smAdjustment = (existingRow.smAdjustment || 0) + (processedRow.smAdjustment || 0);
         existingRow.rsdAdjustment = (existingRow.rsdAdjustment || 0) + (processedRow.rsdAdjustment || 0);
         existingRow.finalForecast = (existingRow.finalForecast || 0) + (processedRow.finalForecast || 0);
-        existingRow.salesAgreementQuantity = (existingRow.salesAgreementQuantity || 0) + (processedRow.salesAgreementQuantity || 0);
-        existingRow.salesAgreementRevenue = (existingRow.salesAgreementRevenue || 0) + (processedRow.salesAgreementRevenue || 0);
-        existingRow.opportunityQuantity = (existingRow.opportunityQuantity || 0) + (processedRow.opportunityQuantity || 0);
-        existingRow.opportunityRevenue = (existingRow.opportunityRevenue || 0) + (processedRow.opportunityRevenue || 0);
-        existingRow.orderQuantity = (existingRow.orderQuantity || 0) + (processedRow.orderQuantity || 0);
-        existingRow.orderRevenue = (existingRow.orderRevenue || 0) + (processedRow.orderRevenue || 0);
-        existingRow.lastYearOrderQuantity = (existingRow.lastYearOrderQuantity || 0) + (processedRow.lastYearOrderQuantity || 0);
-        existingRow.lastYearsOrderRevenue = (existingRow.lastYearsOrderRevenue || 0) + (processedRow.lastYearsOrderRevenue || 0);
-        existingRow.forecastedQuantity = (existingRow.forecastedQuantity || 0) + (processedRow.forecastedQuantity || 0);
-        existingRow.forecastedRevenue = (existingRow.forecastedRevenue || 0) + (processedRow.forecastedRevenue || 0);
         
         // Merge children - use same merge logic as before
         if (processedRow.children && processedRow.children.length > 0) {
@@ -5456,16 +5575,6 @@ function App() {
               existingChild.smAdjustment = (existingChild.smAdjustment || 0) + (child.smAdjustment || 0);
               existingChild.rsdAdjustment = (existingChild.rsdAdjustment || 0) + (child.rsdAdjustment || 0);
               existingChild.finalForecast = (existingChild.finalForecast || 0) + (child.finalForecast || 0);
-              existingChild.salesAgreementQuantity = (existingChild.salesAgreementQuantity || 0) + (child.salesAgreementQuantity || 0);
-              existingChild.salesAgreementRevenue = (existingChild.salesAgreementRevenue || 0) + (child.salesAgreementRevenue || 0);
-              existingChild.opportunityQuantity = (existingChild.opportunityQuantity || 0) + (child.opportunityQuantity || 0);
-              existingChild.opportunityRevenue = (existingChild.opportunityRevenue || 0) + (child.opportunityRevenue || 0);
-              existingChild.orderQuantity = (existingChild.orderQuantity || 0) + (child.orderQuantity || 0);
-              existingChild.orderRevenue = (existingChild.orderRevenue || 0) + (child.orderRevenue || 0);
-              existingChild.lastYearOrderQuantity = (existingChild.lastYearOrderQuantity || 0) + (child.lastYearOrderQuantity || 0);
-              existingChild.lastYearsOrderRevenue = (existingChild.lastYearsOrderRevenue || 0) + (child.lastYearsOrderRevenue || 0);
-              existingChild.forecastedQuantity = (existingChild.forecastedQuantity || 0) + (child.forecastedQuantity || 0);
-              existingChild.forecastedRevenue = (existingChild.forecastedRevenue || 0) + (child.forecastedRevenue || 0);
               
               // Merge grandchildren if they exist
               if (child.children && child.children.length > 0) {
@@ -5490,16 +5599,6 @@ function App() {
                     existingGrandChild.smAdjustment = (existingGrandChild.smAdjustment || 0) + (grandChild.smAdjustment || 0);
                     existingGrandChild.rsdAdjustment = (existingGrandChild.rsdAdjustment || 0) + (grandChild.rsdAdjustment || 0);
                     existingGrandChild.finalForecast = (existingGrandChild.finalForecast || 0) + (grandChild.finalForecast || 0);
-                    existingGrandChild.salesAgreementQuantity = (existingGrandChild.salesAgreementQuantity || 0) + (grandChild.salesAgreementQuantity || 0);
-                    existingGrandChild.salesAgreementRevenue = (existingGrandChild.salesAgreementRevenue || 0) + (grandChild.salesAgreementRevenue || 0);
-                    existingGrandChild.opportunityQuantity = (existingGrandChild.opportunityQuantity || 0) + (grandChild.opportunityQuantity || 0);
-                    existingGrandChild.opportunityRevenue = (existingGrandChild.opportunityRevenue || 0) + (grandChild.opportunityRevenue || 0);
-                    existingGrandChild.orderQuantity = (existingGrandChild.orderQuantity || 0) + (grandChild.orderQuantity || 0);
-                    existingGrandChild.orderRevenue = (existingGrandChild.orderRevenue || 0) + (grandChild.orderRevenue || 0);
-                    existingGrandChild.lastYearOrderQuantity = (existingGrandChild.lastYearOrderQuantity || 0) + (grandChild.lastYearOrderQuantity || 0);
-                    existingGrandChild.lastYearsOrderRevenue = (existingGrandChild.lastYearsOrderRevenue || 0) + (grandChild.lastYearsOrderRevenue || 0);
-                    existingGrandChild.forecastedQuantity = (existingGrandChild.forecastedQuantity || 0) + (grandChild.forecastedQuantity || 0);
-                    existingGrandChild.forecastedRevenue = (existingGrandChild.forecastedRevenue || 0) + (grandChild.forecastedRevenue || 0);
                   } else {
                     existingChild.children.push(grandChild);
                   }
@@ -5526,6 +5625,16 @@ function App() {
           let totalSmAdjustment = 0;
           let totalRsdAdjustment = 0;
           let totalFinalForecast = 0;
+          let totalSalesAgreementQuantity = 0;
+          let totalSalesAgreementRevenue = 0;
+          let totalOpportunityQuantity = 0;
+          let totalOpportunityRevenue = 0;
+          let totalOrderQuantity = 0;
+          let totalOrderRevenue = 0;
+          let totalLastYearOrderQuantity = 0;
+          let totalLastYearsOrderRevenue = 0;
+          let totalForecastedQuantity = 0;
+          let totalForecastedRevenue = 0;
           
           for (const child of children) {
             if (child.hasChildren === false) {
@@ -5535,6 +5644,16 @@ function App() {
               totalSmAdjustment += child.smAdjustment || 0;
               totalRsdAdjustment += child.rsdAdjustment || 0;
               totalFinalForecast += child.finalForecast || 0;
+              totalSalesAgreementQuantity += child.salesAgreementQuantity || 0;
+              totalSalesAgreementRevenue += child.salesAgreementRevenue || 0;
+              totalOpportunityQuantity += child.opportunityQuantity || 0;
+              totalOpportunityRevenue += child.opportunityRevenue || 0;
+              totalOrderQuantity += child.orderQuantity || 0;
+              totalOrderRevenue += child.orderRevenue || 0;
+              totalLastYearOrderQuantity += child.lastYearOrderQuantity || 0;
+              totalLastYearsOrderRevenue += child.lastYearsOrderRevenue || 0;
+              totalForecastedQuantity += child.forecastedQuantity || 0;
+              totalForecastedRevenue += child.forecastedRevenue || 0;
             } else if (child.children && child.children.length > 0) {
               // Non-leaf node (category) - recursively aggregate its children
               const childTotals = aggregateAllProducts(child.children);
@@ -5543,10 +5662,36 @@ function App() {
               totalSmAdjustment += childTotals.smAdjustment;
               totalRsdAdjustment += childTotals.rsdAdjustment;
               totalFinalForecast += childTotals.finalForecast;
+              totalSalesAgreementQuantity += childTotals.salesAgreementQuantity || 0;
+              totalSalesAgreementRevenue += childTotals.salesAgreementRevenue || 0;
+              totalOpportunityQuantity += childTotals.opportunityQuantity || 0;
+              totalOpportunityRevenue += childTotals.opportunityRevenue || 0;
+              totalOrderQuantity += childTotals.orderQuantity || 0;
+              totalOrderRevenue += childTotals.orderRevenue || 0;
+              totalLastYearOrderQuantity += childTotals.lastYearOrderQuantity || 0;
+              totalLastYearsOrderRevenue += childTotals.lastYearsOrderRevenue || 0;
+              totalForecastedQuantity += childTotals.forecastedQuantity || 0;
+              totalForecastedRevenue += childTotals.forecastedRevenue || 0;
             }
           }
           
-          return { baseline: totalBaseline, amAdjusted: totalAmAdjusted, smAdjustment: totalSmAdjustment, rsdAdjustment: totalRsdAdjustment, finalForecast: totalFinalForecast };
+          return { 
+            baseline: totalBaseline, 
+            amAdjusted: totalAmAdjusted, 
+            smAdjustment: totalSmAdjustment, 
+            rsdAdjustment: totalRsdAdjustment, 
+            finalForecast: totalFinalForecast,
+            salesAgreementQuantity: totalSalesAgreementQuantity,
+            salesAgreementRevenue: totalSalesAgreementRevenue,
+            opportunityQuantity: totalOpportunityQuantity,
+            opportunityRevenue: totalOpportunityRevenue,
+            orderQuantity: totalOrderQuantity,
+            orderRevenue: totalOrderRevenue,
+            lastYearOrderQuantity: totalLastYearOrderQuantity,
+            lastYearsOrderRevenue: totalLastYearsOrderRevenue,
+            forecastedQuantity: totalForecastedQuantity,
+            forecastedRevenue: totalForecastedRevenue
+          };
         };
         
         // Use recursive aggregation when Child Account is disabled to get true totals across all plants
@@ -5737,16 +5882,6 @@ function App() {
                     existingGrandChild.smAdjustment = (existingGrandChild.smAdjustment || 0) + (grandChild.smAdjustment || 0);
                     existingGrandChild.rsdAdjustment = (existingGrandChild.rsdAdjustment || 0) + (grandChild.rsdAdjustment || 0);
                     existingGrandChild.finalForecast = (existingGrandChild.finalForecast || 0) + (grandChild.finalForecast || 0);
-                    existingGrandChild.salesAgreementQuantity = (existingGrandChild.salesAgreementQuantity || 0) + (grandChild.salesAgreementQuantity || 0);
-                    existingGrandChild.salesAgreementRevenue = (existingGrandChild.salesAgreementRevenue || 0) + (grandChild.salesAgreementRevenue || 0);
-                    existingGrandChild.opportunityQuantity = (existingGrandChild.opportunityQuantity || 0) + (grandChild.opportunityQuantity || 0);
-                    existingGrandChild.opportunityRevenue = (existingGrandChild.opportunityRevenue || 0) + (grandChild.opportunityRevenue || 0);
-                    existingGrandChild.orderQuantity = (existingGrandChild.orderQuantity || 0) + (grandChild.orderQuantity || 0);
-                    existingGrandChild.orderRevenue = (existingGrandChild.orderRevenue || 0) + (grandChild.orderRevenue || 0);
-                    existingGrandChild.lastYearOrderQuantity = (existingGrandChild.lastYearOrderQuantity || 0) + (grandChild.lastYearOrderQuantity || 0);
-                    existingGrandChild.lastYearsOrderRevenue = (existingGrandChild.lastYearsOrderRevenue || 0) + (grandChild.lastYearsOrderRevenue || 0);
-                    existingGrandChild.forecastedQuantity = (existingGrandChild.forecastedQuantity || 0) + (grandChild.forecastedQuantity || 0);
-                    existingGrandChild.forecastedRevenue = (existingGrandChild.forecastedRevenue || 0) + (grandChild.forecastedRevenue || 0);
                   } else if (existingChild.children) {
                     existingChild.children.push(grandChild);
                   }
@@ -5770,16 +5905,6 @@ function App() {
             existingRow.smAdjustment = aggregatedMetrics.smAdjustment;
             existingRow.rsdAdjustment = aggregatedMetrics.rsdAdjustment;
             existingRow.finalForecast = aggregatedMetrics.finalForecast;
-            existingRow.salesAgreementQuantity = aggregatedMetrics.salesAgreementQuantity;
-            existingRow.salesAgreementRevenue = aggregatedMetrics.salesAgreementRevenue;
-            existingRow.opportunityQuantity = aggregatedMetrics.opportunityQuantity;
-            existingRow.opportunityRevenue = aggregatedMetrics.opportunityRevenue;
-            existingRow.orderQuantity = aggregatedMetrics.orderQuantity;
-            existingRow.orderRevenue = aggregatedMetrics.orderRevenue;
-            existingRow.lastYearOrderQuantity = aggregatedMetrics.lastYearOrderQuantity;
-            existingRow.lastYearsOrderRevenue = aggregatedMetrics.lastYearsOrderRevenue;
-            existingRow.forecastedQuantity = aggregatedMetrics.forecastedQuantity;
-            existingRow.forecastedRevenue = aggregatedMetrics.forecastedRevenue;
           }
         }
       } else {
@@ -5844,16 +5969,16 @@ function App() {
                 totalSmAdjustment += childTotals.smAdjustment;
                 totalRsdAdjustment += childTotals.rsdAdjustment;
                 totalFinalForecast += childTotals.finalForecast;
-                totalSalesAgreementQuantity += childTotals.salesAgreementQuantity;
-                totalSalesAgreementRevenue += childTotals.salesAgreementRevenue;
-                totalOpportunityQuantity += childTotals.opportunityQuantity;
-                totalOpportunityRevenue += childTotals.opportunityRevenue;
-                totalOrderQuantity += childTotals.orderQuantity;
-                totalOrderRevenue += childTotals.orderRevenue;
-                totalLastYearOrderQuantity += childTotals.lastYearOrderQuantity;
-                totalLastYearsOrderRevenue += childTotals.lastYearsOrderRevenue;
-                totalForecastedQuantity += childTotals.forecastedQuantity;
-                totalForecastedRevenue += childTotals.forecastedRevenue;
+                totalSalesAgreementQuantity += childTotals.salesAgreementQuantity || 0;
+                totalSalesAgreementRevenue += childTotals.salesAgreementRevenue || 0;
+                totalOpportunityQuantity += childTotals.opportunityQuantity || 0;
+                totalOpportunityRevenue += childTotals.opportunityRevenue || 0;
+                totalOrderQuantity += childTotals.orderQuantity || 0;
+                totalOrderRevenue += childTotals.orderRevenue || 0;
+                totalLastYearOrderQuantity += childTotals.lastYearOrderQuantity || 0;
+                totalLastYearsOrderRevenue += childTotals.lastYearsOrderRevenue || 0;
+                totalForecastedQuantity += childTotals.forecastedQuantity || 0;
+                totalForecastedRevenue += childTotals.forecastedRevenue || 0;
               } else {
                 totalBaseline += child.baseline || 0;
                 totalAmAdjusted += child.amAdjusted || 0;
@@ -5944,16 +6069,6 @@ function App() {
         row.smAdjustment = verifiedMetrics.smAdjustment;
         row.rsdAdjustment = verifiedMetrics.rsdAdjustment;
         row.finalForecast = verifiedMetrics.finalForecast;
-        row.salesAgreementQuantity = verifiedMetrics.salesAgreementQuantity;
-        row.salesAgreementRevenue = verifiedMetrics.salesAgreementRevenue;
-        row.opportunityQuantity = verifiedMetrics.opportunityQuantity;
-        row.opportunityRevenue = verifiedMetrics.opportunityRevenue;
-        row.orderQuantity = verifiedMetrics.orderQuantity;
-        row.orderRevenue = verifiedMetrics.orderRevenue;
-        row.lastYearOrderQuantity = verifiedMetrics.lastYearOrderQuantity;
-        row.lastYearsOrderRevenue = verifiedMetrics.lastYearsOrderRevenue;
-        row.forecastedQuantity = verifiedMetrics.forecastedQuantity;
-        row.forecastedRevenue = verifiedMetrics.forecastedRevenue;
       }
     }
     
@@ -6057,6 +6172,70 @@ function App() {
     return filteredMonthData;
   });
 
+  // Expand parent hierarchy in inner table for Time view - runs after allMonthsData is available
+  useEffect(() => {
+    if (selectedView !== 'Time') return;
+    if (!selectedCell || !selectedCell.hierarchy || selectedCell.time === undefined) return;
+
+    // Get the month data to find the path to the selected cell
+    let monthIndex = null;
+    if (selectedCell.time >= 0 && selectedCell.time <= 11) {
+      monthIndex = selectedCell.time;
+    } else if (selectedCell.time >= -5 && selectedCell.time <= -2) {
+      // Use first month of quarter
+      const quarterMap = { '-2': 0, '-3': 3, '-4': 6, '-5': 9 };
+      monthIndex = quarterMap[String(selectedCell.time)];
+    } else if (selectedCell.time === -1) {
+      monthIndex = 0; // Use January for FY
+    }
+
+    // allMonthsData is now available (defined above)
+    if (monthIndex !== null && allMonthsData && allMonthsData[monthIndex]) {
+      const monthData = allMonthsData[monthIndex];
+      let dataToSearch = null;
+      if (selectedKAMView === 'Account Manager View') {
+        if (monthData[0] && Array.isArray(monthData[0].children)) {
+          dataToSearch = monthData[0].children;
+        }
+      } else {
+        dataToSearch = monthData;
+      }
+
+      if (dataToSearch) {
+        // Find path to selected cell
+        const findPathToRow = (rows, targetId, path = []) => {
+          if (!rows || !Array.isArray(rows)) return null;
+          for (const row of rows) {
+            if (!row) continue;
+            const currentPath = [...path, row.id];
+            if (row.id === targetId) {
+              return currentPath;
+            }
+            if (row.children && row.children.length > 0) {
+              const found = findPathToRow(row.children, targetId, currentPath);
+              if (found) return found;
+            }
+          }
+          return null;
+        };
+
+        const path = findPathToRow(dataToSearch, selectedCell.hierarchy);
+        if (path && path.length > 1) {
+          // Expand all parent rows (all IDs in path except the last one, which is the selected cell itself)
+          const parentIds = path.slice(0, -1);
+          setExpandedRows(prev => {
+            const defaultExpanded = prev['default'] || new Set();
+            const next = new Set(defaultExpanded);
+            parentIds.forEach(id => next.add(id));
+            return { ...prev, 'default': next };
+          });
+        }
+      }
+    }
+    // Note: allMonthsData is computed from other state, so we don't include it in dependencies
+    // It will be recalculated when its dependencies change, and this effect will run when selectedCell changes
+  }, [selectedView, selectedCell?.hierarchy, selectedCell?.time, selectedKAMView]);
+
   // Helper function to find a row in data by id (recursive)
   const findRowById = (dataArray, id) => {
     if (!dataArray || !Array.isArray(dataArray)) return null;
@@ -6086,43 +6265,9 @@ function App() {
   };
 
   // Helper function to get metric value for a row
-  // Handles both [Editable] and [Read-Only] versions of KPIs
   const getMetricValue = (row, metric) => {
-    if (!row || !metric) return undefined;
-    
     switch(metric) {
-      // Revenue and Quantity Metrics
-      case 'Sales Agreement Quantity [Read-Only]':
-      case 'Sales Agreement Quantity [Editable]':
-        return row.salesAgreementQuantity;
-      case 'Sales Agreement Revenue [Read-Only]':
-      case 'Sales Agreement Revenue [Editable]':
-        return row.salesAgreementRevenue;
-      case 'Opportunity Quantity [Read-Only]':
-      case 'Opportunity Quantity [Editable]':
-        return row.opportunityQuantity;
-      case 'Opportunity Revenue [Read-Only]':
-      case 'Opportunity Revenue [Editable]':
-        return row.opportunityRevenue;
-      case 'Order Quantity [Read-Only]':
-      case 'Order Quantity [Editable]':
-        return row.orderQuantity;
-      case 'Order Revenue [Read-Only]':
-      case 'Order Revenue [Editable]':
-        return row.orderRevenue;
-      case 'Last Year Order Quantity [Read-Only]':
-      case 'Last Year Order Quantity [Editable]':
-        return row.lastYearOrderQuantity;
-      case 'Last Years Order Revenue [Read-Only]':
-      case 'Last Years Order Revenue [Editable]':
-        return row.lastYearsOrderRevenue;
-      case 'Forecasted Quantity [Read-Only]':
-      case 'Forecasted Quantity [Editable]':
-        return row.forecastedQuantity;
-      case 'Forecasted Revenue [Read-Only]':
-      case 'Forecasted Revenue [Editable]':
-        return row.forecastedRevenue;
-      // Forecast Adjustments
+      // Forecast Adjustments KPIs
       case 'Baseline (Revenue) [Read-Only]':
         return row.baseline;
       case 'AM Adjusted (Revenue) [Editable]':
@@ -6133,6 +6278,27 @@ function App() {
         return row.rsdAdjustment;
       case 'Final Forecast (Revenue) [Read-Only]':
         return row.finalForecast;
+      // Revenue and Quantity Metrics KPIs
+      case 'Sales Agreement Quantity [Editable]':
+        return row.salesAgreementQuantity;
+      case 'Sales Agreement Revenue [Editable]':
+        return row.salesAgreementRevenue;
+      case 'Opportunity Quantity [Editable]':
+        return row.opportunityQuantity;
+      case 'Opportunity Revenue [Editable]':
+        return row.opportunityRevenue;
+      case 'Order Quantity [Editable]':
+        return row.orderQuantity;
+      case 'Order Revenue [Editable]':
+        return row.orderRevenue;
+      case 'Last Year Order Quantity [Read-Only]':
+        return row.lastYearOrderQuantity;
+      case 'Last Years Order Revenue [Read-Only]':
+        return row.lastYearsOrderRevenue;
+      case 'Forecasted Quantity [Editable]':
+        return row.forecastedQuantity;
+      case 'Forecasted Revenue [Editable]':
+        return row.forecastedRevenue;
       default:
         return undefined;
     }
@@ -7179,17 +7345,6 @@ function App() {
       });
     }
   };
-
-  // Calculate grid columns for Time view - single memoized value for both header and data rows
-  // Moved outside Time view scope to respond to columnWidthMultiplier changes
-  // This ensures header cells and inner table cells always have the same width
-  const timeViewGridColumns = React.useMemo(() => {
-    // Name column (280px) + dynamic number of KPI columns (200px each)
-    // Use kpiOptions.length to determine the number of KPI columns dynamically
-    const numKpiColumns = kpiOptions.length;
-    const baseColumns = `280px ${'200px '.repeat(numKpiColumns).trim()}`;
-    return applyColumnWidthMultiplier(baseColumns);
-  }, [columnWidthMultiplier, kpiOptions.length]);
 
   // Handle filter change
   const handleFilterChange = (columnIdentifier, filterValue, operator = null) => {
@@ -8329,6 +8484,25 @@ function App() {
     return directlyEditedCells.has(key) || savedDirectlyEditedCells.has(key);
   };
 
+  // Helper function to check if a value change is more than 100x the original value
+  const isChangeMoreThan100x = (rowId, kpi, timeIndex) => {
+    const originalValue = getOriginalCellValue(rowId, kpi, timeIndex);
+    const currentValue = getCurrentCellValue(rowId, kpi, timeIndex);
+    
+    if (originalValue === null || originalValue === undefined || originalValue === 0) {
+      return false; // Can't determine if change is 100x if original is 0 or null
+    }
+    
+    if (currentValue === null || currentValue === undefined) {
+      return false;
+    }
+    
+    // Check if current value is more than 100x original (for increases)
+    // or if original is more than 100x current (for decreases, meaning current is less than 1/100 of original)
+    return Math.abs(currentValue) > Math.abs(originalValue) * 100 || 
+           (originalValue !== 0 && Math.abs(originalValue) > Math.abs(currentValue) * 100);
+  };
+
   // Helper function to check if a cell has an adjustment note
   const hasAdjustmentNote = (rowId, kpi, timeIndex) => {
     // Normalize KPI name to match how it's stored in edit history
@@ -8371,7 +8545,14 @@ function App() {
       for (const child of children) {
         if (!child) continue;
         // Check all KPIs for this child at this time
-        for (const kpi of kpiOptions) {
+        const kpis = [
+          'Baseline (Revenue) [Read-Only]',
+          'AM Adjusted (Revenue) [Editable]',
+          'SM Adjustment [Read-Only]',
+          'RSD Adjustment [Read-Only]',
+          'Final Forecast (Revenue) [Read-Only]'
+        ];
+        for (const kpi of kpis) {
           if (isCellEdited(child.id, kpi, timeIndex)) {
             return true;
           }
@@ -8586,44 +8767,19 @@ function App() {
     const row = findRowById(dataToUse, rowId);
     if (!row) return null;
 
-    // Determine which baseline KPI to use based on the current KPI
-    // For Revenue and Quantity Metrics KPIs, use Last Year values as baseline
-    // For Forecast Adjustments KPIs, use Baseline (Revenue) as baseline
-    let baselineKpi = null;
-    const isRevenueQuantityMetric = kpi.includes('Sales Agreement') || 
-                                     kpi.includes('Opportunity') || 
-                                     kpi.includes('Order') || 
-                                     kpi.includes('Forecasted');
-    
-    if (isRevenueQuantityMetric) {
-      // Determine if it's a revenue or quantity metric
-      const isQuantityMetric = kpi.includes('Quantity') && !kpi.includes('Revenue');
-      if (isQuantityMetric) {
-        baselineKpi = 'Last Year Order Quantity [Read-Only]';
-      } else {
-        // Revenue metric
-        baselineKpi = 'Last Years Order Revenue [Read-Only]';
-      }
-    } else {
-      // Forecast Adjustments KPIs
-      baselineKpi = 'Baseline (Revenue) [Read-Only]';
-    }
-
     // Get baseline value - for quarters/FY, we need to sum up the baseline
     let baselineValue = 0;
     if (timeIndex >= 0 && timeIndex <= 11) {
       // Single month
-      const baseline = getEditedValue(rowId, baselineKpi, timeIndex);
-      baselineValue = baseline !== null ? baseline : (getMetricValue(row, baselineKpi) || 0);
+      const baseline = getEditedValue(rowId, 'Baseline (Revenue) [Read-Only]', timeIndex);
+      baselineValue = baseline !== null ? baseline : (row.baseline || 0);
     } else if (timeIndex === -1) {
       // FY - sum all 12 months
       for (let i = 0; i < 12; i++) {
-        const baseline = getEditedValue(rowId, baselineKpi, i);
+        const baseline = getEditedValue(rowId, 'Baseline (Revenue) [Read-Only]', i);
         const monthData = allMonthsData[i];
         const monthRow = monthData ? findRowById(monthData, rowId) : null;
-        if (monthRow) {
-          baselineValue += baseline !== null ? baseline : (getMetricValue(monthRow, baselineKpi) || 0);
-        }
+        baselineValue += baseline !== null ? baseline : (monthRow?.baseline || 0);
       }
     } else if (timeIndex >= -5 && timeIndex <= -2) {
       // Quarter - sum months in quarter
@@ -8631,12 +8787,10 @@ function App() {
                            timeIndex === -3 ? [3, 4, 5] :
                            timeIndex === -4 ? [6, 7, 8] : [9, 10, 11];
       quarterMonths.forEach(monthIdx => {
-        const baseline = getEditedValue(rowId, baselineKpi, monthIdx);
+        const baseline = getEditedValue(rowId, 'Baseline (Revenue) [Read-Only]', monthIdx);
         const monthData = allMonthsData[monthIdx];
         const monthRow = monthData ? findRowById(monthData, rowId) : null;
-        if (monthRow) {
-          baselineValue += baseline !== null ? baseline : (getMetricValue(monthRow, baselineKpi) || 0);
-        }
+        baselineValue += baseline !== null ? baseline : (monthRow?.baseline || 0);
       });
     }
 
@@ -8699,10 +8853,73 @@ function App() {
   };
 
   // Helper function to check if a cell value is outside of range
-  // A cell is considered out of range if AM Adjusted or Final Forecast deviates more than 30% from Baseline
+  // A cell is considered out of range if AM Adjusted or Final Forecast deviates more than 400% from Baseline
+  // Helper function to get the threshold for a KPI
+  const getKPIThreshold = (kpi) => {
+    // Check if this KPI is part of Revenue and Quantity Metrics
+    const revenueQuantityKPIs = [
+      'Sales Agreement Quantity [Editable]',
+      'Sales Agreement Revenue [Editable]',
+      'Opportunity Quantity [Editable]',
+      'Opportunity Revenue [Editable]',
+      'Order Quantity [Editable]',
+      'Order Revenue [Editable]',
+      'Last Year Order Quantity [Read-Only]',
+      'Last Years Order Revenue [Read-Only]',
+      'Forecasted Quantity [Editable]',
+      'Forecasted Revenue [Editable]'
+    ];
+    
+    // If Revenue and Quantity Metrics is selected and this KPI is in that set, use 10000% threshold (100x)
+    if (selectedKPISet === 'Revenue and Quantity Metrics' && revenueQuantityKPIs.includes(kpi)) {
+      return 10000;
+    }
+    
+    // Only Final Forecast Revenue uses 400% threshold
+    if (kpi === 'Final Forecast (Revenue) [Read-Only]') {
+      return 400;
+    }
+    // All other KPIs use 30% threshold
+    return 30;
+  };
+
   const isCellOutOfRange = (rowId, kpi, timeIndex, monthData) => {
     const deviation = getCellDeviation(rowId, kpi, timeIndex, monthData);
-    return deviation !== null && Math.abs(deviation) > 30;
+    if (deviation === null) return false;
+    const threshold = getKPIThreshold(kpi);
+    return Math.abs(deviation) > threshold;
+  };
+
+  // Helper function to check if a badge should be shown for a KPI
+  // For Revenue and Quantity Metrics: only show if valueChanged OR deviation > 10000%
+  // For other KPIs: show if valueChanged OR deviation > threshold
+  const shouldShowBadge = (kpi, valueChanged, deviation) => {
+    if (deviation === null) return valueChanged;
+    
+    // Check if this is a revenue/quantity metric KPI
+    const revenueQuantityKPIs = [
+      'Sales Agreement Quantity [Editable]',
+      'Sales Agreement Revenue [Editable]',
+      'Opportunity Quantity [Editable]',
+      'Opportunity Revenue [Editable]',
+      'Order Quantity [Editable]',
+      'Order Revenue [Editable]',
+      'Last Year Order Quantity [Read-Only]',
+      'Last Years Order Revenue [Read-Only]',
+      'Forecasted Quantity [Editable]',
+      'Forecasted Revenue [Editable]'
+    ];
+    
+    const isRevenueQuantityKPI = revenueQuantityKPIs.includes(kpi);
+    
+    // For revenue/quantity metrics when selected: only show if valueChanged OR deviation > 10000%
+    if (isRevenueQuantityKPI && selectedKPISet === 'Revenue and Quantity Metrics') {
+      return valueChanged || Math.abs(deviation) > 10000;
+    }
+    
+    // For other KPIs: show if valueChanged OR deviation > threshold
+    const threshold = getKPIThreshold(kpi);
+    return valueChanged || Math.abs(deviation) > threshold;
   };
 
   // Helper function to set edited value (without saving to undo stack)
@@ -8743,8 +8960,11 @@ function App() {
       };
       const rowData = findRowById(allMonthsData[monthIndex], rowId);
       if (rowData) {
-        // Use getMetricValue to handle all KPIs including Revenue and Quantity Metrics
-        return getMetricValue(rowData, kpi);
+        if (kpi === 'AM Adjusted (Revenue) [Editable]') return rowData.amAdjusted || 0;
+        if (kpi === 'Baseline (Revenue) [Read-Only]') return rowData.baseline || 0;
+        if (kpi === 'SM Adjustment [Read-Only]') return rowData.smAdjustment || 0;
+        if (kpi === 'RSD Adjustment [Read-Only]') return rowData.rsdAdjustment || 0;
+        if (kpi === 'Final Forecast (Revenue) [Read-Only]') return rowData.finalForecast || 0;
       }
     }
     return null;
@@ -8763,9 +8983,184 @@ function App() {
         rowId, 
         kpi, 
         timeIndex,
-        oldValue: oldValue !== null ? oldValue : 0, 
-        newValue 
+        oldValue: oldValue !== null ? Math.round(oldValue) : 0, 
+        newValue: Math.round(newValue)
       });
+    }
+    
+    // Handle revenue/quantity dependencies
+    // Sales Agreement Quantity <-> Sales Agreement Revenue
+    if (kpi === 'Sales Agreement Quantity [Editable]') {
+      // Calculate unit price from current revenue/quantity, then apply to new quantity
+      const currentRevenue = getCurrentCellValue(rowId, 'Sales Agreement Revenue [Editable]', timeIndex) || 0;
+      const currentQuantity = oldValue || 0;
+      const unitPrice = currentQuantity > 0 ? currentRevenue / currentQuantity : 0;
+      const newRevenue = newValue * unitPrice;
+      const revenueKey = getCellKey(rowId, 'Sales Agreement Revenue [Editable]', timeIndex);
+      const currentRevenueValue = getCurrentCellValue(rowId, 'Sales Agreement Revenue [Editable]', timeIndex);
+      if (currentRevenueValue !== newRevenue) {
+        changes.push({
+          key: revenueKey,
+          rowId,
+          kpi: 'Sales Agreement Revenue [Editable]',
+          timeIndex,
+          oldValue: currentRevenueValue !== null ? currentRevenueValue : 0,
+          newValue: newRevenue
+        });
+      }
+    } else if (kpi === 'Sales Agreement Revenue [Editable]') {
+      // Calculate unit price from current revenue/quantity, then apply to new revenue
+      const currentQuantity = getCurrentCellValue(rowId, 'Sales Agreement Quantity [Editable]', timeIndex) || 0;
+      const currentRevenue = oldValue || 0;
+      const unitPrice = currentRevenue > 0 ? currentQuantity / currentRevenue : 0;
+      const newQuantity = newValue * unitPrice;
+      const quantityKey = getCellKey(rowId, 'Sales Agreement Quantity [Editable]', timeIndex);
+      const currentQuantityValue = getCurrentCellValue(rowId, 'Sales Agreement Quantity [Editable]', timeIndex);
+      if (currentQuantityValue !== newQuantity) {
+        changes.push({
+          key: quantityKey,
+          rowId,
+          kpi: 'Sales Agreement Quantity [Editable]',
+          timeIndex,
+          oldValue: currentQuantityValue !== null ? currentQuantityValue : 0,
+          newValue: newQuantity
+        });
+      }
+    }
+    
+    // Opportunity Quantity <-> Opportunity Revenue
+    if (kpi === 'Opportunity Quantity [Editable]') {
+      const currentRevenue = getCurrentCellValue(rowId, 'Opportunity Revenue [Editable]', timeIndex) || 0;
+      const currentQuantity = oldValue || 0;
+      const unitPrice = currentQuantity > 0 ? currentRevenue / currentQuantity : 0;
+      const newRevenue = newValue * unitPrice;
+      const revenueKey = getCellKey(rowId, 'Opportunity Revenue [Editable]', timeIndex);
+      const currentRevenueValue = getCurrentCellValue(rowId, 'Opportunity Revenue [Editable]', timeIndex);
+      if (currentRevenueValue !== newRevenue) {
+        changes.push({
+          key: revenueKey,
+          rowId,
+          kpi: 'Opportunity Revenue [Editable]',
+          timeIndex,
+          oldValue: currentRevenueValue !== null ? currentRevenueValue : 0,
+          newValue: newRevenue
+        });
+      }
+    } else if (kpi === 'Opportunity Revenue [Editable]') {
+      const currentQuantity = getCurrentCellValue(rowId, 'Opportunity Quantity [Editable]', timeIndex) || 0;
+      const currentRevenue = oldValue || 0;
+      const unitPrice = currentRevenue > 0 ? currentQuantity / currentRevenue : 0;
+      const newQuantity = newValue * unitPrice;
+      const quantityKey = getCellKey(rowId, 'Opportunity Quantity [Editable]', timeIndex);
+      const currentQuantityValue = getCurrentCellValue(rowId, 'Opportunity Quantity [Editable]', timeIndex);
+      if (currentQuantityValue !== newQuantity) {
+        changes.push({
+          key: quantityKey,
+          rowId,
+          kpi: 'Opportunity Quantity [Editable]',
+          timeIndex,
+          oldValue: currentQuantityValue !== null ? currentQuantityValue : 0,
+          newValue: newQuantity
+        });
+      }
+    }
+    
+    // Order Quantity <-> Order Revenue
+    if (kpi === 'Order Quantity [Editable]') {
+      const currentRevenue = getCurrentCellValue(rowId, 'Order Revenue [Editable]', timeIndex) || 0;
+      const currentQuantity = oldValue || 0;
+      const unitPrice = currentQuantity > 0 ? currentRevenue / currentQuantity : 0;
+      const newRevenue = newValue * unitPrice;
+      const revenueKey = getCellKey(rowId, 'Order Revenue [Editable]', timeIndex);
+      const currentRevenueValue = getCurrentCellValue(rowId, 'Order Revenue [Editable]', timeIndex);
+      if (currentRevenueValue !== newRevenue) {
+        changes.push({
+          key: revenueKey,
+          rowId,
+          kpi: 'Order Revenue [Editable]',
+          timeIndex,
+          oldValue: currentRevenueValue !== null ? currentRevenueValue : 0,
+          newValue: newRevenue
+        });
+      }
+    } else if (kpi === 'Order Revenue [Editable]') {
+      const currentQuantity = getCurrentCellValue(rowId, 'Order Quantity [Editable]', timeIndex) || 0;
+      const currentRevenue = oldValue || 0;
+      const unitPrice = currentRevenue > 0 ? currentQuantity / currentRevenue : 0;
+      const newQuantity = newValue * unitPrice;
+      const quantityKey = getCellKey(rowId, 'Order Quantity [Editable]', timeIndex);
+      const currentQuantityValue = getCurrentCellValue(rowId, 'Order Quantity [Editable]', timeIndex);
+      if (currentQuantityValue !== newQuantity) {
+        changes.push({
+          key: quantityKey,
+          rowId,
+          kpi: 'Order Quantity [Editable]',
+          timeIndex,
+          oldValue: currentQuantityValue !== null ? currentQuantityValue : 0,
+          newValue: newQuantity
+        });
+      }
+    }
+    
+    // Forecasted Quantity <-> Forecasted Revenue (based on other quantities/revenues)
+    if (kpi === 'Forecasted Quantity [Editable]') {
+      // Calculate average unit price from other revenue/quantity pairs
+      const salesAgreementQty = getCurrentCellValue(rowId, 'Sales Agreement Quantity [Editable]', timeIndex) || 0;
+      const salesAgreementRev = getCurrentCellValue(rowId, 'Sales Agreement Revenue [Editable]', timeIndex) || 0;
+      const opportunityQty = getCurrentCellValue(rowId, 'Opportunity Quantity [Editable]', timeIndex) || 0;
+      const opportunityRev = getCurrentCellValue(rowId, 'Opportunity Revenue [Editable]', timeIndex) || 0;
+      const orderQty = getCurrentCellValue(rowId, 'Order Quantity [Editable]', timeIndex) || 0;
+      const orderRev = getCurrentCellValue(rowId, 'Order Revenue [Editable]', timeIndex) || 0;
+      
+      let totalRevenue = 0;
+      let totalQuantity = 0;
+      if (salesAgreementQty > 0) { totalRevenue += salesAgreementRev; totalQuantity += salesAgreementQty; }
+      if (opportunityQty > 0) { totalRevenue += opportunityRev; totalQuantity += opportunityQty; }
+      if (orderQty > 0) { totalRevenue += orderRev; totalQuantity += orderQty; }
+      
+      const avgUnitPrice = totalQuantity > 0 ? totalRevenue / totalQuantity : 0;
+      const newRevenue = newValue * avgUnitPrice;
+      const revenueKey = getCellKey(rowId, 'Forecasted Revenue [Editable]', timeIndex);
+      const currentRevenueValue = getCurrentCellValue(rowId, 'Forecasted Revenue [Editable]', timeIndex);
+      if (currentRevenueValue !== newRevenue && avgUnitPrice > 0) {
+        changes.push({
+          key: revenueKey,
+          rowId,
+          kpi: 'Forecasted Revenue [Editable]',
+          timeIndex,
+          oldValue: currentRevenueValue !== null ? currentRevenueValue : 0,
+          newValue: newRevenue
+        });
+      }
+    } else if (kpi === 'Forecasted Revenue [Editable]') {
+      // Calculate average unit price from other revenue/quantity pairs
+      const salesAgreementQty = getCurrentCellValue(rowId, 'Sales Agreement Quantity [Editable]', timeIndex) || 0;
+      const salesAgreementRev = getCurrentCellValue(rowId, 'Sales Agreement Revenue [Editable]', timeIndex) || 0;
+      const opportunityQty = getCurrentCellValue(rowId, 'Opportunity Quantity [Editable]', timeIndex) || 0;
+      const opportunityRev = getCurrentCellValue(rowId, 'Opportunity Revenue [Editable]', timeIndex) || 0;
+      const orderQty = getCurrentCellValue(rowId, 'Order Quantity [Editable]', timeIndex) || 0;
+      const orderRev = getCurrentCellValue(rowId, 'Order Revenue [Editable]', timeIndex) || 0;
+      
+      let totalRevenue = 0;
+      let totalQuantity = 0;
+      if (salesAgreementQty > 0) { totalRevenue += salesAgreementRev; totalQuantity += salesAgreementQty; }
+      if (opportunityQty > 0) { totalRevenue += opportunityRev; totalQuantity += opportunityQty; }
+      if (orderQty > 0) { totalRevenue += orderRev; totalQuantity += orderQty; }
+      
+      const avgUnitPrice = totalQuantity > 0 ? totalRevenue / totalQuantity : 0;
+      const newQuantity = avgUnitPrice > 0 ? newValue / avgUnitPrice : 0;
+      const quantityKey = getCellKey(rowId, 'Forecasted Quantity [Editable]', timeIndex);
+      const currentQuantityValue = getCurrentCellValue(rowId, 'Forecasted Quantity [Editable]', timeIndex);
+      if (currentQuantityValue !== newQuantity && avgUnitPrice > 0) {
+        changes.push({
+          key: quantityKey,
+          rowId,
+          kpi: 'Forecasted Quantity [Editable]',
+          timeIndex,
+          oldValue: currentQuantityValue !== null ? currentQuantityValue : 0,
+          newValue: newQuantity
+        });
+      }
     }
     
     // If editing AM Adjusted, collect Final Forecast and parent aggregate changes
@@ -8874,7 +9269,7 @@ function App() {
             descendants.forEach(descId => {
               const descCurrentValue = getCurrentCellValue(descId, kpi, monthIndex) || 0;
               const descProportion = Math.abs(descCurrentValue) / totalDescendantValue;
-              const descNewValue = descCurrentValue + (changeAmount * descProportion);
+              const descNewValue = Math.round(descCurrentValue + (changeAmount * descProportion));
               
               // Add change for this descendant
               const descKey = getCellKey(descId, kpi, monthIndex);
@@ -8885,25 +9280,25 @@ function App() {
                   rowId: descId,
                   kpi,
                   timeIndex: monthIndex,
-                  oldValue: descOldValue !== null ? descOldValue : 0,
+                  oldValue: descOldValue !== null ? Math.round(descOldValue) : 0,
                   newValue: descNewValue
                 });
               }
             });
           } else if (changeAmount !== 0 && descendants.length > 0 && totalDescendantValue === 0) {
             // If all descendants are zero, distribute change equally
-            const equalChange = changeAmount / descendants.length;
+            const equalChange = Math.round(changeAmount / descendants.length);
             descendants.forEach(descId => {
               const descKey = getCellKey(descId, kpi, monthIndex);
               const descOldValue = getCurrentCellValue(descId, kpi, monthIndex) || 0;
-              const descNewValue = descOldValue + equalChange;
+              const descNewValue = Math.round(descOldValue + equalChange);
               
               changes.push({
                 key: descKey,
                 rowId: descId,
                 kpi,
                 timeIndex: monthIndex,
-                oldValue: descOldValue,
+                oldValue: Math.round(descOldValue),
                 newValue: descNewValue
               });
             });
@@ -8948,14 +9343,99 @@ function App() {
         if (oldFinalForecast !== newFinalForecast) {
           const finalForecastKey = getCellKey(rowId, 'Final Forecast (Revenue) [Read-Only]', monthIndex);
           const currentFinalForecast = getCurrentCellValue(rowId, 'Final Forecast (Revenue) [Read-Only]', monthIndex);
+          const roundedNewFinalForecast = Math.round(newFinalForecast);
+          const roundedOldFinalForecast = Math.round(currentFinalForecast !== null ? currentFinalForecast : oldFinalForecast);
+          
           changes.push({ 
             key: finalForecastKey,
             rowId,
             kpi: 'Final Forecast (Revenue) [Read-Only]',
             timeIndex: monthIndex,
-            oldValue: currentFinalForecast !== null ? currentFinalForecast : oldFinalForecast, 
-            newValue: newFinalForecast 
+            oldValue: roundedOldFinalForecast, 
+            newValue: roundedNewFinalForecast 
           });
+          
+          // ROLL-DOWN: If the edited cell is a parent (has children), roll down Final Forecast change to all descendants
+          const findRowById = (dataArray, id) => {
+            if (!dataArray || !Array.isArray(dataArray)) return null;
+            for (const row of dataArray) {
+              if (row && row.id === id) return row;
+              if (row && row.children && Array.isArray(row.children)) {
+                const found = findRowById(row.children, id);
+                if (found) return found;
+              }
+            }
+            return null;
+          };
+          
+          const editedRow = findRowById(monthData, rowId);
+          
+          if (editedRow && editedRow.children && Array.isArray(editedRow.children) && editedRow.children.length > 0) {
+            // Recursively find all descendant row IDs
+            const findAllDescendants = (row) => {
+              const descendants = [];
+              if (row.children && Array.isArray(row.children)) {
+                for (const child of row.children) {
+                  descendants.push(child.id);
+                  if (child.children && Array.isArray(child.children)) {
+                    descendants.push(...findAllDescendants(child));
+                  }
+                }
+              }
+              return descendants;
+            };
+            
+            const descendants = findAllDescendants(editedRow);
+            
+            // Calculate the Final Forecast change amount
+            const finalForecastChangeAmount = roundedNewFinalForecast - roundedOldFinalForecast;
+            
+            // For each descendant, calculate the proportional change
+            const totalDescendantFinalForecast = descendants.reduce((sum, descId) => {
+              const descValue = getCurrentCellValue(descId, 'Final Forecast (Revenue) [Read-Only]', monthIndex) || 0;
+              return sum + Math.abs(descValue);
+            }, 0);
+            
+            // If there's a change and descendants exist, distribute it proportionally
+            if (finalForecastChangeAmount !== 0 && totalDescendantFinalForecast > 0 && descendants.length > 0) {
+              descendants.forEach(descId => {
+                const descCurrentFinalForecast = getCurrentCellValue(descId, 'Final Forecast (Revenue) [Read-Only]', monthIndex) || 0;
+                const descProportion = Math.abs(descCurrentFinalForecast) / totalDescendantFinalForecast;
+                const descNewFinalForecast = Math.round(descCurrentFinalForecast + (finalForecastChangeAmount * descProportion));
+                
+                // Add change for this descendant
+                const descKey = getCellKey(descId, 'Final Forecast (Revenue) [Read-Only]', monthIndex);
+                const descOldFinalForecast = getCurrentCellValue(descId, 'Final Forecast (Revenue) [Read-Only]', monthIndex);
+                if (descOldFinalForecast !== descNewFinalForecast) {
+                  changes.push({
+                    key: descKey,
+                    rowId: descId,
+                    kpi: 'Final Forecast (Revenue) [Read-Only]',
+                    timeIndex: monthIndex,
+                    oldValue: descOldFinalForecast !== null ? Math.round(descOldFinalForecast) : 0,
+                    newValue: descNewFinalForecast
+                  });
+                }
+              });
+            } else if (finalForecastChangeAmount !== 0 && descendants.length > 0 && totalDescendantFinalForecast === 0) {
+              // If all descendants are zero, distribute change equally
+              const equalChange = Math.round(finalForecastChangeAmount / descendants.length);
+              descendants.forEach(descId => {
+                const descKey = getCellKey(descId, 'Final Forecast (Revenue) [Read-Only]', monthIndex);
+                const descOldFinalForecast = getCurrentCellValue(descId, 'Final Forecast (Revenue) [Read-Only]', monthIndex) || 0;
+                const descNewFinalForecast = Math.round(descOldFinalForecast + equalChange);
+                
+                changes.push({
+                  key: descKey,
+                  rowId: descId,
+                  kpi: 'Final Forecast (Revenue) [Read-Only]',
+                  timeIndex: monthIndex,
+                  oldValue: Math.round(descOldFinalForecast),
+                  newValue: descNewFinalForecast
+                });
+              });
+            }
+          }
         }
         
         // Find and collect parent aggregate changes
@@ -9308,6 +9788,140 @@ function App() {
       });
     }
     
+    // If editing Final Forecast (Revenue), propagate changes from parent to children
+    if (kpi === 'Final Forecast (Revenue) [Read-Only]') {
+      // Determine which months need recalculation
+      let monthsToRecalculate = [];
+      
+      if (timeIndex >= 0 && timeIndex <= 11) {
+        monthsToRecalculate = [timeIndex];
+      } else if (timeIndex === -1) {
+        monthsToRecalculate = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+      } else if (timeIndex === -2) {
+        monthsToRecalculate = [0, 1, 2];
+      } else if (timeIndex === -3) {
+        monthsToRecalculate = [3, 4, 5];
+      } else if (timeIndex === -4) {
+        monthsToRecalculate = [6, 7, 8];
+      } else if (timeIndex === -5) {
+        monthsToRecalculate = [9, 10, 11];
+      }
+      
+      // ROLL-DOWN: If editing a parent/ancestor cell (has children), disaggregate to all descendants
+      monthsToRecalculate.forEach(monthIndex => {
+        // Get monthData with the same structure as displayed data
+        let monthData = null;
+        
+        if (allMonthsData && allMonthsData[monthIndex]) {
+          monthData = allMonthsData[monthIndex];
+        } else {
+          // Generate data with the correct structure
+          const month = months[monthIndex];
+          const rawMonthData = generateDataForMonth(month, selectedKAMView === 'Account Director View');
+          
+          let processedData = rawMonthData;
+          
+          if (groupedComboboxValue) {
+            processedData = transformDataByHierarchyOrder(processedData, groupedComboboxValue);
+          }
+          
+          if (groupedComboboxValue) {
+            const selectedLevelsSetForMonth = selectedLevels instanceof Set ? selectedLevels : new Set(selectedLevels || []);
+            processedData = filterDataByLevels(processedData, selectedLevelsSetForMonth, groupedComboboxValue);
+          }
+          
+          if (selectedKAMView === 'Account Manager View') {
+            processedData = removeAggregateRows(processedData);
+          }
+          
+          monthData = processedData;
+        }
+        
+        // Helper to find row in data structure
+        const findRowById = (dataArray, id) => {
+          if (!dataArray || !Array.isArray(dataArray)) return null;
+          for (const row of dataArray) {
+            if (row && row.id === id) return row;
+            if (row && row.children && Array.isArray(row.children)) {
+              const found = findRowById(row.children, id);
+              if (found) return found;
+            }
+          }
+          return null;
+        };
+        
+        const editedRow = findRowById(monthData, rowId);
+        
+        // If the edited cell is a parent (has children), roll down the change to all descendants
+        if (editedRow && editedRow.children && Array.isArray(editedRow.children) && editedRow.children.length > 0) {
+          // Recursively find all descendant row IDs
+          const findAllDescendants = (row) => {
+            const descendants = [];
+            if (row.children && Array.isArray(row.children)) {
+              for (const child of row.children) {
+                descendants.push(child.id);
+                if (child.children && Array.isArray(child.children)) {
+                  descendants.push(...findAllDescendants(child));
+                }
+              }
+            }
+            return descendants;
+          };
+          
+          const descendants = findAllDescendants(editedRow);
+          
+          // For each descendant, calculate the proportional change
+          const totalDescendantValue = descendants.reduce((sum, descId) => {
+            const descValue = getCurrentCellValue(descId, kpi, monthIndex) || 0;
+            return sum + Math.abs(descValue);
+          }, 0);
+          
+          const oldParentValue = getCurrentCellValue(rowId, kpi, timeIndex) || 0;
+          const changeAmount = newValue - oldParentValue;
+          
+          // If there's a change and descendants exist, distribute it proportionally
+          if (changeAmount !== 0 && totalDescendantValue > 0 && descendants.length > 0) {
+            descendants.forEach(descId => {
+              const descCurrentValue = getCurrentCellValue(descId, kpi, monthIndex) || 0;
+              const descProportion = Math.abs(descCurrentValue) / totalDescendantValue;
+              const descNewValue = descCurrentValue + (changeAmount * descProportion);
+              
+              // Add change for this descendant
+              const descKey = getCellKey(descId, kpi, monthIndex);
+              const descOldValue = getCurrentCellValue(descId, kpi, monthIndex);
+              if (descOldValue !== descNewValue) {
+                changes.push({
+                  key: descKey,
+                  rowId: descId,
+                  kpi,
+                  timeIndex: monthIndex,
+                  oldValue: descOldValue !== null ? descOldValue : 0,
+                  newValue: descNewValue
+                });
+              }
+            });
+          } else if (changeAmount !== 0 && descendants.length > 0 && totalDescendantValue === 0) {
+            // If all descendants are zero, distribute change equally
+            const equalChange = changeAmount / descendants.length;
+            descendants.forEach(descId => {
+              const descKey = getCellKey(descId, kpi, monthIndex);
+              const descOldValue = getCurrentCellValue(descId, kpi, monthIndex) || 0;
+              const descNewValue = descOldValue + equalChange;
+              
+              changes.push({
+                key: descKey,
+                rowId: descId,
+                kpi,
+                timeIndex: monthIndex,
+                oldValue: descOldValue,
+                newValue: descNewValue
+              });
+            });
+          }
+        }
+      });
+    }
+    
     return changes;
   };
   
@@ -9350,10 +9964,11 @@ function App() {
             };
             const rowData = findRowById(allMonthsData[i], rowId);
             if (rowData) {
-              const value = getMetricValue(rowData, kpi);
-              if (value !== undefined && value !== null) {
-                total += value || 0;
-              }
+              if (kpi === 'AM Adjusted (Revenue) [Editable]') total += (rowData.amAdjusted || 0);
+              else if (kpi === 'Baseline (Revenue) [Read-Only]') total += (rowData.baseline || 0);
+              else if (kpi === 'SM Adjustment [Read-Only]') total += (rowData.smAdjustment || 0);
+              else if (kpi === 'RSD Adjustment [Read-Only]') total += (rowData.rsdAdjustment || 0);
+              else if (kpi === 'Final Forecast (Revenue) [Read-Only]') total += (rowData.finalForecast || 0);
             }
           }
         }
@@ -9382,10 +9997,11 @@ function App() {
             };
             const rowData = findRowById(allMonthsData[monthIdx], rowId);
             if (rowData) {
-              const value = getMetricValue(rowData, kpi);
-              if (value !== undefined && value !== null) {
-                total += value || 0;
-              }
+              if (kpi === 'AM Adjusted (Revenue) [Editable]') total += (rowData.amAdjusted || 0);
+              else if (kpi === 'Baseline (Revenue) [Read-Only]') total += (rowData.baseline || 0);
+              else if (kpi === 'SM Adjustment [Read-Only]') total += (rowData.smAdjustment || 0);
+              else if (kpi === 'RSD Adjustment [Read-Only]') total += (rowData.rsdAdjustment || 0);
+              else if (kpi === 'Final Forecast (Revenue) [Read-Only]') total += (rowData.finalForecast || 0);
             }
           }
         });
@@ -9408,7 +10024,11 @@ function App() {
         };
         const rowData = findRowById(allMonthsData[monthIndex], rowId);
         if (rowData) {
-          return getMetricValue(rowData, kpi);
+          if (kpi === 'AM Adjusted (Revenue) [Editable]') return rowData.amAdjusted || 0;
+          if (kpi === 'Baseline (Revenue) [Read-Only]') return rowData.baseline || 0;
+          if (kpi === 'SM Adjustment [Read-Only]') return rowData.smAdjustment || 0;
+          if (kpi === 'RSD Adjustment [Read-Only]') return rowData.rsdAdjustment || 0;
+          if (kpi === 'Final Forecast (Revenue) [Read-Only]') return rowData.finalForecast || 0;
         }
       }
     }
@@ -10406,8 +11026,14 @@ function App() {
         allRows.push({ id: 'total-aggregate', name: 'Total Aggregate' });
       }
 
-      // Use dynamic kpiOptions based on selectedKPISet
-      const kpis = kpiOptions;
+      // Define KPIs
+      const kpis = [
+        'Baseline (Revenue) [Read-Only]',
+        'AM Adjusted (Revenue) [Editable]',
+        'SM Adjustment [Read-Only]',
+        'RSD Adjustment [Read-Only]',
+        'Final Forecast (Revenue) [Read-Only]'
+      ];
 
       // Get available time periods based on view
       const getAvailableTimePeriods = () => {
@@ -11282,10 +11908,11 @@ function App() {
           });
           
           // Format based on metric type
+          const roundedTotal = Math.round(total);
           if (kpiToUse === 'SM Adjustment [Read-Only]' || kpiToUse === 'RSD Adjustment [Read-Only]') {
-            return total !== 0 ? (total > 0 ? `+$${total.toLocaleString()}` : `-$${Math.abs(total).toLocaleString()}`) : '-';
+            return roundedTotal !== 0 ? (roundedTotal > 0 ? `+$${roundedTotal.toLocaleString()}` : `-$${Math.abs(roundedTotal).toLocaleString()}`) : '-';
           }
-          return total !== 0 ? `$${total.toLocaleString()}` : '-';
+          return roundedTotal !== 0 ? `$${roundedTotal.toLocaleString()}` : '-';
         }
         
         // For regular rows - check for edited values when aggregating
@@ -11462,8 +12089,11 @@ function App() {
       const calculateGridColumns = () => {
         // For "Specific Time" or "Time" view (nested tables in Time view), use KPI columns
         if (view === 'Specific Time' || view === 'Time') {
-          // Use the shared memoized value that responds to columnWidthMultiplier changes
-          return timeViewGridColumns;
+          // Name column (280px) + 5 KPI columns (200px each) = 6 columns total
+          // Cells: Name, Baseline, AM Adjusted, SM Adjustment, RSD Adjustment, Final Forecast
+          // Use explicit format to ensure exactly 6 columns
+          const baseColumns = '280px 200px 200px 200px 200px 200px';
+          return applyColumnWidthMultiplier(baseColumns);
         }
         
         let columns;
@@ -12119,7 +12749,31 @@ function App() {
                   data-selected-time="-1"
                   data-selected-kpi={kpiToUse}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  {!isEditable && (
+                    <div style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      backgroundImage: `
+                        linear-gradient(
+                          45deg,
+                          transparent 0%,
+                          transparent calc(50% - 0.5px),
+                          rgba(0, 0, 0, 0.08) calc(50% - 0.5px),
+                          rgba(0, 0, 0, 0.08) calc(50% + 0.5px),
+                          transparent calc(50% + 0.5px),
+                          transparent 100%
+                        )
+                      `,
+                      backgroundSize: '7px 7px',
+                      opacity: 1,
+                      pointerEvents: 'none',
+                      zIndex: 1
+                    }} title="Read-only" />
+                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', position: 'relative', zIndex: 2 }}>
                   {isDirectlyEdited && (
                     <div style={{
                       width: '14px',
@@ -12132,21 +12786,6 @@ function App() {
                       <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M8 8C9.38071 8 10.5 6.88071 10.5 5.5C10.5 4.11929 9.38071 3 8 3C6.61929 3 5.5 4.11929 5.5 5.5C5.5 6.88071 6.61929 8 8 8Z" fill="#03234d"/>
                         <path d="M8 9.5C5.51472 9.5 3.5 11.5147 3.5 14V15.5H12.5V14C12.5 11.5147 10.4853 9.5 8 9.5Z" fill="#03234d"/>
-                      </svg>
-                    </div>
-                  )}
-                  {!isEditable && (
-                    <div style={{
-                      width: '12px',
-                      height: '12px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0
-                    }} title="Read-only">
-                      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M12.5 7H11.5V5C11.5 2.51472 9.48528 0.5 7 0.5C4.51472 0.5 2.5 2.51472 2.5 5V7H1.5C0.671573 7 0 7.67157 0 8.5V14.5C0 15.3284 0.671573 16 1.5 16H12.5C13.3284 16 14 15.3284 14 14.5V8.5C14 7.67157 13.3284 7 12.5 7ZM4 5C4 3.34315 5.34315 2 7 2C8.65685 2 10 3.34315 10 5V7H4V5Z" fill="#706e6b"/>
-                        <rect x="1.5" y="8" width="11" height="7.5" rx="0.5" fill="#706e6b"/>
                       </svg>
                     </div>
                   )}
@@ -12164,7 +12803,7 @@ function App() {
                       zIndex: 5
                     }} />
                   )}
-                  {(valueChanged || Math.abs(deviation) > 30) && deviation !== null && 
+                  {shouldShowBadge(kpiToUse, valueChanged, deviation) && deviation !== null && 
                    kpiToUse !== 'Baseline (Revenue) [Read-Only]' && 
                    kpiToUse !== 'SM Adjustment [Read-Only]' && 
                    kpiToUse !== 'RSD Adjustment [Read-Only]' && (
@@ -12172,9 +12811,18 @@ function App() {
                       position: 'absolute',
                       top: '2px',
                       right: '2px',
-                      backgroundColor: (kpiToUse === 'SM Adjustment [Read-Only]' || kpiToUse === 'RSD Adjustment [Read-Only]') 
-                        ? '#0b5cab' 
-                        : (Math.abs(deviation) > 30 ? '#FF6B6B' : (valueChanged ? '#0b5cab' : '#FF6B6B')),
+                      backgroundColor: (() => {
+                        if (kpiToUse === 'SM Adjustment [Read-Only]' || kpiToUse === 'RSD Adjustment [Read-Only]') {
+                          return '#0b5cab';
+                        }
+                        // Check if change is more than 100x original value
+                        const changeIs100x = isChangeMoreThan100x(row.id, kpiToUse, -1);
+                        if (changeIs100x) {
+                          return '#FF6B6B'; // Red badge for 100x+ changes
+                        }
+                        // Otherwise use standard logic
+                        return Math.abs(deviation) > getKPIThreshold(kpiToUse) ? '#FF6B6B' : (valueChanged ? '#0b5cab' : '#FF6B6B');
+                      })(),
                       color: '#ffffff',
                       fontSize: '9px',
                       fontWeight: '600',
@@ -12237,6 +12885,30 @@ function App() {
                 data-selected-time={quarter.time}
                   data-selected-kpi={kpiToUse}
                 >
+                  {!isEditable && (
+                    <div style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      backgroundImage: `
+                        linear-gradient(
+                          45deg,
+                          transparent 0%,
+                          transparent calc(50% - 0.5px),
+                          rgba(0, 0, 0, 0.08) calc(50% - 0.5px),
+                          rgba(0, 0, 0, 0.08) calc(50% + 0.5px),
+                          transparent calc(50% + 0.5px),
+                          transparent 100%
+                        )
+                      `,
+                      backgroundSize: '7px 7px',
+                      opacity: 1,
+                      pointerEvents: 'none',
+                      zIndex: 1
+                    }} title="Read-only" />
+                  )}
                   {hasAdjustmentNote(row.id, kpiToUse, quarter.time) && (
                     <div style={{
                       position: 'absolute',
@@ -12249,7 +12921,7 @@ function App() {
                       zIndex: 5
                     }} />
                   )}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end', position: 'relative', zIndex: 2 }}>
                     {isDirectlyEdited && (
                       <div style={{
                       width: '14px',
@@ -12262,27 +12934,12 @@ function App() {
                       <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M8 8C9.38071 8 10.5 6.88071 10.5 5.5C10.5 4.11929 9.38071 3 8 3C6.61929 3 5.5 4.11929 5.5 5.5C5.5 6.88071 6.61929 8 8 8Z" fill="#03234d"/>
                         <path d="M8 9.5C5.51472 9.5 3.5 11.5147 3.5 14V15.5H12.5V14C12.5 11.5147 10.4853 9.5 8 9.5Z" fill="#03234d"/>
-                      </svg>
-                    </div>
-                  )}
-                    {!isEditable && (
-                    <div style={{
-                        width: '12px',
-                        height: '12px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0
-                      }} title="Read-only">
-                        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M12.5 7H11.5V5C11.5 2.51472 9.48528 0.5 7 0.5C4.51472 0.5 2.5 2.51472 2.5 5V7H1.5C0.671573 7 0 7.67157 0 8.5V14.5C0 15.3284 0.671573 16 1.5 16H12.5C13.3284 16 14 15.3284 14 14.5V8.5C14 7.67157 13.3284 7 12.5 7ZM4 5C4 3.34315 5.34315 2 7 2C8.65685 2 10 3.34315 10 5V7H4V5Z" fill="#706e6b"/>
-                          <rect x="1.5" y="8" width="11" height="7.5" rx="0.5" fill="#706e6b"/>
                         </svg>
                       </div>
                   )}
                   {getQuarterTotal(quarter.months, kpiToUse)}
                   </div>
-                  {(valueChanged || Math.abs(deviation) > 30) && deviation !== null && 
+                  {shouldShowBadge(kpiToUse, valueChanged, deviation) && deviation !== null && 
                    kpiToUse !== 'Baseline (Revenue) [Read-Only]' && 
                    kpiToUse !== 'SM Adjustment [Read-Only]' && 
                    kpiToUse !== 'RSD Adjustment [Read-Only]' && (
@@ -12290,9 +12947,18 @@ function App() {
                       position: 'absolute',
                       top: '2px',
                       right: '2px',
-                      backgroundColor: (kpiToUse === 'SM Adjustment [Read-Only]' || kpiToUse === 'RSD Adjustment [Read-Only]') 
-                        ? '#0b5cab' 
-                        : (Math.abs(deviation) > 30 ? '#FF6B6B' : (valueChanged ? '#0b5cab' : '#FF6B6B')),
+                      backgroundColor: (() => {
+                        if (kpiToUse === 'SM Adjustment [Read-Only]' || kpiToUse === 'RSD Adjustment [Read-Only]') {
+                          return '#0b5cab';
+                        }
+                        // Check if change is more than 100x original value
+                        const changeIs100x = isChangeMoreThan100x(row.id, kpiToUse, -1);
+                        if (changeIs100x) {
+                          return '#FF6B6B'; // Red badge for 100x+ changes
+                        }
+                        // Otherwise use standard logic
+                        return Math.abs(deviation) > getKPIThreshold(kpiToUse) ? '#FF6B6B' : (valueChanged ? '#0b5cab' : '#FF6B6B');
+                      })(),
                       color: '#ffffff',
                       fontSize: '9px',
                       fontWeight: '600',
@@ -12387,6 +13053,30 @@ function App() {
                   data-selected-time={monthIndex}
                   data-selected-kpi={kpiToUse}
                 >
+                  {!isEditable && (
+                    <div style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      backgroundImage: `
+                        linear-gradient(
+                          45deg,
+                          transparent 0%,
+                          transparent calc(50% - 0.5px),
+                          rgba(0, 0, 0, 0.08) calc(50% - 0.5px),
+                          rgba(0, 0, 0, 0.08) calc(50% + 0.5px),
+                          transparent calc(50% + 0.5px),
+                          transparent 100%
+                        )
+                      `,
+                      backgroundSize: '7px 7px',
+                      opacity: 1,
+                      pointerEvents: 'none',
+                      zIndex: 1
+                    }} title="Read-only" />
+                  )}
                   {!isEditing && hasAdjustmentNote(row.id, kpiToUse, idx) && (
                     <div style={{
                       position: 'absolute',
@@ -12675,7 +13365,7 @@ function App() {
                                           fontSize: '15px', 
                                           color: '#03234d'
                                         }}>
-                                          ${calculatedValue.toLocaleString()}
+                                          ${Math.round(calculatedValue).toLocaleString()}
                                         </span>
                                       )}
                                       {delta !== 0 && (
@@ -12690,7 +13380,7 @@ function App() {
                                           fontWeight: '600',
                                           color: deltaColor
                                         }}>
-                                          <span>{delta > 0 ? '+' : ''}{delta.toLocaleString()}</span>
+                                          <span>{delta > 0 ? '+' : ''}{Math.round(delta).toLocaleString()}</span>
                                           <span style={{ 
                                             fontSize: '10px',
                                             opacity: 0.8
@@ -12724,22 +13414,7 @@ function App() {
                       })()}
                     </div>
                   ) : (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
-                      {!isEditable && (
-                        <div style={{
-                          width: '12px',
-                          height: '12px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0
-                        }} title="Read-only">
-                          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M12.5 7H11.5V5C11.5 2.51472 9.48528 0.5 7 0.5C4.51472 0.5 2.5 2.51472 2.5 5V7H1.5C0.671573 7 0 7.67157 0 8.5V14.5C0 15.3284 0.671573 16 1.5 16H12.5C13.3284 16 14 15.3284 14 14.5V8.5C14 7.67157 13.3284 7 12.5 7ZM4 5C4 3.34315 5.34315 2 7 2C8.65685 2 10 3.34315 10 5V7H4V5Z" fill="#706e6b"/>
-                            <rect x="1.5" y="8" width="11" height="7.5" rx="0.5" fill="#706e6b"/>
-                          </svg>
-                        </div>
-                      )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end', position: 'relative', zIndex: 2 }}>
                       {isDirectlyEdited && (
                         <div style={{
                           width: '14px',
@@ -12756,11 +13431,11 @@ function App() {
                         </div>
                       )}
                     <span style={{ display: 'block', textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {typeof cellValue === 'string' ? cellValue : (typeof cellValue === 'number' ? `$${cellValue.toLocaleString()}` : String(cellValue || '-'))}
+                      {typeof cellValue === 'string' ? cellValue : (typeof cellValue === 'number' ? `$${Math.round(cellValue).toLocaleString()}` : String(cellValue || '-'))}
                     </span>
                     </div>
                   )}
-                  {!isEditing && (valueChanged || Math.abs(deviation) > 30) && deviation !== null && 
+                  {!isEditing && shouldShowBadge(kpiToUse, valueChanged, deviation) && deviation !== null && 
                    kpiToUse !== 'Baseline (Revenue) [Read-Only]' && 
                    kpiToUse !== 'SM Adjustment [Read-Only]' && 
                    kpiToUse !== 'RSD Adjustment [Read-Only]' && (
@@ -12768,9 +13443,18 @@ function App() {
                       position: 'absolute',
                       top: '2px',
                       right: '2px',
-                      backgroundColor: (kpiToUse === 'SM Adjustment [Read-Only]' || kpiToUse === 'RSD Adjustment [Read-Only]') 
-                        ? '#0b5cab' 
-                        : (Math.abs(deviation) > 30 ? '#FF6B6B' : '#0b5cab'),
+                      backgroundColor: (() => {
+                        if (kpiToUse === 'SM Adjustment [Read-Only]' || kpiToUse === 'RSD Adjustment [Read-Only]') {
+                          return '#0b5cab';
+                        }
+                        // Check if change is more than 100x original value
+                        const changeIs100x = isChangeMoreThan100x(row.id, kpiToUse, idx);
+                        if (changeIs100x) {
+                          return '#FF6B6B'; // Red badge for 100x+ changes
+                        }
+                        // Otherwise use standard logic
+                        return Math.abs(deviation) > getKPIThreshold(kpiToUse) ? '#FF6B6B' : (valueChanged ? '#0b5cab' : '#FF6B6B');
+                      })(),
                       color: '#ffffff',
                       fontSize: '9px',
                       fontWeight: '600',
@@ -12976,13 +13660,13 @@ function App() {
           // Use the pre-aggregated value from the row
           if (editedValue !== null) {
             const formatted = metricName === 'SM Adjustment [Read-Only]' || metricName === 'RSD Adjustment [Read-Only]'
-              ? (editedValue !== 0 ? (editedValue > 0 ? `+$${editedValue.toLocaleString()}` : `-$${Math.abs(editedValue).toLocaleString()}`) : '-')
-              : (editedValue !== 0 ? `$${editedValue.toLocaleString()}` : '-');
+              ? (editedValue !== 0 ? (editedValue > 0 ? `+$${Math.round(editedValue).toLocaleString()}` : `-$${Math.abs(Math.round(editedValue)).toLocaleString()}`) : '-')
+              : (editedValue !== 0 ? `$${Math.round(editedValue).toLocaleString()}` : '-');
             return formatted;
           }
           const formatted = metricName === 'SM Adjustment [Read-Only]' || metricName === 'RSD Adjustment [Read-Only]'
-            ? (rowValue !== 0 ? (rowValue > 0 ? `+$${rowValue.toLocaleString()}` : `-$${Math.abs(rowValue).toLocaleString()}`) : '-')
-            : (rowValue !== 0 ? `$${rowValue.toLocaleString()}` : '-');
+            ? (rowValue !== 0 ? (rowValue > 0 ? `+$${Math.round(rowValue).toLocaleString()}` : `-$${Math.abs(Math.round(rowValue)).toLocaleString()}`) : '-')
+            : (rowValue !== 0 ? `$${Math.round(rowValue).toLocaleString()}` : '-');
           return formatted;
         }
       }
@@ -13001,9 +13685,11 @@ function App() {
           }
           
           if (metricName === 'SM Adjustment [Read-Only]' || metricName === 'RSD Adjustment [Read-Only]') {
-            return value !== 0 ? (value > 0 ? `+$${value.toLocaleString()}` : `-$${Math.abs(value).toLocaleString()}`) : '-';
+            const roundedValue = Math.round(value);
+            return roundedValue !== 0 ? (roundedValue > 0 ? `+$${roundedValue.toLocaleString()}` : `-$${Math.abs(roundedValue).toLocaleString()}`) : '-';
           }
-          return value !== 0 ? `$${value.toLocaleString()}` : '-';
+          const roundedValue = Math.round(value);
+          return roundedValue !== 0 ? `$${roundedValue.toLocaleString()}` : '-';
         }
         
         // For Specific Time view, calculate from all top-level rows
@@ -13047,11 +13733,6 @@ function App() {
         if (metricName === 'SM Adjustment [Read-Only]' || metricName === 'RSD Adjustment [Read-Only]') {
           return total !== 0 ? (total > 0 ? `+$${total.toLocaleString()}` : `-$${Math.abs(total).toLocaleString()}`) : '-';
         }
-        // Check if it's a quantity metric (not revenue)
-        const isQuantityMetric = metricName.includes('Quantity') && !metricName.includes('Revenue');
-        if (isQuantityMetric) {
-          return total !== 0 ? total.toLocaleString() : '-';
-        }
         return total !== 0 ? `$${total.toLocaleString()}` : '-';
       }
       
@@ -13060,104 +13741,11 @@ function App() {
       
       // For Dimensions view, check edited value first - it should take priority
       if (view === 'Dimensions') {
-        // In Dimensions view, rows can be hierarchy items OR time periods (months, quarters, FY)
-        // Determine which hierarchy ID to use - if row.id looks like a time period (month-0, etc.), use selectedCell.hierarchy
-        // Also check if row.name looks like a month name (e.g., "January '25")
-        const isTimePeriodRow = (row.id && (row.id.startsWith('month-') || row.id.startsWith('quarter-') || row.id === 'fy2025')) ||
-                                 (row.name && (row.name.includes("'25") || row.name.startsWith('Q') || row.name === 'FY 25'));
-        const hierarchyId = isTimePeriodRow 
-          ? (selectedCell?.hierarchy || (sortedDisplayedData && sortedDisplayedData.length > 0 ? sortedDisplayedData[0].id : row.id))
-          : row.id;
-        
-        // If this is a time period row, determine the time index from the row
-        let actualTimeIndex = timeIndex;
-        if (isTimePeriodRow && row.name) {
-          if (row.name === 'FY 25') {
-            actualTimeIndex = -1;
-          } else if (row.name.startsWith('Q')) {
-            const quarterMap = { 'Q1 2025': -2, 'Q2 2025': -3, 'Q3 2025': -4, 'Q4 2025': -5 };
-            actualTimeIndex = quarterMap[row.name] || timeIndex;
-          } else if (row.name.includes("'25")) {
-            // Extract month name (e.g., "January '25" -> "January 2025")
-            const monthName = row.name.replace("'25", " 2025");
-            const monthIdx = months.indexOf(monthName);
-            if (monthIdx >= 0) {
-              actualTimeIndex = monthIdx;
-            }
-          }
-        }
-        
         if (editedValue !== null) {
           // If edited value exists, use it directly
           value = editedValue;
         } else {
-          // For Dimensions view, use row's own value (aggregated from children) if it's a hierarchy row
-          // If it's a time period row, get value from month data using the hierarchy ID
-          if (row.id && (row.id.startsWith('month-') || row.id.startsWith('quarter-') || row.id === 'fy2025')) {
-            // This is a time period row - get value from month data using hierarchy ID
-            if (actualTimeIndex === -1) {
-              // FY - sum all months
-              let total = 0;
-              months.forEach((month, idx) => {
-                const monthData = allMonthsData[idx];
-                const rowData = findRowById(monthData, hierarchyId);
-                if (rowData) {
-                  const cellValue = getEditedValue(hierarchyId, metricName, idx);
-                  if (cellValue !== null) {
-                    total += cellValue;
-                  } else {
-                    const val = getMetricValue(rowData, metricName);
-                    if (val !== undefined && val !== null) {
-                      total += val;
-                    }
-                  }
-                }
-              });
-              value = total;
-            } else if (actualTimeIndex >= -5 && actualTimeIndex <= -2) {
-              // Quarter - sum months in quarter
-              const quarterMonths = actualTimeIndex === -2 ? [0, 1, 2] :
-                                   actualTimeIndex === -3 ? [3, 4, 5] :
-                                   actualTimeIndex === -4 ? [6, 7, 8] :
-                                   [9, 10, 11]; // Q4
-              let total = 0;
-              quarterMonths.forEach(monthIdx => {
-                const monthData = allMonthsData[monthIdx];
-                const rowData = findRowById(monthData, hierarchyId);
-                if (rowData) {
-                  const cellValue = getEditedValue(hierarchyId, metricName, monthIdx);
-                  if (cellValue !== null) {
-                    total += cellValue;
-                  } else {
-                    const val = getMetricValue(rowData, metricName);
-                    if (val !== undefined && val !== null) {
-                      total += val;
-                    }
-                  }
-                }
-              });
-              value = total;
-            } else if (actualTimeIndex >= 0 && actualTimeIndex <= 11) {
-              // Single month
-              const monthData = allMonthsData[actualTimeIndex];
-              const rowData = findRowById(monthData, hierarchyId);
-              if (rowData) {
-                const cellValue = getEditedValue(hierarchyId, metricName, actualTimeIndex);
-                if (cellValue !== null) {
-                  value = cellValue;
-                } else {
-                  const val = getMetricValue(rowData, metricName);
-                  value = val !== undefined && val !== null ? val : undefined;
-                }
-              } else {
-                value = undefined;
-              }
-            } else {
-              // Fallback to row value
-              value = getMetricValue(row, metricName);
-            }
-          } else {
-            // This is a hierarchy row - use row's own value (aggregated from children)
+          // For Dimensions view, use row's own value (aggregated from children)
           value = getMetricValue(row, metricName);
           if (value === undefined || value === null) {
             // If row value is missing, try to get from month data
@@ -13167,14 +13755,14 @@ function App() {
               let total = 0;
               months.forEach((month, idx) => {
                 const monthData = allMonthsData[idx];
-                  const rowData = findRowById(monthData, hierarchyId);
+                const rowData = findRowById(monthData, row.id);
                 if (rowData) {
-                    const cellValue = getEditedValue(hierarchyId, metricName, idx);
+                  const cellValue = getEditedValue(row.id, metricName, idx);
                   if (cellValue !== null) {
                     total += cellValue;
                   } else {
                     const val = getMetricValue(rowData, metricName);
-                      if (val !== undefined && val !== null) {
+                    if (val !== undefined) {
                       total += val;
                     }
                   }
@@ -13190,14 +13778,14 @@ function App() {
               let total = 0;
               quarterMonths.forEach(monthIdx => {
                 const monthData = allMonthsData[monthIdx];
-                  const rowData = findRowById(monthData, hierarchyId);
+                const rowData = findRowById(monthData, row.id);
                 if (rowData) {
-                    const cellValue = getEditedValue(hierarchyId, metricName, monthIdx);
+                  const cellValue = getEditedValue(row.id, metricName, monthIdx);
                   if (cellValue !== null) {
                     total += cellValue;
                   } else {
                     const val = getMetricValue(rowData, metricName);
-                      if (val !== undefined && val !== null) {
+                    if (val !== undefined) {
                       total += val;
                     }
                   }
@@ -13207,22 +13795,18 @@ function App() {
             } else if (timeIndex >= 0 && timeIndex <= 11) {
               // Single month
               const monthData = allMonthsData[timeIndex];
-                const rowData = findRowById(monthData, hierarchyId);
+              const rowData = findRowById(monthData, row.id);
               if (rowData) {
-                  const cellValue = getEditedValue(hierarchyId, metricName, timeIndex);
+                const cellValue = getEditedValue(row.id, metricName, timeIndex);
                 if (cellValue !== null) {
                   value = cellValue;
                 } else {
-                    const val = getMetricValue(rowData, metricName);
-                    value = val !== undefined && val !== null ? val : undefined;
+                  value = getMetricValue(rowData, metricName);
                 }
-                } else {
-                  value = undefined;
               }
             } else {
               // Fallback to row value
               value = getMetricValue(row, metricName);
-              }
             }
           }
         }
@@ -13253,8 +13837,7 @@ function App() {
         }
         
         // If value is still undefined, calculate it (fallback for cases where timeOverride not set or row value missing)
-        // This handles both cases: when timeOverride is not set, and when timeOverride is set but row value is missing
-        if (value === undefined || value === null) {
+        if (value === undefined) {
           // For regular rows, use existing logic
           // If a quarter is selected, calculate quarter total
           if (monthToUse === 'Q1 2025' || monthToUse === 'Q2 2025' || monthToUse === 'Q3 2025' || monthToUse === 'Q4 2025') {
@@ -13331,20 +13914,10 @@ function App() {
       }
       
       // Format based on metric type
-      // Check if value is undefined, null, or 0
-      if (value === undefined || value === null || isNaN(value)) {
-        return '-';
-      }
-      
       if (metricName === 'SM Adjustment [Read-Only]' || metricName === 'RSD Adjustment [Read-Only]') {
         return value !== 0 ? (value > 0 ? `+$${value.toLocaleString()}` : `-$${Math.abs(value).toLocaleString()}`) : '-';
       }
-      // Check if it's a quantity metric (not revenue)
-      const isQuantityMetric = metricName.includes('Quantity') && !metricName.includes('Revenue');
-      if (isQuantityMetric) {
-        return value !== 0 ? value.toLocaleString() : '-';
-      }
-      return value !== 0 ? `$${value.toLocaleString()}` : '-';
+      return `$${value.toLocaleString()}`;
     };
 
     return (
@@ -13649,7 +14222,13 @@ function App() {
               </div>
             )}
           </div>
-          {(() => {
+          {/* Render all KPIs dynamically based on selected measure group */}
+          {kpiOptions.map((kpi) => {
+            // Skip AM Adjusted - it's rendered separately below with special editing logic
+            if (kpi === 'AM Adjusted (Revenue) [Editable]') {
+              return null;
+            }
+            
             const timeIdx = getTimeIndexForEditedValue();
             const monthIndex = timeIdx >= 0 && timeIdx <= 11 ? timeIdx : null;
             let monthDataForImpactCheck = null;
@@ -13659,32 +14238,28 @@ function App() {
               monthDataForImpactCheck = allMonthsData[0];
             }
             
-            const baselineIsEdited = isCellEdited(row.id, 'Baseline (Revenue) [Read-Only]', timeIdx);
-            const baselineIsImpacted = !baselineIsEdited && isCellImpacted(row.id, timeIdx, monthDataForImpactCheck);
-            const baselineValueChanged = hasCellValueChanged(row.id, 'Baseline (Revenue) [Read-Only]', timeIdx);
+            const isEdited = isCellEdited(row.id, kpi, timeIdx);
+            const isImpacted = !isEdited && isCellImpacted(row.id, timeIdx, monthDataForImpactCheck);
+            const valueChanged = hasCellValueChanged(row.id, kpi, timeIdx);
             
-            // Only render Baseline if it's in kpiOptions
             return (
-              <>
-                {kpiOptions.includes('Baseline (Revenue) [Read-Only]') && (
                 <div 
-                  className={`cell ${isSelected('Baseline (Revenue) [Read-Only]') ? 'selected' : ''} ${baselineIsEdited ? 'cell-edited' : ''} ${baselineIsImpacted ? 'cell-impacted' : ''}`}
+                key={kpi}
+                className={`cell ${isSelected(kpi) ? 'selected' : ''} ${isEdited ? 'cell-edited' : ''} ${isImpacted ? 'cell-impacted' : ''}`}
                   style={{ 
                     fontWeight: row.id === 'total-aggregate' ? 'bold' : 'normal', 
                     cursor: 'pointer',
-                    backgroundColor: baselineValueChanged ? '#FBF3E0' : undefined
+                  backgroundColor: valueChanged ? '#FBF3E0' : undefined
                   }}
-                  onClick={() => handleCellClick('Baseline (Revenue) [Read-Only]', row.id, timeOverride, view)}
+                onClick={() => handleCellClick(kpi, row.id, timeOverride, view)}
                   data-selected-hierarchy={row.id}
                   data-selected-time={(view === 'Time' || view === 'Specific Time') ? getTimeValueForDataAttr() : (view === 'Dimensions' && selectedCell?.time !== undefined ? selectedCell.time : '')}
-                  data-selected-kpi="Baseline (Revenue) [Read-Only]"
+                data-selected-kpi={kpi}
                 >
-                  {getCellValueForSpecificTime('Baseline (Revenue) [Read-Only]')}
+                {getCellValueForSpecificTime(kpi)}
                 </div>
-                )}
-              </>
             );
-          })()}
+          })}
           {(() => {
             const timeIdx = getTimeIndexForEditedValue();
             const monthIndex = timeIdx >= 0 && timeIdx <= 11 ? timeIdx : null;
@@ -13740,11 +14315,6 @@ function App() {
             }
             const hasNote = hasAdjustmentNote(row.id, 'AM Adjusted (Revenue) [Editable]', timeIdxForNote);
             const isCurrentlyEditing = editingCell && editingCell.rowId === row.id && editingCell.kpi === 'AM Adjusted (Revenue) [Editable]';
-            
-            // Only render AM Adjusted if it's in kpiOptions
-            if (!kpiOptions.includes('AM Adjusted (Revenue) [Editable]')) {
-              return null;
-            }
             
             return (
               <div 
@@ -14321,7 +14891,16 @@ function App() {
                 position: 'absolute',
                 top: '2px',
                 right: '2px',
-                backgroundColor: Math.abs(deviation) > 30 ? '#FF6B6B' : '#0b5cab',
+                backgroundColor: (() => {
+                  // Check if change is more than 100x original value
+                  const timeIdx = getTimeIndexForEditedValue();
+                  const changeIs100x = isChangeMoreThan100x(row.id, 'AM Adjusted (Revenue) [Editable]', timeIdx);
+                  if (changeIs100x) {
+                    return '#FF6B6B'; // Red badge for 100x+ changes
+                  }
+                  // Otherwise use standard logic
+                  return (deviation !== null && Math.abs(deviation) > getKPIThreshold('AM Adjusted (Revenue) [Editable]')) ? '#FF6B6B' : '#0b5cab';
+                })(),
                 color: '#ffffff',
                 fontSize: '9px',
                 fontWeight: '600',
@@ -14388,7 +14967,7 @@ function App() {
                   )}
                   {getCellValueForSpecificTime(kpiName)}
                   </div>
-                  {(valueChanged || deviation > 30) && deviation !== null && 
+                  {shouldShowBadge(kpiName, valueChanged, deviation) && deviation !== null && 
                    kpiName !== 'Baseline (Revenue) [Read-Only]' && 
                    kpiName !== 'SM Adjustment [Read-Only]' && 
                    kpiName !== 'RSD Adjustment [Read-Only]' && (
@@ -14396,9 +14975,19 @@ function App() {
                       position: 'absolute',
                       top: '2px',
                       right: '2px',
-                      backgroundColor: (kpiName === 'SM Adjustment [Read-Only]' || kpiName === 'RSD Adjustment [Read-Only]') 
-                        ? '#0b5cab' 
-                        : (deviation > 30 ? '#FF6B6B' : (valueChanged ? '#0b5cab' : '#FF6B6B')),
+                      backgroundColor: (() => {
+                        if (kpiName === 'SM Adjustment [Read-Only]' || kpiName === 'RSD Adjustment [Read-Only]') {
+                          return '#0b5cab';
+                        }
+                        // Check if change is more than 100x original value
+                        const timeIdx = getTimeIndexForEditedValue();
+                        const changeIs100x = isChangeMoreThan100x(row.id, kpiName, timeIdx);
+                        if (changeIs100x) {
+                          return '#FF6B6B'; // Red badge for 100x+ changes
+                        }
+                        // Otherwise use standard logic
+                        return Math.abs(deviation) > getKPIThreshold(kpiName) ? '#FF6B6B' : (valueChanged ? '#0b5cab' : '#FF6B6B');
+                      })(),
                       color: '#ffffff',
                       fontSize: '9px',
                       fontWeight: '600',
@@ -14416,17 +15005,15 @@ function App() {
               );
             };
             
-            // Render all KPIs from kpiOptions
-            // Note: Baseline and AM Adjusted are rendered separately above with special handling
-            // So we filter them out here
-            const kpisToRender = kpiOptions.filter(kpi => 
+            // Get KPIs based on selected measure group, but skip Baseline and AM Adjusted (already rendered above)
+            const remainingKPIs = kpiOptions.filter(kpi => 
               kpi !== 'Baseline (Revenue) [Read-Only]' && 
               kpi !== 'AM Adjusted (Revenue) [Editable]'
             );
             
             return (
               <>
-                {kpisToRender.map(kpiName => renderCell(kpiName))}
+                {remainingKPIs.map(kpi => renderCell(kpi))}
               </>
             );
           })()}
@@ -16310,13 +16897,11 @@ function App() {
                 <div className="header-title">
                   {(() => {
                     if (selectedViewName === 'Product Performance - PA Config') {
-                      return 'Monthly Forecast Update - PA config';
+                      return 'Product Performance - PA Config';
                     } else if (selectedViewName === 'Account Performance') {
                       return 'Account Performance';
                     } else {
-                      return groupedComboboxValue === 'Product, Account' 
-                        ? 'Monthly Forecast Update - PA config' 
-                        : 'Monthly Forecast Update - AP config';
+                      return 'Monthly Forecast Update - AP config';
                     }
                   })()}
                 </div>
@@ -16416,7 +17001,9 @@ function App() {
                       const filteredViews = accountManagerViews.filter(view => 
                         view.toLowerCase().includes(viewDropdownSearch.toLowerCase())
                       );
-                      return filteredViews.map((view) => (
+                      return (
+                        <>
+                          {filteredViews.map((view) => (
                         <div
                           key={view}
                     style={{
@@ -16448,7 +17035,32 @@ function App() {
                         >
                           {view}
                         </div>
-                      ));
+                          ))}
+                          {/* + Create New Option */}
+                          <div
+                            style={{
+                              padding: '8px 12px',
+                              fontSize: '13px',
+                              color: '#0250d9',
+                              cursor: 'pointer',
+                              userSelect: 'none',
+                              borderTop: '1px solid #dddbda',
+                              marginTop: '4px',
+                              fontWeight: '500'
+                            }}
+                            onMouseEnter={(e) => e.target.style.backgroundColor = '#f3f2f2'}
+                            onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setViewDropdownOpen(false);
+                              setViewDropdownSearch('');
+                              setCreateViewModalOpen(true);
+                            }}
+                          >
+                            + Create New
+                          </div>
+                        </>
+                      );
                     })()}
                   </div>
                 </div>,
@@ -16456,6 +17068,512 @@ function App() {
               )}
                 </div>
               </div>
+              {/* Create View Modal */}
+              {createViewModalOpen && ReactDOM.createPortal(
+                <div
+                  style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 100000,
+                    padding: '20px'
+                  }}
+                  onClick={(e) => {
+                    if (e.target === e.currentTarget) {
+                      setCreateViewModalOpen(false);
+                      setNewViewName('');
+                      // Reset hierarchies to default
+                      setAvailableHierarchies(['Location', 'Region', 'Territory', 'User']);
+                      setSelectedHierarchies(['Account', 'Product', 'Location']);
+                      setSelectedHierarchyIndex(null);
+                    }
+                  }}
+                >
+                  <div
+                    style={{
+                      backgroundColor: '#ffffff',
+                      borderRadius: '8px',
+                      boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
+                      width: '100%',
+                      maxWidth: '800px',
+                      maxHeight: '90vh',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      overflow: 'hidden'
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {/* Modal Header */}
+                    <div style={{
+                      padding: '20px 24px',
+                      borderBottom: '1px solid #dddbda',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center'
+                    }}>
+                      <h2 style={{
+                        margin: 0,
+                        fontSize: '18px',
+                        fontWeight: '600',
+                        color: '#080707'
+                      }}>
+                        Create New View
+                      </h2>
+                      <button
+                        onClick={() => {
+                          setCreateViewModalOpen(false);
+                          setNewViewName('');
+                        }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          padding: '4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: '#706e6b'
+                        }}
+                      >
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M15 5L5 15M5 5L15 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </button>
+                    </div>
+                    
+                    {/* Modal Body */}
+                    <div style={{
+                      padding: '24px',
+                      flex: 1,
+                      overflowY: 'auto'
+                    }}>
+                      {/* View Name Input */}
+                      <div style={{ marginBottom: '24px' }}>
+                        <label style={{
+                          display: 'block',
+                          fontSize: '14px',
+                          fontWeight: '600',
+                          color: '#080707',
+                          marginBottom: '8px'
+                        }}>
+                          View Name
+                        </label>
+                        <input
+                          type="text"
+                          value={newViewName}
+                          onChange={(e) => setNewViewName(e.target.value)}
+                          placeholder="Enter view name..."
+                          style={{
+                            width: '100%',
+                            padding: '8px 12px',
+                            fontSize: '14px',
+                            border: '1px solid #c9c9c9',
+                            borderRadius: '4px',
+                            outline: 'none',
+                            boxSizing: 'border-box'
+                          }}
+                          onFocus={(e) => e.target.style.borderColor = '#0250d9'}
+                          onBlur={(e) => e.target.style.borderColor = '#c9c9c9'}
+                        />
+                      </div>
+                      
+                      {/* Duelling Picklist */}
+                      <div>
+                        <label style={{
+                          display: 'block',
+                          fontSize: '14px',
+                          fontWeight: '600',
+                          color: '#080707',
+                          marginBottom: '16px'
+                        }}>
+                          Select Hierarchies and their order
+                        </label>
+                        <div style={{
+                          display: 'flex',
+                          gap: '12px',
+                          alignItems: 'flex-start',
+                          minHeight: '400px'
+                        }}>
+                          {/* Available Panel */}
+                          <div style={{
+                            flex: 1,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            border: '1px solid #c9c9c9',
+                            borderRadius: '4px',
+                            overflow: 'hidden',
+                            backgroundColor: '#ffffff'
+                          }}>
+                            <div style={{
+                              padding: '12px',
+                              backgroundColor: '#f3f2f2',
+                              borderBottom: '1px solid #c9c9c9',
+                              fontWeight: '600',
+                              fontSize: '14px',
+                              color: '#080707'
+                            }}>
+                              Available
+                            </div>
+                            <div style={{
+                              flex: 1,
+                              overflowY: 'auto',
+                              padding: '8px',
+                              minHeight: '300px'
+                            }}>
+                              {availableHierarchies.length === 0 ? (
+                                <div style={{
+                                  padding: '12px',
+                                  textAlign: 'center',
+                                  color: '#706e6b',
+                                  fontSize: '13px'
+                                }}>
+                                  No items available
+                                </div>
+                              ) : (
+                                availableHierarchies.map((hierarchy, index) => (
+                                  <div
+                                    key={hierarchy}
+                                    style={{
+                                      padding: '10px 12px',
+                                      marginBottom: '6px',
+                                      backgroundColor: '#ffffff',
+                                      border: '1px solid #c9c9c9',
+                                      borderRadius: '4px',
+                                      cursor: 'pointer',
+                                      fontSize: '14px',
+                                      color: '#080707',
+                                      transition: 'background-color 0.2s ease'
+                                    }}
+                                    onMouseEnter={(e) => e.target.style.backgroundColor = '#f3f2f2'}
+                                    onMouseLeave={(e) => e.target.style.backgroundColor = '#ffffff'}
+                                    onClick={() => {
+                                      setAvailableHierarchies(availableHierarchies.filter((_, i) => i !== index));
+                                      setSelectedHierarchies([...selectedHierarchies, hierarchy]);
+                                    }}
+                                  >
+                                    {hierarchy}
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                          
+                          {/* Move Buttons - Positioned Outside */}
+                          <div style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'center',
+                            gap: '8px',
+                            marginTop: '40px'
+                          }}>
+                            <button
+                              onClick={() => {
+                                if (selectedHierarchies.length > 0) {
+                                  const lastSelected = selectedHierarchies[selectedHierarchies.length - 1];
+                                  setSelectedHierarchies(selectedHierarchies.filter((_, i) => i !== selectedHierarchies.length - 1));
+                                  setAvailableHierarchies([...availableHierarchies, lastSelected]);
+                                  if (selectedHierarchyIndex === selectedHierarchies.length - 1) {
+                                    setSelectedHierarchyIndex(null);
+                                  }
+                                }
+                              }}
+                              disabled={selectedHierarchies.length === 0}
+                              style={{
+                                width: '32px',
+                                height: '32px',
+                                border: '1px solid #c9c9c9',
+                                borderRadius: '4px',
+                                backgroundColor: selectedHierarchies.length === 0 ? '#f3f2f2' : '#ffffff',
+                                cursor: selectedHierarchies.length === 0 ? 'not-allowed' : 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: selectedHierarchies.length === 0 ? '#706e6b' : '#080707',
+                                transition: 'all 0.2s ease'
+                              }}
+                              onMouseEnter={(e) => {
+                                if (selectedHierarchies.length > 0) {
+                                  e.target.style.backgroundColor = '#f3f2f2';
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                if (selectedHierarchies.length > 0) {
+                                  e.target.style.backgroundColor = '#ffffff';
+                                }
+                              }}
+                              title="Move to Available"
+                            >
+                              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M10 12L6 8L10 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (availableHierarchies.length > 0) {
+                                  const firstAvailable = availableHierarchies[0];
+                                  setAvailableHierarchies(availableHierarchies.filter((_, i) => i !== 0));
+                                  setSelectedHierarchies([...selectedHierarchies, firstAvailable]);
+                                }
+                              }}
+                              disabled={availableHierarchies.length === 0}
+                              style={{
+                                width: '32px',
+                                height: '32px',
+                                border: '1px solid #c9c9c9',
+                                borderRadius: '4px',
+                                backgroundColor: availableHierarchies.length === 0 ? '#f3f2f2' : '#ffffff',
+                                cursor: availableHierarchies.length === 0 ? 'not-allowed' : 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: availableHierarchies.length === 0 ? '#706e6b' : '#080707',
+                                transition: 'all 0.2s ease'
+                              }}
+                              onMouseEnter={(e) => {
+                                if (availableHierarchies.length > 0) {
+                                  e.target.style.backgroundColor = '#f3f2f2';
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                if (availableHierarchies.length > 0) {
+                                  e.target.style.backgroundColor = '#ffffff';
+                                }
+                              }}
+                              title="Move to Selected"
+                            >
+                              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M6 4L10 8L6 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </button>
+                          </div>
+                          
+                          {/* Selected Panel */}
+                          <div style={{
+                            flex: 1,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            border: '1px solid #c9c9c9',
+                            borderRadius: '4px',
+                            overflow: 'hidden',
+                            backgroundColor: '#ffffff'
+                          }}>
+                            <div style={{
+                              padding: '12px',
+                              backgroundColor: '#f3f2f2',
+                              borderBottom: '1px solid #c9c9c9',
+                              fontWeight: '600',
+                              fontSize: '14px',
+                              color: '#080707'
+                            }}>
+                              Selected
+                            </div>
+                            <div style={{
+                              flex: 1,
+                              overflowY: 'auto',
+                              padding: '8px',
+                              minHeight: '300px'
+                            }}>
+                              {selectedHierarchies.length === 0 ? (
+                                <div style={{
+                                  padding: '12px',
+                                  textAlign: 'center',
+                                  color: '#706e6b',
+                                  fontSize: '13px'
+                                }}>
+                                  No items selected
+                                </div>
+                              ) : (
+                                selectedHierarchies.map((hierarchy, index) => (
+                                  <div
+                                    key={`${hierarchy}-${index}`}
+                                    style={{
+                                      padding: '10px 12px',
+                                      marginBottom: '6px',
+                                      backgroundColor: selectedHierarchyIndex === index ? '#0176d3' : '#ffffff',
+                                      border: '1px solid #c9c9c9',
+                                      borderRadius: '4px',
+                                      cursor: 'pointer',
+                                      fontSize: '14px',
+                                      color: selectedHierarchyIndex === index ? '#ffffff' : '#080707',
+                                      display: 'flex',
+                                      justifyContent: 'space-between',
+                                      alignItems: 'center',
+                                      transition: 'all 0.2s ease'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      if (selectedHierarchyIndex !== index) {
+                                        e.currentTarget.style.backgroundColor = '#f3f2f2';
+                                      }
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      if (selectedHierarchyIndex !== index) {
+                                        e.currentTarget.style.backgroundColor = '#ffffff';
+                                      }
+                                    }}
+                                    onClick={(e) => {
+                                      // Toggle selection on click
+                                      if (e.target === e.currentTarget || e.target.tagName === 'SPAN') {
+                                        setSelectedHierarchyIndex(selectedHierarchyIndex === index ? null : index);
+                                      }
+                                    }}
+                                  >
+                                    <span>{hierarchy}</span>
+                                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
+                                      {index > 0 && (
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            const newSelected = [...selectedHierarchies];
+                                            [newSelected[index - 1], newSelected[index]] = [newSelected[index], newSelected[index - 1]];
+                                            setSelectedHierarchies(newSelected);
+                                            // Update selected index if needed
+                                            if (selectedHierarchyIndex === index) {
+                                              setSelectedHierarchyIndex(index - 1);
+                                            } else if (selectedHierarchyIndex === index - 1) {
+                                              setSelectedHierarchyIndex(index);
+                                            }
+                                          }}
+                                          style={{
+                                            background: 'none',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            padding: '4px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            color: selectedHierarchyIndex === index ? '#ffffff' : '#706e6b',
+                                            transition: 'color 0.2s ease'
+                                          }}
+                                          onMouseEnter={(e) => {
+                                            e.currentTarget.style.color = selectedHierarchyIndex === index ? '#e0e0e0' : '#080707';
+                                          }}
+                                          onMouseLeave={(e) => {
+                                            e.currentTarget.style.color = selectedHierarchyIndex === index ? '#ffffff' : '#706e6b';
+                                          }}
+                                          title="Move up"
+                                        >
+                                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M9 7.5L6 4.5L3 7.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                          </svg>
+                                        </button>
+                                      )}
+                                      {index < selectedHierarchies.length - 1 && (
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            const newSelected = [...selectedHierarchies];
+                                            [newSelected[index], newSelected[index + 1]] = [newSelected[index + 1], newSelected[index]];
+                                            setSelectedHierarchies(newSelected);
+                                            // Update selected index if needed
+                                            if (selectedHierarchyIndex === index) {
+                                              setSelectedHierarchyIndex(index + 1);
+                                            } else if (selectedHierarchyIndex === index + 1) {
+                                              setSelectedHierarchyIndex(index);
+                                            }
+                                          }}
+                                          style={{
+                                            background: 'none',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            padding: '4px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            color: selectedHierarchyIndex === index ? '#ffffff' : '#706e6b',
+                                            transition: 'color 0.2s ease'
+                                          }}
+                                          onMouseEnter={(e) => {
+                                            e.currentTarget.style.color = selectedHierarchyIndex === index ? '#e0e0e0' : '#080707';
+                                          }}
+                                          onMouseLeave={(e) => {
+                                            e.currentTarget.style.color = selectedHierarchyIndex === index ? '#ffffff' : '#706e6b';
+                                          }}
+                                          title="Move down"
+                                        >
+                                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                          </svg>
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Modal Footer */}
+                    <div style={{
+                      padding: '16px 24px',
+                      borderTop: '1px solid #dddbda',
+                      display: 'flex',
+                      justifyContent: 'flex-end',
+                      gap: '12px'
+                    }}>
+                      <button
+                        onClick={() => {
+                          setCreateViewModalOpen(false);
+                          setNewViewName('');
+                          // Reset hierarchies to default
+                          setAvailableHierarchies(['Location', 'Region', 'Territory', 'User']);
+                          setSelectedHierarchies(['Account', 'Product', 'Location']);
+                          setSelectedHierarchyIndex(null);
+                        }}
+                        style={{
+                          padding: '8px 16px',
+                          fontSize: '14px',
+                          fontWeight: '500',
+                          border: '1px solid #c9c9c9',
+                          borderRadius: '4px',
+                          backgroundColor: '#ffffff',
+                          color: '#080707',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (newViewName.trim()) {
+                            // Here you would save the new view
+                            console.log('Creating view:', newViewName, 'with hierarchies:', selectedHierarchies);
+                            // Add the new view to the list (you might want to manage this in state)
+                            setCreateViewModalOpen(false);
+                            setNewViewName('');
+                            // Reset hierarchies to default
+                            setAvailableHierarchies(['Location', 'Region', 'Territory', 'User']);
+                            setSelectedHierarchies(['Account', 'Product', 'Location']);
+                            setSelectedHierarchyIndex(null);
+                          }
+                        }}
+                        disabled={!newViewName.trim()}
+                        style={{
+                          padding: '8px 16px',
+                          fontSize: '14px',
+                          fontWeight: '500',
+                          border: 'none',
+                          borderRadius: '4px',
+                          backgroundColor: newViewName.trim() ? '#0250d9' : '#c9c9c9',
+                          color: '#ffffff',
+                          cursor: newViewName.trim() ? 'pointer' : 'not-allowed'
+                        }}
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                </div>,
+                document.body
+              )}
               <div style={{ 
                 fontSize: '12px', 
                 color: '#666', 
@@ -16475,8 +17593,8 @@ function App() {
             {/* Main Submit Button */}
             <button
               onClick={() => {
-                // Handle submit action
-                console.log('Submit clicked');
+                // Handle submit action - call handleSave
+                handleSave();
               }}
               style={{
                 backgroundColor: '#ffffff',
@@ -16507,7 +17625,7 @@ function App() {
                 e.target.style.backgroundColor = '#ffffff';
               }}
             >
-              Save As
+              Submit
             </button>
             {/* Dropdown Arrow Button */}
             <button
@@ -16552,10 +17670,65 @@ function App() {
           {/* All Controls - Split Layout: Left and Right */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', padding: '8px 24px 8px 32px', backgroundColor: 'transparent', position: 'relative', zIndex: 9999 }}>
             {/* Left Side Controls */}
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end' }}>
-          {/* Measure Group Dropdown - First */}
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+          {/* View Dropdown - First (Leftmost) */}
+          <div style={{ position: 'relative', zIndex: 9999 }}>
+            <div className="slds-form-element" style={{ width: '220px', position: 'relative' }}>
+              <label className="slds-form-element__label" style={{ 
+                fontSize: '0.625rem',
+                color: '#181818', 
+                fontWeight: '700',
+                marginBottom: '0.375rem',
+                display: 'block',
+                lineHeight: '1.25',
+                letterSpacing: '0.0125rem',
+                textAlign: 'left'
+              }}>
+                View
+              </label>
+              <div className="slds-form-element__control">
+                <select
+                  value={(() => {
+                    if (selectedView === 'KPI') return 'KPI / Dimensions x Time';
+                    if (selectedView === 'Dimensions') return 'Dimensions / Time x KPI';
+                    if (selectedView === 'Time') return 'Time/Dimensions x KPI';
+                    return 'KPI / Dimensions x Time';
+                  })()}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value === 'KPI / Dimensions x Time') setSelectedView('KPI');
+                    else if (value === 'Dimensions / Time x KPI') setSelectedView('Dimensions');
+                    else if (value === 'Time/Dimensions x KPI') setSelectedView('Time');
+                  }}
+                  style={{
+                    width: '100%',
+                    height: '1.75rem',
+                    border: '1px solid #c9c9c9',
+                    borderRadius: '0.5rem',
+                    backgroundColor: '#ffffff',
+                    fontFamily: 'Salesforce Sans, Arial, sans-serif',
+                    fontSize: '0.6875rem',
+                    lineHeight: '1.5',
+                    color: '#080707',
+                    padding: '0 0.5rem',
+                    cursor: 'pointer',
+                    appearance: 'none',
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L6 6L11 1' stroke='%23706e6b' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
+                    backgroundRepeat: 'no-repeat',
+                    backgroundPosition: 'right 0.5rem center',
+                    paddingRight: '2rem'
+                  }}
+                >
+                  <option value="KPI / Dimensions x Time">KPI / Dimensions x Time</option>
+                  <option value="Dimensions / Time x KPI">Dimensions / Time x KPI</option>
+                  <option value="Time/Dimensions x KPI">Time/Dimensions x KPI</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          {/* Measure Group Dropdown - Second */}
           <div ref={kpiSetDropdownRef} style={{ position: 'relative', zIndex: 9999 }}>
-            <div className="slds-form-element" style={{ width: '200px', position: 'relative' }}>
+            <div className="slds-form-element" style={{ width: '150px', position: 'relative' }}>
               <label className="slds-form-element__label" style={{ 
                 fontSize: '0.625rem',
                 color: '#181818', 
@@ -16581,7 +17754,7 @@ function App() {
                   style={{
                     display: 'flex',
                     width: '100%', 
-                    maxWidth: '200px',
+                    maxWidth: '150px',
                     height: '1.75rem',
                     border: '1px solid #c9c9c9',
                     borderRadius: '0.5rem',
@@ -16639,8 +17812,8 @@ function App() {
                         position: 'absolute',
                         top: '100%',
                         left: '0',
-                        width: '200px',
-                        minWidth: '200px',
+                        width: '150px',
+                        minWidth: '150px',
                         zIndex: 10000,
                         marginTop: '0.125rem',
                         backgroundColor: '#ffffff',
@@ -16701,9 +17874,9 @@ function App() {
               </div>
             </div>
           </div>
-          {/* Dimension Levels - Second */}
+          {/* Dimension Levels - Third (Account Manager View) */}
           <div ref={groupedComboboxRef} style={{ position: 'relative', zIndex: 9999 }}>
-            <div className="slds-form-element" style={{ width: '315px', maxWidth: '315px', position: 'relative' }}>
+            <div className="slds-form-element" style={{ width: '250px', maxWidth: '250px', position: 'relative' }}>
               <label className="slds-form-element__label" style={{ 
                 fontSize: '0.625rem', // Further reduced from 0.6875rem
                 color: '#181818', 
@@ -16720,8 +17893,8 @@ function App() {
                 <div 
                   style={{
                     display: 'flex',
-                    width: '315px',
-                    maxWidth: '315px',
+                    width: '250px',
+                    maxWidth: '250px',
                     height: '1.75rem', // Increased slightly from 1.5rem
                     border: '1px solid #c9c9c9',
                     borderRadius: '0.5rem', // Increased for more rounded edges
@@ -17051,10 +18224,9 @@ function App() {
             </div>
           </div>
           </div>
-          
-          {/* Time Levels - Third */}
+          {/* Time Levels - Fourth */}
             <div ref={timeLevelFilterRef} style={{ position: 'relative', zIndex: 9999 }}>
-              <div className="slds-form-element" style={{ width: '250px', position: 'relative' }}>
+            <div className="slds-form-element" style={{ width: '150px', position: 'relative' }}>
                 <label className="slds-form-element__label" style={{ 
                   fontSize: '0.625rem',
                   color: '#181818', 
@@ -17077,7 +18249,7 @@ function App() {
                   }}
                 style={{ 
                     width: '100%',
-                    maxWidth: '250px',
+                    maxWidth: '150px',
                     height: '1.75rem',
                     border: '1px solid #c9c9c9',
                     borderRadius: '0.5rem',
@@ -17105,7 +18277,7 @@ function App() {
                   </div>
               </div>
             </div>
-            {/* Right Side Controls - Below Save As Button */}
+            {/* Right Side Controls */}
             <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end' }}>
               {/* Global Filter Button - First */}
               <div style={{ position: 'relative', display: 'inline-block' }}>
@@ -17258,7 +18430,6 @@ function App() {
                       setSidePanelOpen(false);
                       setSidePanelCell(null);
                     } else {
-                      // If there's a selected cell, use it; otherwise open panel without cell context
                       if (selectedCell && selectedCell.hierarchy && selectedCell.kpi && selectedCell.time !== undefined) {
                         const cellContext = {
                           rowId: selectedCell.hierarchy,
@@ -17268,7 +18439,6 @@ function App() {
                         };
                         setSidePanelCell(cellContext);
                       } else {
-                        // Open panel without cell context - it will show a message
                         setSidePanelCell(null);
                       }
                       setSidePanelOpen(true);
@@ -17296,39 +18466,6 @@ function App() {
                 </button>
               </div>
             </div>
-            {/* Right Side Controls - View Selector Buttons */}
-            <div style={{ display: 'flex', gap: '4px', alignItems: 'flex-end' }}>
-              {['KPI', 'Dimensions', 'Time'].map((viewType) => (
-                <button
-                  key={viewType}
-                  onClick={() => setSelectedView(viewType)}
-                  style={{
-                    padding: '6px 12px',
-                    border: '1px solid #c9c9c9',
-                    borderRadius: '4px',
-                    backgroundColor: selectedView === viewType ? '#0176d3' : '#ffffff',
-                    color: selectedView === viewType ? '#ffffff' : '#080707',
-                    cursor: 'pointer',
-                    fontSize: '13px',
-                    fontWeight: selectedView === viewType ? '600' : '400',
-                    transition: 'all 0.2s ease',
-                    fontFamily: 'SF Pro, sans-serif'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (selectedView !== viewType) {
-                      e.target.style.backgroundColor = '#f3f2f2';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (selectedView !== viewType) {
-                      e.target.style.backgroundColor = '#ffffff';
-                    }
-                  }}
-                >
-                  {viewType}
-                </button>
-              ))}
-            </div>
           </div>
         </>
       )}
@@ -17343,44 +18480,21 @@ function App() {
             paddingBottom: editingCell ? '60px' : '0'
           }}
         >
-          <div className="headers-wrapper" style={{
-            gridTemplateColumns: (() => {
-              // Calculate total width of all KPI columns to match header rows
-              const numKpiColumns = kpiOptions.length;
-              const kpiColumnsString = '200px '.repeat(numKpiColumns).trim();
-              const multipliedKpiColumns = applyColumnWidthMultiplier(kpiColumnsString);
-              // Sum up all the column widths
-              const columnWidths = multipliedKpiColumns.split(/\s+/).filter(s => s.includes('px'));
-              const totalWidth = columnWidths.reduce((sum, col) => {
-                const width = parseFloat(col.replace('px', '')) || 0;
-                return sum + width;
-              }, 0);
-              return `280px ${totalWidth}px`;
-            })()
-          }}>
-            <div className="first-column-header" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'flex-end', width: '280px', minWidth: '280px', maxWidth: '280px' }}>
+          <div className="headers-wrapper">
+            <div className="first-column-header" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'flex-end' }}>
             </div>
             
             <div className="table-header" style={{
-              gridTemplateColumns: (() => {
-                // Use the exact same calculation as header rows (without the 280px)
-                const numKpiColumns = kpiOptions.length;
-                const kpiColumnsString = '200px '.repeat(numKpiColumns).trim();
-                return applyColumnWidthMultiplier(kpiColumnsString);
-              })(),
-              padding: '0 !important',
-              margin: '0 !important'
+              gridTemplateColumns: applyColumnWidthMultiplier(`280px ${kpiOptions.map(() => '200px').join(' ')}`)
             }}>
-              {kpiOptions.map((kpiName) => {
-                const isEditable = isKpiEditable(kpiName);
-                const displayName = kpiName.replace(' [Read-Only]', '').replace(' [Editable]', '');
-                const icon = isEditable ? '✏️' : '📖';
-                
+              {kpiOptions.map((kpi) => {
+                const isEditable = kpi.includes('[Editable]');
+                const displayName = getTimeSeriesKPIDisplay(kpi);
                 return (
-                  <div 
-                    key={kpiName}
+              <div 
+                    key={kpi}
                 className="cell header-cell sortable-header" 
-                    onClick={() => handleColumnHeaderClick(`kpi:${kpiName}`)}
+                    onClick={() => handleColumnHeaderClick(`kpi:${kpi}`)}
                 style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
               >
                 <div style={{ 
@@ -17398,11 +18512,11 @@ function App() {
                     flex: '1 1 auto',
                     minWidth: 0
                   }}>
-                        {displayName} {icon}
+                        {displayName} {isEditable ? '✏️' : '📖'}
                   </span>
-                      {renderSortIndicator(`kpi:${kpiName}`)}
+                      {renderSortIndicator(`kpi:${kpi}`)}
                 </div>
-                    {renderFilterInput(`kpi:${kpiName}`)}
+                    {renderFilterInput(`kpi:${kpi}`)}
               </div>
                 );
               })}
@@ -17493,6 +18607,7 @@ function App() {
               
               // Calculate totals for a time period (for Account Manager view)
               const calculateTimeTotals = (timeItem) => {
+                // Get KPIs based on selected measure group
                 const kpis = kpiOptions;
                 return kpis.map(kpi => {
                   let total = 0;
@@ -17549,12 +18664,14 @@ function App() {
                 });
               };
               
-              // Use the shared memoized value moved outside Time view scope to respond to columnWidthMultiplier changes
-              const calculateHeaderGridColumns = () => {
-                return timeViewGridColumns;
-              };
-              
+              // Get KPIs based on selected measure group
               const kpis = kpiOptions;
+              
+              // Calculate grid columns dynamically based on number of KPIs
+              const calculateHeaderGridColumns = () => {
+                const gridColumns = `280px ${kpis.map(() => '200px').join(' ')}`;
+                return applyColumnWidthMultiplier(gridColumns);
+              };
               
               // Recursive function to render time header rows
               const renderTimeHeaderRow = (timeItem, level = 0) => {
@@ -18062,7 +19179,7 @@ function App() {
                         const hasValidValue = formattedValue !== '-' && formattedValue && formattedValue.trim() !== '' && formattedValue !== 'undefined' && formattedValue !== 'NaN';
                         // Check if percentage indicator should be shown
                         // Show badge: for changed cells (before save) OR for out-of-range cells (after save)
-                        // After save: only red badges remain (deviation > 30%), blue badges and yellow backgrounds disappear
+                        // After save: only red badges remain (deviation > 400%), blue badges and yellow backgrounds disappear
                         // Don't show badges for Baseline, SM Adjustment, or RSD Adjustment
                         const shouldShowBadge = kpi !== 'Baseline (Revenue) [Read-Only]' && 
                                                 kpi !== 'SM Adjustment [Read-Only]' && 
@@ -18074,13 +19191,13 @@ function App() {
                                                            kpi !== 'RSD Adjustment [Read-Only]' &&
                                                            hasValidValue && 
                                                            maxDeviation !== null && 
-                                                           (valueChanged || Math.abs(maxDeviation) > 30);
-                        // Badge color: red if deviation > 30% (outside limits), blue if deviation <= 30% (within limits)
+                                                           (valueChanged || Math.abs(maxDeviation) > 400);
+                        // Badge color: red if deviation > 400% (outside limits), blue if deviation <= 400% (within limits)
                         // For SM and RSD adjustments, always show blue (within range) for now
                         // Only show blue badge if valueChanged (unsaved changes), otherwise show red if out of range
                         const badgeColor = (kpi === 'SM Adjustment [Read-Only]' || kpi === 'RSD Adjustment [Read-Only]') 
                           ? '#0b5cab' 
-                          : (maxDeviation !== null && Math.abs(maxDeviation) > 30 ? '#FF6B6B' : (valueChanged ? '#0b5cab' : '#FF6B6B'));
+                          : (maxDeviation !== null && Math.abs(maxDeviation) > 400 ? '#FF6B6B' : (valueChanged ? '#0b5cab' : '#FF6B6B'));
                         
                         return (
                           <div 
@@ -18153,7 +19270,10 @@ function App() {
                       console.log(`Rendering inner table for ${timeItem.name} (id: ${currentTimeItemId}, timeValue: ${currentTimeValue}, monthIndices: [${currentMonthIndices.join(', ')}])`);
                       
                       // Calculate indentation for inner table
-                      const innerTablePaddingLeft = paddingLeft + (hasTimeChildren ? 16 : 0) + 8 + 16 + 8;
+                      // For Time view inner tables, we want the second cell (first KPI column) to start right after the name column (280px)
+                      // So we use level 0 to ensure name cell padding is 20px, and the name cell itself is 280px wide
+                      // This makes the KPI cells start at exactly 280px, aligning with header cells
+                      const innerTablePaddingLeft = 20; // Use level 0 (20px padding) for inner table rows
                       
                       // Get data structure for the selected time period
                       // Use the first month of the time period to get the structure
@@ -18190,21 +19310,26 @@ function App() {
                       };
                       
                       if (structureMonthData) {
+                        // allMonthsData is already filtered by selectedLevels and removeAggregateRows has been applied
+                        // In Account Manager View, after removeAggregateRows, North America is removed
+                        // So plants (Child Account) become top-level if Child Account is selected
+                        // If only Category/Product are selected, categories become top-level
+                        // Just create a structure copy to preserve the full hierarchy (values will be updated later)
+                        let dataToUse = [];
                         if (selectedKAMView === 'Account Manager View') {
-                          // For Account Manager, data is nested under aggregate
-                          if (structureMonthData[0] && Array.isArray(structureMonthData[0].children)) {
-                            // Create a deep copy of the structure (without values, just hierarchy)
-                            timeDataForDimensions = structureMonthData[0].children
-                              .filter(row => row && row.id !== 'total-aggregate')
-                              .map(row => createStructureCopy(row));
-                          }
+                          // After removeAggregateRows, the structure is flat - no aggregate wrapper
+                          // The top-level rows are whatever level is selected (Child Account, Category, or Product)
+                          // Use the data directly as it's already correctly filtered and flattened
+                          dataToUse = Array.isArray(structureMonthData) ? structureMonthData : [];
                         } else {
                           // For Account Director, use top-level rows
+                          dataToUse = Array.isArray(structureMonthData) ? structureMonthData : [];
+                        }
                           // Create a deep copy of the structure (without values, just hierarchy)
-                          timeDataForDimensions = structureMonthData
+                        // This preserves the full hierarchy including Child Account -> Category -> Product
+                        timeDataForDimensions = dataToUse
                             .filter(row => row && row.id !== 'total-aggregate')
                             .map(row => createStructureCopy(row));
-                        }
                       }
                       
                       // Helper function to find row data in month data (recursive search)
@@ -18291,17 +19416,7 @@ function App() {
                               amAdjusted: rowDataArray.reduce((sum, r) => sum + (r.amAdjusted || 0), 0),
                               smAdjustment: rowDataArray.reduce((sum, r) => sum + (r.smAdjustment || 0), 0),
                               rsdAdjustment: rowDataArray.reduce((sum, r) => sum + (r.rsdAdjustment || 0), 0),
-                              finalForecast: rowDataArray.reduce((sum, r) => sum + (r.finalForecast || 0), 0),
-                              salesAgreementQuantity: rowDataArray.reduce((sum, r) => sum + (r.salesAgreementQuantity || 0), 0),
-                              salesAgreementRevenue: rowDataArray.reduce((sum, r) => sum + (r.salesAgreementRevenue || 0), 0),
-                              opportunityQuantity: rowDataArray.reduce((sum, r) => sum + (r.opportunityQuantity || 0), 0),
-                              opportunityRevenue: rowDataArray.reduce((sum, r) => sum + (r.opportunityRevenue || 0), 0),
-                              orderQuantity: rowDataArray.reduce((sum, r) => sum + (r.orderQuantity || 0), 0),
-                              orderRevenue: rowDataArray.reduce((sum, r) => sum + (r.orderRevenue || 0), 0),
-                              lastYearOrderQuantity: rowDataArray.reduce((sum, r) => sum + (r.lastYearOrderQuantity || 0), 0),
-                              lastYearsOrderRevenue: rowDataArray.reduce((sum, r) => sum + (r.lastYearsOrderRevenue || 0), 0),
-                              forecastedQuantity: rowDataArray.reduce((sum, r) => sum + (r.forecastedQuantity || 0), 0),
-                              forecastedRevenue: rowDataArray.reduce((sum, r) => sum + (r.forecastedRevenue || 0), 0)
+                              finalForecast: rowDataArray.reduce((sum, r) => sum + (r.finalForecast || 0), 0)
                             };
                           }
                         } else if (timeValue === -1) {
@@ -18320,17 +19435,7 @@ function App() {
                               amAdjusted: rowDataArray.reduce((sum, r) => sum + (r.amAdjusted || 0), 0),
                               smAdjustment: rowDataArray.reduce((sum, r) => sum + (r.smAdjustment || 0), 0),
                               rsdAdjustment: rowDataArray.reduce((sum, r) => sum + (r.rsdAdjustment || 0), 0),
-                              finalForecast: rowDataArray.reduce((sum, r) => sum + (r.finalForecast || 0), 0),
-                              salesAgreementQuantity: rowDataArray.reduce((sum, r) => sum + (r.salesAgreementQuantity || 0), 0),
-                              salesAgreementRevenue: rowDataArray.reduce((sum, r) => sum + (r.salesAgreementRevenue || 0), 0),
-                              opportunityQuantity: rowDataArray.reduce((sum, r) => sum + (r.opportunityQuantity || 0), 0),
-                              opportunityRevenue: rowDataArray.reduce((sum, r) => sum + (r.opportunityRevenue || 0), 0),
-                              orderQuantity: rowDataArray.reduce((sum, r) => sum + (r.orderQuantity || 0), 0),
-                              orderRevenue: rowDataArray.reduce((sum, r) => sum + (r.orderRevenue || 0), 0),
-                              lastYearOrderQuantity: rowDataArray.reduce((sum, r) => sum + (r.lastYearOrderQuantity || 0), 0),
-                              lastYearsOrderRevenue: rowDataArray.reduce((sum, r) => sum + (r.lastYearsOrderRevenue || 0), 0),
-                              forecastedQuantity: rowDataArray.reduce((sum, r) => sum + (r.forecastedQuantity || 0), 0),
-                              forecastedRevenue: rowDataArray.reduce((sum, r) => sum + (r.forecastedRevenue || 0), 0)
+                              finalForecast: rowDataArray.reduce((sum, r) => sum + (r.finalForecast || 0), 0)
                             };
                           }
                         }
@@ -18472,8 +19577,9 @@ function App() {
                           {sortedTimeDataForDimensions.map((row, rowIndex) => {
                             if (!row) return null;
                             
-                            // Calculate the appropriate level to achieve the desired indentation
-                            const calculatedLevel = Math.max(0, Math.floor((innerTablePaddingLeft - 20) / 24));
+                            // Use level 0 for inner table rows so the second cell (first KPI column) starts right after the name column (280px)
+                            // This ensures KPI cells align with header cells
+                            const calculatedLevel = 0;
                             
                             return (
                               <div key={`${currentTimeItemId}-${row.id}`}>
@@ -18700,44 +19806,69 @@ function App() {
               const isKPIExpanded = expandedKPIs.has(kpi);
               const kpiDisplayName = getTimeSeriesKPIDisplay(kpi);
               
-              // Calculate totals for this KPI
-              // IMPORTANT: Sum only the displayed rows (sortedDisplayedData), not recursively
-              // This matches how the Row component displays values - each row shows its own aggregated value
-              const calculateTotalForMonth = (monthIndex) => {
-                const monthData = allMonthsData[monthIndex];
-                if (!monthData) return 0;
+              // Get the first row from sortedDisplayedData to use its values for the header
+              const firstRow = sortedDisplayedData && sortedDisplayedData.length > 0 ? sortedDisplayedData[0] : null;
+              
+              // Get value from first row for a specific time period
+              const getFirstRowValueForTime = (timeIndex) => {
+                if (!firstRow || firstRow.id === 'total-aggregate') return 0;
                 
-                let total = 0;
-                // Sum the displayed rows (sortedDisplayedData) - these are what the user sees
-                // For each displayed row, find it in the month data and get its value
-                sortedDisplayedData.forEach(displayedRow => {
-                  if (!displayedRow || displayedRow.id === 'total-aggregate') return;
-                  
-                  // Find this row in the month data
-                  const rowData = findRowById(monthData, displayedRow.id);
-                  if (rowData) {
-                    // First check for edited value
-                    const editedValue = getEditedValue(displayedRow.id, kpi, monthIndex);
-                    let value;
-                    if (editedValue !== null && editedValue !== undefined) {
-                      value = editedValue;
-                    } else {
-                      // Use getMetricValue to get the original value from row data
-                      value = getMetricValue(rowData, kpi);
-                    }
+                // Use getCurrentCellValue to get edited values if they exist, otherwise get from row data
+                const value = getCurrentCellValue(firstRow.id, kpi, timeIndex);
                     if (value !== undefined && value !== null && !isNaN(value)) {
-                      total += value || 0;
+                  return value || 0;
+                }
+                
+                // Fallback: get from month data
+                if (timeIndex >= 0 && timeIndex <= 11) {
+                  const monthData = allMonthsData[timeIndex];
+                  if (monthData) {
+                    const rowData = findRowById(monthData, firstRow.id);
+                    if (rowData) {
+                      return getMetricValue(rowData, kpi) || 0;
                     }
                   }
-                });
+                }
                 
-                return total;
+                return 0;
               };
               
-              // Calculate FY total
+              // Get deviation from first row for a specific time period
+              const getFirstRowDeviation = (timeIndex) => {
+                if (!firstRow || firstRow.id === 'total-aggregate') return null;
+                
+                if (timeIndex >= 0 && timeIndex <= 11) {
+                  const monthData = allMonthsData[timeIndex];
+                  if (monthData) {
+                    return getCellDeviation(firstRow.id, kpi, timeIndex, monthData);
+                  }
+                }
+                return null;
+              };
+              
+              // Check if first row has value changed for a specific time period
+              const checkFirstRowValueChanged = (timeIndex) => {
+                if (!firstRow || firstRow.id === 'total-aggregate') return false;
+                // For FY (-1), check all months
+                if (timeIndex === -1) {
+                  return months.some((_, idx) => hasCellValueChanged(firstRow.id, kpi, idx));
+                }
+                // For quarters (-2 to -5), check the months in that quarter
+                if (timeIndex >= -5 && timeIndex <= -2) {
+                  const quarterMonths = timeIndex === -2 ? [0, 1, 2] :
+                                        timeIndex === -3 ? [3, 4, 5] :
+                                        timeIndex === -4 ? [6, 7, 8] :
+                                        [9, 10, 11];
+                  return quarterMonths.some(monthIdx => hasCellValueChanged(firstRow.id, kpi, monthIdx));
+                }
+                // For months (0-11), use the function directly
+                return hasCellValueChanged(firstRow.id, kpi, timeIndex);
+              };
+              
+              // Calculate FY total from first row
               let fyTotal = 0;
               months.forEach((month, idx) => {
-                fyTotal += calculateTotalForMonth(idx);
+                fyTotal += getFirstRowValueForTime(idx);
               });
               
               // Helper function to check if any row in the KPI is impacted (has edited children)
@@ -18889,15 +20020,20 @@ function App() {
               };
               
               const formatValue = (total) => {
+                // Format based on KPI type - match the Row component formatting
+                if (kpi.includes('Revenue') || kpi === 'SM Adjustment [Read-Only]' || kpi === 'RSD Adjustment [Read-Only]') {
+                  // Revenue KPIs - format as currency
                 if (kpi === 'SM Adjustment [Read-Only]' || kpi === 'RSD Adjustment [Read-Only]') {
-                  return total !== 0 ? (total > 0 ? `+$${total.toLocaleString()}` : `-$${Math.abs(total).toLocaleString()}`) : '-';
-                }
-                // Check if it's a quantity metric (not revenue)
-                const isQuantityMetric = kpi.includes('Quantity') && !kpi.includes('Revenue');
-                if (isQuantityMetric) {
-                  return total !== 0 ? total.toLocaleString() : '-';
+                    return total !== 0 ? `$${Math.abs(total).toLocaleString()}` : '-';
                 }
                 return total !== 0 ? `$${total.toLocaleString()}` : '-';
+                } else if (kpi.includes('Quantity')) {
+                  // Quantity KPIs - format as number (no currency symbol)
+                  return total !== 0 ? total.toLocaleString() : '-';
+                } else {
+                  // Default formatting for other KPIs
+                  return total !== 0 ? `$${total.toLocaleString()}` : '-';
+                }
               };
               
               // Calculate grid columns for KPI header row (same logic as data rows)
@@ -18995,9 +20131,20 @@ function App() {
                       </span>
                     </div>
                     {selectedTimeLevels === 'Year' && (() => {
-                      const valueChanged = checkKPIHeaderValueChanged(-1);
-                      const maxDeviation = valueChanged ? getKPIHeaderMaxDeviation(-1) : null;
-                      const badgeColor = maxDeviation !== null && maxDeviation > 30 ? '#FF6B6B' : '#0b5cab';
+                      // Get value and badge from first row
+                      const firstRowValue = fyTotal; // Already calculated from first row
+                      const valueChanged = checkFirstRowValueChanged(-1);
+                      // For FY, get deviation from first month (or calculate from all months)
+                      let maxDeviation = null;
+                      months.forEach((_, idx) => {
+                        const dev = getFirstRowDeviation(idx);
+                        if (dev !== null && (maxDeviation === null || Math.abs(dev) > Math.abs(maxDeviation))) {
+                          maxDeviation = dev;
+                        }
+                      });
+                      const threshold = getKPIThreshold(kpi);
+                      const shouldShow = shouldShowBadge(kpi, valueChanged, maxDeviation);
+                      const badgeColor = maxDeviation !== null && Math.abs(maxDeviation) > threshold ? '#FF6B6B' : (valueChanged ? '#0b5cab' : '#FF6B6B');
                       // Check if this time period matches the search
                       const matchesSearch = isTimePeriodMatching('FY 25');
                       return (
@@ -19015,8 +20162,8 @@ function App() {
                             transition: 'all 0.2s ease'
                           }}
                         >
-                        {formatValue(fyTotal)}
-                          {(valueChanged || maxDeviation > 30) && maxDeviation !== null && kpi !== 'Baseline (Revenue) [Read-Only]' && kpi !== 'SM Adjustment [Read-Only]' && kpi !== 'RSD Adjustment [Read-Only]' && (
+                        {formatValue(firstRowValue)}
+                          {shouldShow && maxDeviation !== null && kpi !== 'Baseline (Revenue) [Read-Only]' && kpi !== 'SM Adjustment [Read-Only]' && kpi !== 'RSD Adjustment [Read-Only]' && (
                             <div style={{
                               position: 'absolute',
                               top: '2px',
@@ -19032,7 +20179,7 @@ function App() {
                               whiteSpace: 'nowrap',
                               boxShadow: '0 1px 2px rgba(0, 0, 0, 0.2)'
                             }} title={`${maxDeviation.toFixed(1)}% deviation from baseline`}>
-                              {maxDeviation.toFixed(0)}%
+                              {maxDeviation >= 0 ? '+' : ''}{maxDeviation.toFixed(0)}%
                       </div>
                     )}
                         </div>
@@ -19046,12 +20193,22 @@ function App() {
                         { id: 'q4', name: 'Q4 2025', time: -5, months: [9, 10, 11] }
                       ];
                       return quarters.map((quarter, index) => {
+                        // Get value from first row for this quarter
                         const quarterTotal = quarter.months.reduce((sum, monthIdx) => {
-                          return sum + (calculateTotalForMonth(monthIdx) || 0);
+                          return sum + (getFirstRowValueForTime(monthIdx) || 0);
                         }, 0);
-                        const valueChanged = checkKPIHeaderValueChanged(quarter.time);
-                        const maxDeviation = valueChanged ? getKPIHeaderMaxDeviation(quarter.time) : null;
-                        const badgeColor = maxDeviation !== null && maxDeviation > 30 ? '#FF6B6B' : '#0b5cab';
+                        const valueChanged = checkFirstRowValueChanged(quarter.time);
+                        // Get max deviation from first row across quarter months
+                        let maxDeviation = null;
+                        quarter.months.forEach(monthIdx => {
+                          const dev = getFirstRowDeviation(monthIdx);
+                          if (dev !== null && (maxDeviation === null || Math.abs(dev) > Math.abs(maxDeviation))) {
+                            maxDeviation = dev;
+                          }
+                        });
+                        const threshold = getKPIThreshold(kpi);
+                        const shouldShow = shouldShowBadge(kpi, valueChanged, maxDeviation);
+                        const badgeColor = maxDeviation !== null && Math.abs(maxDeviation) > threshold ? '#FF6B6B' : (valueChanged ? '#0b5cab' : '#FF6B6B');
                         // Check if this time period matches the search
                         const matchesSearch = isTimePeriodMatching(quarter.name);
                       return (
@@ -19071,7 +20228,7 @@ function App() {
                             }}
                           >
                             {formatValue(quarterTotal)}
-                            {(valueChanged || maxDeviation > 30) && maxDeviation !== null && kpi !== 'Baseline (Revenue) [Read-Only]' && kpi !== 'SM Adjustment [Read-Only]' && kpi !== 'RSD Adjustment [Read-Only]' && (
+                            {shouldShow && maxDeviation !== null && kpi !== 'Baseline (Revenue) [Read-Only]' && kpi !== 'SM Adjustment [Read-Only]' && kpi !== 'RSD Adjustment [Read-Only]' && (
                               <div style={{
                                 position: 'absolute',
                                 top: '2px',
@@ -19096,10 +20253,13 @@ function App() {
                     })()}
                     {selectedTimeLevels === 'Month' && filteredMonthNames.map((month, idx) => {
                       const monthIndex = monthNames.indexOf(month);
-                      const monthTotal = calculateTotalForMonth(monthIndex);
-                      const valueChanged = checkKPIHeaderValueChanged(monthIndex);
-                      const maxDeviation = valueChanged ? getKPIHeaderMaxDeviation(monthIndex) : null;
-                      const badgeColor = maxDeviation !== null && maxDeviation > 30 ? '#FF6B6B' : '#0b5cab';
+                      // Get value from first row for this month
+                      const monthTotal = getFirstRowValueForTime(monthIndex);
+                      const valueChanged = checkFirstRowValueChanged(monthIndex);
+                      const maxDeviation = getFirstRowDeviation(monthIndex);
+                      const threshold = getKPIThreshold(kpi);
+                      const shouldShow = shouldShowBadge(kpi, valueChanged, maxDeviation);
+                      const badgeColor = maxDeviation !== null && Math.abs(maxDeviation) > threshold ? '#FF6B6B' : (valueChanged ? '#0b5cab' : '#FF6B6B');
                       // Check if this time period matches the search
                       const matchesSearch = isTimePeriodMatching(month);
                       const isFirstMatch = matchesSearch && !hasSetFirstMatchRef.current;
@@ -19123,7 +20283,7 @@ function App() {
                           }}
                         >
                           {formatValue(monthTotal)}
-                          {(valueChanged || maxDeviation > 30) && maxDeviation !== null && kpi !== 'Baseline (Revenue) [Read-Only]' && kpi !== 'SM Adjustment [Read-Only]' && kpi !== 'RSD Adjustment [Read-Only]' && (
+                          {shouldShow && maxDeviation !== null && kpi !== 'Baseline (Revenue) [Read-Only]' && kpi !== 'SM Adjustment [Read-Only]' && kpi !== 'RSD Adjustment [Read-Only]' && (
                             <div style={{
                               position: 'absolute',
                               top: '2px',
@@ -19139,7 +20299,7 @@ function App() {
                               whiteSpace: 'nowrap',
                               boxShadow: '0 1px 2px rgba(0, 0, 0, 0.2)'
                             }} title={`${maxDeviation.toFixed(1)}% deviation from baseline`}>
-                              {maxDeviation.toFixed(0)}%
+                              {maxDeviation >= 0 ? '+' : ''}{maxDeviation.toFixed(0)}%
                             </div>
                           )}
                         </div>
@@ -19185,18 +20345,16 @@ function App() {
             </div>
             
             <div className="table-header" style={{
-              gridTemplateColumns: applyColumnWidthMultiplier(`repeat(${kpiOptions.length}, 200px)`)
+              gridTemplateColumns: applyColumnWidthMultiplier(`280px ${kpiOptions.map(() => '200px').join(' ')}`)
             }}>
-              {kpiOptions.map((kpiName) => {
-                const isEditable = isKpiEditable(kpiName);
-                const displayName = kpiName.replace(' [Read-Only]', '').replace(' [Editable]', '');
-                const icon = isEditable ? '✏️' : '📖';
-                
+              {kpiOptions.map((kpi) => {
+                const isEditable = kpi.includes('[Editable]');
+                const displayName = getTimeSeriesKPIDisplay(kpi);
                 return (
-                  <div 
-                    key={kpiName}
+              <div 
+                    key={kpi}
                 className="cell header-cell sortable-header" 
-                    onClick={() => handleColumnHeaderClick(`kpi:${kpiName}`)}
+                    onClick={() => handleColumnHeaderClick(`kpi:${kpi}`)}
                 style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
               >
                 <div style={{ 
@@ -19214,11 +20372,11 @@ function App() {
                     flex: '1 1 auto',
                     minWidth: 0
                   }}>
-                        {displayName} {icon}
+                        {displayName} {isEditable ? '✏️' : '📖'}
                   </span>
-                      {renderSortIndicator(`kpi:${kpiName}`)}
+                      {renderSortIndicator(`kpi:${kpi}`)}
                 </div>
-                    {renderFilterInput(`kpi:${kpiName}`)}
+                    {renderFilterInput(`kpi:${kpi}`)}
               </div>
                 );
               })}
@@ -19247,6 +20405,7 @@ function App() {
 
               // Calculate totals for a hierarchy item (recursively sums from children if needed)
               const calculateHeaderTotals = (hierarchyItem) => {
+                // Get KPIs based on selected measure group
                 const kpis = kpiOptions;
                 return kpis.map(kpi => {
                   let total = 0;
@@ -19273,13 +20432,14 @@ function App() {
                 });
               };
 
-              const calculateHeaderGridColumns = () => {
-                // Match the grid columns of the data rows for proper alignment
-                // Data rows use: 280px for name column + 200px for each KPI column
-                return applyColumnWidthMultiplier(`280px repeat(${kpiOptions.length}, 200px)`);
-              };
-
+              // Get KPIs based on selected measure group
               const kpis = kpiOptions;
+              
+              // Calculate grid columns dynamically based on number of KPIs
+              const calculateHeaderGridColumns = () => {
+                const gridColumns = `280px ${kpis.map(() => '200px').join(' ')}`;
+                return applyColumnWidthMultiplier(gridColumns);
+              };
 
               // Recursive function to render header rows with hierarchy
               const renderHeaderRow = (hierarchyItem, level = 0) => {
@@ -19576,7 +20736,7 @@ function App() {
                         const hasValidValue = formattedValue !== '-' && formattedValue && formattedValue.trim() !== '' && formattedValue !== 'undefined' && formattedValue !== 'NaN';
                         // Check if percentage indicator should be shown
                         // Show badge: for changed cells (before save) OR for out-of-range cells (after save)
-                        // After save: only red badges remain (deviation > 30%), blue badges and yellow backgrounds disappear
+                        // After save: only red badges remain (deviation > 400%), blue badges and yellow backgrounds disappear
                         // Don't show badges for Baseline, SM Adjustment, or RSD Adjustment
                         const shouldShowBadge = kpi !== 'Baseline (Revenue) [Read-Only]' && 
                                                 kpi !== 'SM Adjustment [Read-Only]' && 
@@ -19588,13 +20748,13 @@ function App() {
                                                            kpi !== 'RSD Adjustment [Read-Only]' &&
                                                            hasValidValue && 
                                                            maxDeviation !== null && 
-                                                           (valueChanged || Math.abs(maxDeviation) > 30);
-                        // Badge color: red if deviation > 30% (outside limits), blue if deviation <= 30% (within limits)
+                                                           (valueChanged || Math.abs(maxDeviation) > 400);
+                        // Badge color: red if deviation > 400% (outside limits), blue if deviation <= 400% (within limits)
                         // For SM and RSD adjustments, always show blue (within range) for now
                         // Only show blue badge if valueChanged (unsaved changes), otherwise show red if out of range
                         const badgeColor = (kpi === 'SM Adjustment [Read-Only]' || kpi === 'RSD Adjustment [Read-Only]') 
                           ? '#0b5cab' 
-                          : (maxDeviation !== null && Math.abs(maxDeviation) > 30 ? '#FF6B6B' : (valueChanged ? '#0b5cab' : '#FF6B6B'));
+                          : (maxDeviation !== null && Math.abs(maxDeviation) > 400 ? '#FF6B6B' : (valueChanged ? '#0b5cab' : '#FF6B6B'));
                         
                         return (
                           <div 
@@ -19663,43 +20823,17 @@ function App() {
                       
                       // Helper function to render a time row (Year/Quarter/Month) with KPIs
                       const renderTimeRow = (timeLabel, timeValue, timeIndices, indentLevel = 0, isBold = false, showChevron = false, chevronId = null, isExpanded = false) => {
-                        // Calculate totals for this time period
-                        let rowBaseline = 0;
-                        let rowAmAdjusted = 0;
-                        let rowSmAdjustment = 0;
-                        let rowRsdAdjustment = 0;
-                        let rowFinalForecast = 0;
-                        
-                        timeIndices.forEach(monthIdx => {
-                          const monthData = allMonthsData[monthIdx];
-                          const rowData = findRowById(monthData, hierarchyItem.id);
-                          if (rowData) {
-                            // Check for edited values first, then fall back to original values
-                            const editedBaseline = getEditedValue(hierarchyItem.id, 'Baseline (Revenue) [Read-Only]', monthIdx);
-                            const editedAmAdjusted = getEditedValue(hierarchyItem.id, 'AM Adjusted (Revenue) [Editable]', monthIdx);
-                            const editedSmAdjustment = getEditedValue(hierarchyItem.id, 'SM Adjustment [Read-Only]', monthIdx);
-                            const editedRsdAdjustment = getEditedValue(hierarchyItem.id, 'RSD Adjustment [Read-Only]', monthIdx);
-                            const editedFinalForecast = getEditedValue(hierarchyItem.id, 'Final Forecast (Revenue) [Read-Only]', monthIdx);
-                            
-                            rowBaseline += editedBaseline !== null ? editedBaseline : (rowData.baseline || 0);
-                            rowAmAdjusted += editedAmAdjusted !== null ? editedAmAdjusted : (rowData.amAdjusted || 0);
-                            rowSmAdjustment += editedSmAdjustment !== null ? editedSmAdjustment : (rowData.smAdjustment || 0);
-                            rowRsdAdjustment += editedRsdAdjustment !== null ? editedRsdAdjustment : (rowData.rsdAdjustment || 0);
-                            rowFinalForecast += editedFinalForecast !== null ? editedFinalForecast : (rowData.finalForecast || 0);
-                          }
-                        });
-                        
+                        // Get KPIs based on selected measure group
                         const kpis = kpiOptions;
                         const currentIndent = innerTablePaddingLeft + (indentLevel * 24);
+                        
+                        // Generate grid columns dynamically based on number of KPIs
+                        const gridColumns = `280px ${kpis.map(() => '200px').join(' ')}`;
                         
                         return (
                           <div key={timeLabel} className="table-row" style={{ 
                             borderBottom: indentLevel === 0 ? '2px solid #c9c9c9' : 'none',
-                            gridTemplateColumns: applyColumnWidthMultiplier((() => {
-                              // Name column (280px) + dynamic number of KPI columns (200px each)
-                              const numKpiColumns = kpiOptions.length;
-                              return `280px ${'200px '.repeat(numKpiColumns).trim()}`;
-                            })())
+                            gridTemplateColumns: applyColumnWidthMultiplier(gridColumns)
                           }}>
                             <div className="cell name-cell" style={{ 
                               paddingLeft: `${currentIndent}px`, 
@@ -19757,61 +20891,40 @@ function App() {
                             </div>
                             
                             {kpis.map((kpi, kpiIdx) => {
-                              let value;
-                              let formattedValue;
+                              let value = 0;
+                              let formattedValue = '-';
                               
-                              // Get value using getMetricValue for all KPIs
-                              // For time periods, we need to get the value from the month data
-                              if (timeIndices.length === 1) {
-                                // Single month
-                                const monthIndex = timeIndices[0];
-                                const monthData = allMonthsData[monthIndex];
+                              // Calculate value for this KPI across all months in the time period
+                              timeIndices.forEach(monthIdx => {
+                                const monthData = allMonthsData[monthIdx];
                                 const rowData = findRowById(monthData, hierarchyItem.id);
                                 if (rowData) {
-                                  const editedVal = getEditedValue(hierarchyItem.id, kpi, monthIndex);
+                                  // Check for edited value first
+                                  const editedVal = getEditedValue(hierarchyItem.id, kpi, monthIdx);
                                   if (editedVal !== null) {
-                                    value = editedVal;
+                                    value += editedVal;
                                   } else {
-                                    value = getMetricValue(rowData, kpi);
+                                    // Get from row data using getMetricValue
+                                    const metricVal = getMetricValue(rowData, kpi) || 0;
+                                    value += metricVal;
                                   }
                                 }
-                              } else if (timeIndices.length > 1) {
-                                // Quarter or FY - sum months
-                                let total = 0;
-                                timeIndices.forEach(monthIdx => {
-                                  const monthData = allMonthsData[monthIdx];
-                                  const rowData = findRowById(monthData, hierarchyItem.id);
-                                  if (rowData) {
-                                    const editedVal = getEditedValue(hierarchyItem.id, kpi, monthIdx);
-                                    if (editedVal !== null) {
-                                      total += editedVal;
-                                    } else {
-                                      const val = getMetricValue(rowData, kpi);
-                                      if (val !== undefined && val !== null) {
-                                        total += val;
-                                      }
-                                    }
-                                  }
-                                });
-                                value = total;
-                              } else {
-                                // Fallback - try to get from row directly
-                                value = getMetricValue(hierarchyItem, kpi);
-                              }
+                              });
                               
-                              // Format the value based on KPI type
-                              if (value === undefined || value === null || isNaN(value)) {
-                                formattedValue = '-';
-                              } else if (kpi === 'SM Adjustment [Read-Only]' || kpi === 'RSD Adjustment [Read-Only]') {
-                                formattedValue = value !== 0 ? (value > 0 ? `+$${value.toLocaleString()}` : `-$${Math.abs(value).toLocaleString()}`) : '-';
-                              } else {
-                                // Check if it's a quantity metric (not revenue)
-                                const isQuantityMetric = kpi.includes('Quantity') && !kpi.includes('Revenue');
-                                if (isQuantityMetric) {
-                                  formattedValue = value !== 0 ? value.toLocaleString() : '-';
+                              // Format based on KPI type
+                              if (kpi.includes('Revenue') || kpi === 'SM Adjustment [Read-Only]' || kpi === 'RSD Adjustment [Read-Only]') {
+                                // Revenue KPIs - format as currency
+                                if (kpi === 'SM Adjustment [Read-Only]' || kpi === 'RSD Adjustment [Read-Only]') {
+                                formattedValue = value !== 0 ? `$${Math.abs(value).toLocaleString()}` : '-';
                                 } else {
-                                formattedValue = value !== 0 ? `$${value.toLocaleString()}` : '-';
+                                  formattedValue = value !== 0 ? `$${value.toLocaleString()}` : '-';
                                 }
+                              } else if (kpi.includes('Quantity')) {
+                                // Quantity KPIs - format as number (no currency symbol)
+                                formattedValue = value !== 0 ? value.toLocaleString() : '-';
+                              } else {
+                                // Default formatting for other KPIs (shouldn't happen, but fallback)
+                                formattedValue = value !== 0 ? `$${value.toLocaleString()}` : '-';
                               }
                               
                               // Determine if this cell is selected
@@ -19825,13 +20938,13 @@ function App() {
                                     (timeValue === -4 ? selectedCell.time === -4 :
                                      (timeValue === -5 ? selectedCell.time === -5 : false))))));
                               
-                              // Check if this is the AM Adjusted editable cell
-                              const isAmAdjustedEditable = kpi === 'AM Adjusted (Revenue) [Editable]';
+                              // Check if this KPI is editable
+                              const isKpiEditableForThis = isKpiEditable(kpi);
                               const timeIdxForEdit = timeIndices.length === 1 ? timeIndices[0] : timeValue;
                               
                               // Check if this cell is directly edited
-                              const isEdited = isAmAdjustedEditable ? isCellEdited(hierarchyItem.id, kpi, timeIdxForEdit) : false;
-                              const isDirectlyEdited = isAmAdjustedEditable ? isCellDirectlyEdited(hierarchyItem.id, kpi, timeIdxForEdit) : false;
+                              const isEdited = isKpiEditableForThis ? isCellEdited(hierarchyItem.id, kpi, timeIdxForEdit) : false;
+                              const isDirectlyEdited = isKpiEditableForThis ? isCellDirectlyEdited(hierarchyItem.id, kpi, timeIdxForEdit) : false;
                               
                               // Check if this cell is impacted (has edited children months)
                               // For quarters and FY, check if any underlying month has been edited
@@ -19856,7 +20969,7 @@ function App() {
                               const valueChanged = hasCellValueChanged(hierarchyItem.id, kpi, timeIdxForEdit);
                               const hasNote = hasAdjustmentNote(hierarchyItem.id, kpi, timeIdxForEdit);
                               
-                              const isCurrentlyEditing = isAmAdjustedEditable && editingCell && 
+                              const isCurrentlyEditing = isKpiEditableForThis && editingCell && 
                                 editingCell.rowId === hierarchyItem.id && 
                                 editingCell.kpi === kpi &&
                                 editingCell.timeIndex === timeIdxForEdit;
@@ -19867,7 +20980,7 @@ function App() {
                                   className={`cell ${isSelected ? 'selected' : ''} ${isEdited ? 'cell-edited' : ''} ${isImpacted ? 'cell-impacted' : ''} ${isOutOfRange ? 'cell-out-of-range' : ''}`}
                                   style={{
                                     fontWeight: isBold ? 'bold' : 'normal',
-                                    cursor: isAmAdjustedEditable ? 'text' : 'pointer',
+                                    cursor: isKpiEditableForThis ? 'text' : 'pointer',
                                     textAlign: 'right',
                                     paddingRight: '12px',
                                     padding: isCurrentlyEditing ? '0' : undefined,
@@ -19877,12 +20990,12 @@ function App() {
                                     zIndex: 10,
                                     boxShadow: hasNote ? 'inset 0 0 0 1px #ff6b35' : undefined
                                   }}
-                                  title={isAmAdjustedEditable ? 'Double-click or press F2 to edit' : ''}
+                                  title={isKpiEditableForThis ? 'Double-click or press F2 to edit' : ''}
                                   data-selected-hierarchy={hierarchyItem.id}
                                   data-selected-time={timeIndices.length === 1 ? timeIndices[0] : timeValue}
                                   data-selected-kpi={kpi}
                                   onClick={(e) => {
-                                    if (isAmAdjustedEditable) {
+                                    if (isKpiEditableForThis) {
                                       e.stopPropagation();
                                     }
                                     
@@ -19918,7 +21031,7 @@ function App() {
                                       clickTimeoutRef.current = null;
                                     }, 250);
                                   }}
-                                  onDoubleClick={isAmAdjustedEditable ? (e) => {
+                                  onDoubleClick={isKpiEditableForThis ? (e) => {
                                     e.stopPropagation();
                                     e.preventDefault();
                                     
@@ -20253,7 +21366,7 @@ function App() {
                                                           fontSize: '15px', 
                                                           color: '#03234d'
                                                         }}>
-                                                          ${calculatedValue.toLocaleString()}
+                                                          ${Math.round(calculatedValue).toLocaleString()}
                                                         </span>
                                                       )}
                                                       {delta !== 0 && (
@@ -20268,7 +21381,7 @@ function App() {
                                                           fontWeight: '600',
                                                           color: deltaColor
                                                         }}>
-                                                          <span>{delta > 0 ? '+' : ''}{delta.toLocaleString()}</span>
+                                                          <span>{delta > 0 ? '+' : ''}{Math.round(delta).toLocaleString()}</span>
                                                           <span style={{ 
                                                             fontSize: '10px',
                                                             opacity: 0.8
@@ -20302,21 +21415,7 @@ function App() {
                                       })()}
                                     </div>
                                   ) : (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
-                                      {!isAmAdjustedEditable && (
-                                        <div style={{
-                                          width: '12px',
-                                          height: '12px',
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          justifyContent: 'center',
-                                          flexShrink: 0
-                                        }} title="Read-only">
-                                          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                            <path d="M12.5 7H11.5V5C11.5 2.51472 9.48528 0.5 7 0.5C4.51472 0.5 2.5 2.51472 2.5 5V7H1.5C0.671573 7 0 7.67157 0 8.5V14.5C0 15.3284 0.671573 16 1.5 16H12.5C13.3284 16 14 15.3284 14 14.5V8.5C14 7.67157 13.3284 7 12.5 7ZM4 5C4 3.34315 5.34315 2 7 2C8.65685 2 10 3.34315 10 5V7H4V5ZM12 14.5C12 14.7761 11.7761 15 11.5 15H2.5C2.22386 15 2 14.7761 2 14.5V8.5C2 8.22386 2.22386 8 2.5 8H11.5C11.7761 8 12 8.22386 12 8.5V14.5Z" fill="#706e6b"/>
-                                          </svg>
-                                        </div>
-                                      )}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end', position: 'relative', zIndex: 2 }}>
                                       {isDirectlyEdited && !isCurrentlyEditing && (
                                         <div style={{
                                           width: '14px',
@@ -20335,7 +21434,7 @@ function App() {
                                       <span style={{ display: 'block', textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                         {(() => {
                                       // Check for edited value first
-                                      if (isAmAdjustedEditable) {
+                                      if (isKpiEditableForThis) {
                                         const editedVal = getEditedValue(hierarchyItem.id, kpi, timeIdxForEdit);
                                         if (editedVal !== null) {
                                           return editedVal !== 0 ? `$${editedVal.toLocaleString()}` : '-';
@@ -20346,7 +21445,7 @@ function App() {
                                       </span>
                                     </div>
                                   )}
-                                  {!isCurrentlyEditing && (valueChanged || deviation > 30) && deviation !== null && 
+                                  {!isCurrentlyEditing && (valueChanged || deviation > 400) && deviation !== null && 
                                    kpi !== 'Baseline (Revenue) [Read-Only]' && 
                                    kpi !== 'SM Adjustment [Read-Only]' && 
                                    kpi !== 'RSD Adjustment [Read-Only]' && (
@@ -20356,7 +21455,7 @@ function App() {
                                       right: '2px',
                                       backgroundColor: (kpi === 'SM Adjustment [Read-Only]' || kpi === 'RSD Adjustment [Read-Only]') 
                         ? '#0b5cab' 
-                        : (deviation > 30 ? '#FF6B6B' : (valueChanged ? '#0b5cab' : '#FF6B6B')),
+                        : (deviation > 400 ? '#FF6B6B' : (valueChanged ? '#0b5cab' : '#FF6B6B')),
                                       color: '#ffffff',
                                       fontSize: '9px',
                                       fontWeight: '600',
@@ -20744,8 +21843,8 @@ function App() {
               {/* Main Submit Button */}
               <button
                 onClick={() => {
-                  // Handle submit action
-                  console.log('Submit clicked');
+                  // Handle submit action - call handleSave
+                  handleSave();
                 }}
                 style={{
                   backgroundColor: '#ffffff',
@@ -21338,7 +22437,7 @@ function App() {
             </div>
             {/* KPI Set Dropdown */}
             <div ref={kpiSetDropdownRef} style={{ position: 'relative', zIndex: 9999, marginLeft: '-700px' }}>
-              <div className="slds-form-element" style={{ width: '200px', position: 'relative' }}>
+              <div className="slds-form-element" style={{ width: '150px', position: 'relative' }}>
                 <label className="slds-form-element__label" style={{ 
                   fontSize: '0.625rem',
                   color: '#181818', 
@@ -21363,7 +22462,7 @@ function App() {
                     style={{
                       display: 'flex',
                       width: '100%',
-                      maxWidth: '200px',
+                      maxWidth: '150px',
                       height: '1.75rem',
                       border: '1px solid #c9c9c9',
                       borderRadius: '0.5rem',
@@ -21421,8 +22520,8 @@ function App() {
                         position: 'absolute',
                         top: '100%',
                         left: '0',
-                        width: '200px',
-                        minWidth: '200px',
+                        width: '150px',
+                        minWidth: '150px',
                         zIndex: 10000,
                         marginTop: '0.125rem',
                         backgroundColor: '#ffffff',
@@ -21701,18 +22800,16 @@ function App() {
                 </div>
                 
                 <div className="table-header" style={{
-                  gridTemplateColumns: applyColumnWidthMultiplier(`280px repeat(${kpiOptions.length}, 200px)`)
+                  gridTemplateColumns: applyColumnWidthMultiplier(`280px ${kpiOptions.map(() => '200px').join(' ')}`)
                 }}>
-                  {kpiOptions.map((kpiName) => {
-                    const isEditable = isKpiEditable(kpiName);
-                    const displayName = kpiName.replace(' [Read-Only]', '').replace(' [Editable]', '');
-                    const icon = isEditable ? '✏️' : '📖';
-                    
+                  {kpiOptions.map((kpi) => {
+                    const isEditable = kpi.includes('[Editable]');
+                    const displayName = getTimeSeriesKPIDisplay(kpi);
                     return (
-                      <div 
-                        key={kpiName}
+                  <div 
+                        key={kpi}
                     className="cell header-cell sortable-header" 
-                        onClick={() => handleColumnHeaderClick(`kpi:${kpiName}`)}
+                        onClick={() => handleColumnHeaderClick(`kpi:${kpi}`)}
                     style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
                   >
                     <div style={{ 
@@ -21730,11 +22827,11 @@ function App() {
                         flex: '1 1 auto',
                         minWidth: 0
                       }}>
-                            {displayName} {icon}
+                            {displayName} {isEditable ? '✏️' : '📖'}
                       </span>
-                          {renderSortIndicator(`kpi:${kpiName}`)}
+                          {renderSortIndicator(`kpi:${kpi}`)}
                     </div>
-                        {renderFilterInput(`kpi:${kpiName}`)}
+                        {renderFilterInput(`kpi:${kpi}`)}
                   </div>
                     );
                   })}
@@ -21893,6 +22990,7 @@ function App() {
                   };
                   
                   const calculateTimeTotals = (timeItem) => {
+                    // Get KPIs based on selected measure group
                     const kpis = kpiOptions;
                     return kpis.map(kpi => {
                       let total = 0;
@@ -21942,12 +23040,14 @@ function App() {
                     });
                   };
                   
-                  // Calculate grid columns for header rows
-                  const calculateHeaderGridColumns = () => {
-                    return applyColumnWidthMultiplier(`280px repeat(${kpiOptions.length}, 200px)`);
-                  };
-                  
+                  // Get KPIs based on selected measure group
                   const kpis = kpiOptions;
+                  
+                  // Calculate grid columns dynamically based on number of KPIs
+                  const calculateHeaderGridColumns = () => {
+                    const gridColumns = `280px ${kpis.map(() => '200px').join(' ')}`;
+                    return applyColumnWidthMultiplier(gridColumns);
+                  };
                   
                   // Recursive function to render time header rows
                   const renderTimeHeaderRow = (timeItem, level = 0) => {
@@ -22312,7 +23412,10 @@ function App() {
                           const currentTimeItemId = timeItem.id;
                           
                           // Calculate indentation for inner table
-                          const innerTablePaddingLeft = paddingLeft + (hasTimeChildren ? 16 : 0) + 8 + 16 + 8;
+                          // For Time view inner tables, we want the second cell (first KPI column) to start right after the name column (280px)
+                          // So we use level 0 to ensure name cell padding is 20px, and the name cell itself is 280px wide
+                          // This makes the KPI cells start at exactly 280px, aligning with header cells
+                          const innerTablePaddingLeft = 20; // Use level 0 (20px padding) for inner table rows
                           
                           // Get data structure for the selected time period
                           // Use the first month of the time period to get the structure
@@ -22494,11 +23597,9 @@ function App() {
                                 
                                 if (!modifiedRow) return null;
                                 
-                                // Calculate the appropriate level to achieve the desired indentation
-                                // Row component uses: paddingLeft = 20 + (level * 24)
-                                // We want: paddingLeft = innerTablePaddingLeft
-                                // So: level = (innerTablePaddingLeft - 20) / 24
-                                const calculatedLevel = Math.max(0, Math.floor((innerTablePaddingLeft - 20) / 24));
+                                // Use level 0 for inner table rows so the second cell (first KPI column) starts right after the name column (280px)
+                                // This ensures KPI cells align with header cells
+                                const calculatedLevel = 0;
                                 
                                 return (
                                   <div key={`${currentTimeItemId}-${row.id}`}>
@@ -22739,27 +23840,70 @@ function App() {
                   const isKPIExpanded = expandedKPIs.has(kpi);
                   const kpiDisplayName = getTimeSeriesKPIDisplay(kpi);
                   
-                  // Calculate totals for this KPI
-                  const calculateTotalForMonth = (monthIndex) => {
-                    const monthData = allMonthsData[monthIndex];
-                    let total = 0;
+                  // Get the first row from sortedDisplayedData to use its values for the header
+                  const firstRow = sortedDisplayedData && sortedDisplayedData.length > 0 ? sortedDisplayedData[0] : null;
+                  
+                  // Get value from first row for a specific time period
+                  const getFirstRowValueForTime = (timeIndex) => {
+                    if (!firstRow || firstRow.id === 'total-aggregate') return 0;
+                    
+                    // Use getCurrentCellValue to get edited values if they exist, otherwise get from row data
+                    const value = getCurrentCellValue(firstRow.id, kpi, timeIndex);
+                    if (value !== undefined && value !== null && !isNaN(value)) {
+                      return value || 0;
+                    }
+                    
+                    // Fallback: get from month data
+                    if (timeIndex >= 0 && timeIndex <= 11) {
+                      const monthData = allMonthsData[timeIndex];
                     if (monthData) {
                       const topLevelRows = monthData.filter(r => r && r.id !== 'total-aggregate');
-                      topLevelRows.forEach(topRow => {
-                        // Use getCurrentCellValue to get edited values if they exist
-                        const value = getCurrentCellValue(topRow.id, kpi, monthIndex);
-                        if (value !== undefined && value !== null) {
-                          total += value || 0;
+                        const rowData = topLevelRows.find(r => r.id === firstRow.id);
+                        if (rowData) {
+                          return getMetricValue(rowData, kpi) || 0;
                         }
-                      });
+                      }
                     }
-                    return total;
+                    
+                    return 0;
                   };
                   
-                  // Calculate FY total
+                  // Get deviation from first row for a specific time period
+                  const getFirstRowDeviation = (timeIndex) => {
+                    if (!firstRow || firstRow.id === 'total-aggregate') return null;
+                    
+                    if (timeIndex >= 0 && timeIndex <= 11) {
+                      const monthData = allMonthsData[timeIndex];
+                      if (monthData) {
+                        return getCellDeviation(firstRow.id, kpi, timeIndex, monthData);
+                      }
+                    }
+                    return null;
+                  };
+                  
+                  // Check if first row has value changed for a specific time period
+                  const checkFirstRowValueChanged = (timeIndex) => {
+                    if (!firstRow || firstRow.id === 'total-aggregate') return false;
+                    // For FY (-1), check all months
+                    if (timeIndex === -1) {
+                      return months.some((_, idx) => hasCellValueChanged(firstRow.id, kpi, idx));
+                    }
+                    // For quarters (-2 to -5), check the months in that quarter
+                    if (timeIndex >= -5 && timeIndex <= -2) {
+                      const quarterMonths = timeIndex === -2 ? [0, 1, 2] :
+                                            timeIndex === -3 ? [3, 4, 5] :
+                                            timeIndex === -4 ? [6, 7, 8] :
+                                            [9, 10, 11];
+                      return quarterMonths.some(monthIdx => hasCellValueChanged(firstRow.id, kpi, monthIdx));
+                    }
+                    // For months (0-11), use the function directly
+                    return hasCellValueChanged(firstRow.id, kpi, timeIndex);
+                  };
+                  
+                  // Calculate FY total from first row
                   let fyTotal = 0;
                   months.forEach((month, idx) => {
-                    fyTotal += calculateTotalForMonth(idx);
+                    fyTotal += getFirstRowValueForTime(idx);
                   });
                   
                   // Calculate quarter totals
@@ -22773,7 +23917,7 @@ function App() {
                   const calculateQuarterTotal = (quarterMonths) => {
                     let total = 0;
                     quarterMonths.forEach((monthIdx) => {
-                      total += calculateTotalForMonth(monthIdx);
+                      total += getFirstRowValueForTime(monthIdx);
                     });
                     return total;
                   };
@@ -22842,6 +23986,38 @@ function App() {
                     return false;
                   };
                   
+                  // Helper function to check if any row in the KPI has changed value
+                  const checkKPIHeaderValueChanged = (timeIndex) => {
+                    if (timeIndex >= 0 && timeIndex <= 11) {
+                      // Single month
+                      const monthData = allMonthsData[timeIndex];
+                      if (!monthData) return false;
+                      
+                      const checkRowForValueChanged = (row) => {
+                        if (!row) return false;
+                        if (hasCellValueChanged(row.id, kpi, timeIndex)) return true;
+                        if (row.children && Array.isArray(row.children)) {
+                          return row.children.some(child => checkRowForValueChanged(child));
+                        }
+                        return false;
+                      };
+                      
+                      const topLevelRows = monthData.filter(r => r && r.id !== 'total-aggregate');
+                      return topLevelRows.some(row => checkRowForValueChanged(row));
+                    } else if (timeIndex === -1) {
+                      // FY - check all months
+                      return months.some((_, idx) => checkKPIHeaderValueChanged(idx));
+                    } else if (timeIndex >= -5 && timeIndex <= -2) {
+                      // Quarter
+                      const quarterMonths = timeIndex === -2 ? [0, 1, 2] :
+                                            timeIndex === -3 ? [3, 4, 5] :
+                                            timeIndex === -4 ? [6, 7, 8] :
+                                            [9, 10, 11];
+                      return quarterMonths.some(monthIdx => checkKPIHeaderValueChanged(monthIdx));
+                    }
+                    return false;
+                  };
+                  
                   // Helper function to get maximum deviation for KPI header
                   const getKPIHeaderMaxDeviation = (timeIndex) => {
                     let maxDeviation = null;
@@ -22875,10 +24051,20 @@ function App() {
                   };
                   
                   const formatValue = (total) => {
+                    // Format based on KPI type - match the Row component formatting
+                    if (kpi.includes('Revenue') || kpi === 'SM Adjustment [Read-Only]' || kpi === 'RSD Adjustment [Read-Only]') {
+                      // Revenue KPIs - format as currency
                     if (kpi === 'SM Adjustment [Read-Only]' || kpi === 'RSD Adjustment [Read-Only]') {
-                      return total !== 0 ? (total > 0 ? `+$${total.toLocaleString()}` : `-$${Math.abs(total).toLocaleString()}`) : '-';
+                        return total !== 0 ? `$${Math.abs(total).toLocaleString()}` : '-';
                     }
                     return total !== 0 ? `$${total.toLocaleString()}` : '-';
+                    } else if (kpi.includes('Quantity')) {
+                      // Quantity KPIs - format as number (no currency symbol)
+                      return total !== 0 ? total.toLocaleString() : '-';
+                    } else {
+                      // Default formatting for other KPIs
+                      return total !== 0 ? `$${total.toLocaleString()}` : '-';
+                    }
                   };
                   
                   // Calculate grid columns for KPI header row (same logic as data rows)
@@ -22962,10 +24148,20 @@ function App() {
                           </span>
                         </div>
                         {selectedTimeLevels === 'Year' && (() => {
-                          const isImpacted = checkKPIHeaderImpact(-1);
-                          const isOutOfRange = checkKPIHeaderOutOfRange(-1);
-                          const maxDeviation = (isImpacted || isOutOfRange) ? getKPIHeaderMaxDeviation(-1) : null;
-                      const badgeColor = isOutOfRange ? '#FF6B6B' : '#0b5cab';
+                          // Get value and badge from first row
+                          const firstRowValue = fyTotal; // Already calculated from first row
+                          const valueChanged = checkFirstRowValueChanged(-1);
+                          // For FY, get deviation from first month (or calculate from all months)
+                          let maxDeviation = null;
+                          months.forEach((_, idx) => {
+                            const dev = getFirstRowDeviation(idx);
+                            if (dev !== null && (maxDeviation === null || Math.abs(dev) > Math.abs(maxDeviation))) {
+                              maxDeviation = dev;
+                            }
+                          });
+                          const threshold = getKPIThreshold(kpi);
+                          const shouldShow = shouldShowBadge(kpi, valueChanged, maxDeviation);
+                          const badgeColor = maxDeviation !== null && Math.abs(maxDeviation) > threshold ? '#FF6B6B' : (valueChanged ? '#0b5cab' : '#FF6B6B');
                           // Check if this time period matches the search
                           const matchesSearch = isTimePeriodMatching('FY 25');
                           return (
@@ -22977,14 +24173,14 @@ function App() {
                                 paddingRight: '12px', 
                                 fontSize: '13px', 
                                 color: '#03234d',
-                                backgroundColor: matchesSearch ? '#E8F4FD' : ((isImpacted || isOutOfRange) ? '#FBF3E0' : undefined),
+                                backgroundColor: matchesSearch ? '#E8F4FD' : (valueChanged ? '#FBF3E0' : undefined),
                                 borderLeft: 'none',
                                 position: 'relative',
                                 transition: 'all 0.2s ease'
                               }}
                             >
-                            {formatValue(fyTotal)}
-                              {(isImpacted || isOutOfRange) && maxDeviation !== null && 
+                            {formatValue(firstRowValue)}
+                              {shouldShow && maxDeviation !== null && 
                                kpi !== 'Baseline (Revenue) [Read-Only]' && 
                                kpi !== 'SM Adjustment [Read-Only]' && 
                                kpi !== 'RSD Adjustment [Read-Only]' && (
@@ -23003,19 +24199,28 @@ function App() {
                                   whiteSpace: 'nowrap',
                                   boxShadow: '0 1px 2px rgba(0, 0, 0, 0.2)'
                                 }} title={`${maxDeviation.toFixed(1)}% deviation from baseline`}>
-                                  {maxDeviation.toFixed(0)}%
+                                  {maxDeviation >= 0 ? '+' : ''}{maxDeviation.toFixed(0)}%
                           </div>
                         )}
                             </div>
                           );
                         })()}
                         {selectedTimeLevels === 'Quarter' && quarters.map((quarter) => {
+                          // Get value from first row for this quarter
                           const quarterTotal = calculateQuarterTotal(quarter.months);
                           const quarterTimeIndex = quarter.id === 'q1' ? -2 : quarter.id === 'q2' ? -3 : quarter.id === 'q3' ? -4 : -5;
-                          const isImpacted = checkKPIHeaderImpact(quarterTimeIndex);
-                          const isOutOfRange = checkKPIHeaderOutOfRange(quarterTimeIndex);
-                          const maxDeviation = (isImpacted || isOutOfRange) ? getKPIHeaderMaxDeviation(quarterTimeIndex) : null;
-                          const badgeColor = isOutOfRange ? '#FF6B6B' : '#0b5cab';
+                          const valueChanged = checkFirstRowValueChanged(quarterTimeIndex);
+                          // Get max deviation from first row across quarter months
+                          let maxDeviation = null;
+                          quarter.months.forEach(monthIdx => {
+                            const dev = getFirstRowDeviation(monthIdx);
+                            if (dev !== null && (maxDeviation === null || Math.abs(dev) > Math.abs(maxDeviation))) {
+                              maxDeviation = dev;
+                            }
+                          });
+                          const threshold = getKPIThreshold(kpi);
+                          const shouldShow = shouldShowBadge(kpi, valueChanged, maxDeviation);
+                          const badgeColor = maxDeviation !== null && Math.abs(maxDeviation) > threshold ? '#FF6B6B' : (valueChanged ? '#0b5cab' : '#FF6B6B');
                           // Check if this time period matches the search
                           const quarterName = quarter.id === 'q1' ? 'Q1 2025' : quarter.id === 'q2' ? 'Q2 2025' : quarter.id === 'q3' ? 'Q3 2025' : 'Q4 2025';
                           const matchesSearch = isTimePeriodMatching(quarterName);
@@ -23029,14 +24234,14 @@ function App() {
                                 paddingRight: '12px', 
                                 fontSize: '13px', 
                                 color: '#03234d',
-                                backgroundColor: matchesSearch ? '#E8F4FD' : ((isImpacted || isOutOfRange) ? '#FBF3E0' : undefined),
+                                backgroundColor: matchesSearch ? '#E8F4FD' : (valueChanged ? '#FBF3E0' : undefined),
                                 borderLeft: 'none',
                                 position: 'relative',
                                 transition: 'all 0.2s ease'
                               }}
                             >
                               {formatValue(quarterTotal)}
-                              {(isImpacted || isOutOfRange) && maxDeviation !== null && 
+                              {shouldShow && maxDeviation !== null && 
                                kpi !== 'Baseline (Revenue) [Read-Only]' && 
                                kpi !== 'SM Adjustment [Read-Only]' && 
                                kpi !== 'RSD Adjustment [Read-Only]' && (
@@ -23055,7 +24260,7 @@ function App() {
                                   whiteSpace: 'nowrap',
                                   boxShadow: '0 1px 2px rgba(0, 0, 0, 0.2)'
                                 }} title={`${maxDeviation.toFixed(1)}% deviation from baseline`}>
-                                  {maxDeviation.toFixed(0)}%
+                                  {maxDeviation >= 0 ? '+' : ''}{maxDeviation.toFixed(0)}%
                                 </div>
                               )}
                             </div>
@@ -23063,12 +24268,13 @@ function App() {
                         })}
                         {selectedTimeLevels === 'Month' && filteredMonthNames.map((month, idx) => {
                           const monthIndex = monthNames.indexOf(month);
-                          const monthTotal = calculateTotalForMonth(monthIndex);
-                          const isImpacted = checkKPIHeaderImpact(monthIndex);
-                          const isOutOfRange = checkKPIHeaderOutOfRange(monthIndex);
-                          const maxDeviation = (isImpacted || isOutOfRange) ? getKPIHeaderMaxDeviation(monthIndex) : null;
-                      const badgeColor = isOutOfRange ? '#FF6B6B' : '#0b5cab';
-                      const valueChanged = (isImpacted || isOutOfRange);
+                          // Get value from first row for this month
+                          const monthTotal = getFirstRowValueForTime(monthIndex);
+                          const valueChanged = checkFirstRowValueChanged(monthIndex);
+                          const maxDeviation = getFirstRowDeviation(monthIndex);
+                          const threshold = getKPIThreshold(kpi);
+                          const shouldShow = shouldShowBadge(kpi, valueChanged, maxDeviation);
+                          const badgeColor = maxDeviation !== null && Math.abs(maxDeviation) > threshold ? '#FF6B6B' : (valueChanged ? '#0b5cab' : '#FF6B6B');
                           // Check if this time period matches the search
                           const matchesSearch = isTimePeriodMatching(month);
                           return (
@@ -23088,7 +24294,7 @@ function App() {
                               }}
                             >
                               {formatValue(monthTotal)}
-                          {(isImpacted || isOutOfRange) && maxDeviation !== null && 
+                          {shouldShow && maxDeviation !== null && 
                            kpi !== 'Baseline (Revenue) [Read-Only]' && 
                            kpi !== 'SM Adjustment [Read-Only]' && 
                            kpi !== 'RSD Adjustment [Read-Only]' && (
@@ -23107,7 +24313,7 @@ function App() {
                                   whiteSpace: 'nowrap',
                                   boxShadow: '0 1px 2px rgba(0, 0, 0, 0.2)'
                                 }} title={`${maxDeviation.toFixed(1)}% deviation from baseline`}>
-                                  {maxDeviation.toFixed(0)}%
+                                  {maxDeviation >= 0 ? '+' : ''}{maxDeviation.toFixed(0)}%
                                 </div>
                               )}
                             </div>
@@ -23181,57 +24387,26 @@ function App() {
                   </div>
                 </div>
                 
-                <div className="table-header">
-                  <div 
+                <div className="table-header" style={{
+                  gridTemplateColumns: applyColumnWidthMultiplier(`280px ${kpiOptions.map(() => '200px').join(' ')}`)
+                }}>
+                  {kpiOptions.map((kpi) => {
+                    const isEditable = kpi.includes('[Editable]');
+                    const displayName = getTimeSeriesKPIDisplay(kpi);
+                    return (
+                      <div 
+                        key={kpi}
                     className="cell header-cell sortable-header" 
-                    onClick={() => handleColumnHeaderClick('kpi:Baseline (Revenue) [Read-Only]')}
+                        onClick={() => handleColumnHeaderClick(`kpi:${kpi}`)}
                     style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
                   >
                     <div style={{ width: '100%' }}>
-                      Baseline (Revenue) 📖{renderSortIndicator('kpi:Baseline (Revenue) [Read-Only]')}
+                          {displayName} {isEditable ? '✏️' : '📖'}{renderSortIndicator(`kpi:${kpi}`)}
                     </div>
-                    {renderFilterInput('kpi:Baseline (Revenue) [Read-Only]')}
+                        {renderFilterInput(`kpi:${kpi}`)}
                   </div>
-                  <div 
-                    className="cell header-cell sortable-header" 
-                    onClick={() => handleColumnHeaderClick('kpi:AM Adjusted (Revenue) [Editable]')}
-                    style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
-                  >
-                    <div style={{ width: '100%' }}>
-                      AM Adjusted (Revenue) ✏️{renderSortIndicator('kpi:AM Adjusted (Revenue) [Editable]')}
-                    </div>
-                    {renderFilterInput('kpi:AM Adjusted (Revenue) [Editable]')}
-                  </div>
-                  <div 
-                    className="cell header-cell sortable-header" 
-                    onClick={() => handleColumnHeaderClick('kpi:SM Adjustment [Read-Only]')}
-                    style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
-                  >
-                    <div style={{ width: '100%' }}>
-                      SM Adjustment 📖{renderSortIndicator('kpi:SM Adjustment [Read-Only]')}
-                    </div>
-                    {renderFilterInput('kpi:SM Adjustment [Read-Only]')}
-                  </div>
-                  <div 
-                    className="cell header-cell sortable-header" 
-                    onClick={() => handleColumnHeaderClick('kpi:RSD Adjustment [Read-Only]')}
-                    style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
-                  >
-                    <div style={{ width: '100%' }}>
-                      RSD Adjustment 📖{renderSortIndicator('kpi:RSD Adjustment [Read-Only]')}
-                    </div>
-                    {renderFilterInput('kpi:RSD Adjustment [Read-Only]')}
-                  </div>
-                  <div 
-                    className="cell header-cell sortable-header" 
-                    onClick={() => handleColumnHeaderClick('kpi:Final Forecast (Revenue) [Read-Only]')}
-                    style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
-                  >
-                    <div style={{ width: '100%' }}>
-                      Final Forecast (Revenue) 📖{renderSortIndicator('kpi:Final Forecast (Revenue) [Read-Only]')}
-                    </div>
-                    {renderFilterInput('kpi:Final Forecast (Revenue) [Read-Only]')}
-                  </div>
+                    );
+                  })}
                 </div>
               </div>
               
@@ -23257,6 +24432,7 @@ function App() {
 
                   // Calculate totals for a hierarchy item (recursively sums from children if needed)
                   const calculateHeaderTotals = (hierarchyItem) => {
+                    // Get KPIs based on selected measure group
                     const kpis = kpiOptions;
                     return kpis.map(kpi => {
                       let total = 0;
@@ -23285,12 +24461,11 @@ function App() {
 
                   const calculateHeaderGridColumns = () => {
                     // Match the grid columns of the data rows for proper alignment
-                    // Name column (280px) + dynamic number of KPI columns (200px each)
-                    const numKpiColumns = kpiOptions.length;
-                    return `280px ${'200px '.repeat(numKpiColumns).trim()}`;
+                    // Data rows use: 280px 200px 200px 200px 200px 200px (from CSS .table-row)
+                    return '280px 200px 200px 200px 200px 200px';
                   };
 
-                  const kpis = kpiOptions;
+                  const kpis = ['Baseline (Revenue) [Read-Only]', 'AM Adjusted (Revenue) [Editable]', 'SM Adjustment [Read-Only]', 'RSD Adjustment [Read-Only]', 'Final Forecast (Revenue) [Read-Only]'];
 
                   // Recursive function to render header rows with hierarchy
                   const renderHeaderRow = (hierarchyItem, level = 0) => {
@@ -23569,7 +24744,7 @@ function App() {
                                   </div>
                                 )}
                                 {formattedValue}
-                                {(isImpacted || isOutOfRange) && maxDeviation !== null && 
+                                {(valueChanged || isOutOfRange) && maxDeviation !== null && 
                                  kpi !== 'Baseline (Revenue) [Read-Only]' && 
                                  kpi !== 'SM Adjustment [Read-Only]' && 
                                  kpi !== 'RSD Adjustment [Read-Only]' && (
@@ -23577,7 +24752,7 @@ function App() {
                                     position: 'absolute',
                                     top: '2px',
                                     right: '2px',
-                                    backgroundColor: isOutOfRange ? '#FF6B6B' : '#0b5cab',
+                                    backgroundColor: isOutOfRange ? '#FF6B6B' : (valueChanged ? '#0b5cab' : '#FF6B6B'),
                                     color: '#ffffff',
                                     fontSize: '9px',
                                     fontWeight: '600',
@@ -23588,7 +24763,7 @@ function App() {
                                     whiteSpace: 'nowrap',
                                     boxShadow: '0 1px 2px rgba(0, 0, 0, 0.2)'
                                   }} title={`${maxDeviation.toFixed(1)}% deviation from baseline`}>
-                                    {maxDeviation.toFixed(0)}%
+                                    {maxDeviation >= 0 ? '+' : ''}{maxDeviation.toFixed(0)}%
                                   </div>
                                 )}
                               </div>
@@ -23631,7 +24806,7 @@ function App() {
                               }
                             });
                             
-                            const kpis = kpiOptions;
+                            const kpis = ['Baseline (Revenue) [Read-Only]', 'AM Adjusted (Revenue) [Editable]', 'SM Adjustment [Read-Only]', 'RSD Adjustment [Read-Only]', 'Final Forecast (Revenue) [Read-Only]'];
                             const currentIndent = innerTablePaddingLeft + (indentLevel * 24);
                             
                             return (
@@ -23795,7 +24970,7 @@ function App() {
                                         </div>
                                       )}
                                       {formattedValue}
-                                      {(valueChanged || Math.abs(deviation) > 30) && deviation !== null && 
+                                      {(valueChanged || Math.abs(deviation) > 400) && deviation !== null && 
                                        kpi !== 'Baseline (Revenue) [Read-Only]' && 
                                        kpi !== 'SM Adjustment [Read-Only]' && 
                                        kpi !== 'RSD Adjustment [Read-Only]' && (
@@ -23805,7 +24980,7 @@ function App() {
                                           right: '2px',
                                           backgroundColor: (kpi === 'SM Adjustment [Read-Only]' || kpi === 'RSD Adjustment [Read-Only]') 
                         ? '#0b5cab' 
-                        : (Math.abs(deviation) > 30 ? '#FF6B6B' : (valueChanged ? '#0b5cab' : '#FF6B6B')),
+                        : (Math.abs(deviation) > 400 ? '#FF6B6B' : (valueChanged ? '#0b5cab' : '#FF6B6B')),
                                           color: '#ffffff',
                                           fontSize: '9px',
                                           fontWeight: '600',
