@@ -8572,7 +8572,8 @@ function App() {
   // When AM Adjusted is edited: both AM Adjusted and Final Forecast are impacted
   // Excludes: Baseline Revenue, SM Adjustment, RSD Adjustment (these are independent/read-only)
   const getImpactedKPIs = useMemo(() => {
-    if (selectedView !== 'KPI' || !allMonthsData || allMonthsData.length === 0) {
+    // Work for KPI, Dimensions, and Time views
+    if (!allMonthsData || allMonthsData.length === 0) {
       return new Set();
     }
 
@@ -18485,9 +18486,25 @@ function App() {
             </div>
             
             <div className="table-header" style={{
-              gridTemplateColumns: applyColumnWidthMultiplier(`280px ${kpiOptions.map(() => '200px').join(' ')}`)
+              gridTemplateColumns: applyColumnWidthMultiplier(`280px ${(() => {
+                // Filter KPIs by impacted KPIs if toggle is on
+                let kpisToDisplay = [...kpiOptions];
+                if (showImpactedKPIsOnly) {
+                  const impactedKPIsArray = Array.from(getImpactedKPIs);
+                  kpisToDisplay = kpisToDisplay.filter(kpi => impactedKPIsArray.includes(kpi));
+                }
+                return kpisToDisplay.map(() => '200px').join(' ');
+              })()}`)
             }}>
-              {kpiOptions.map((kpi) => {
+              {(() => {
+                // Filter KPIs by impacted KPIs if toggle is on
+                let kpisToDisplay = [...kpiOptions];
+                if (showImpactedKPIsOnly) {
+                  const impactedKPIsArray = Array.from(getImpactedKPIs);
+                  kpisToDisplay = kpisToDisplay.filter(kpi => impactedKPIsArray.includes(kpi));
+                }
+                return kpisToDisplay;
+              })().map((kpi) => {
                 const isEditable = kpi.includes('[Editable]');
                 const displayName = getTimeSeriesKPIDisplay(kpi);
                 return (
@@ -18607,8 +18624,12 @@ function App() {
               
               // Calculate totals for a time period (for Account Manager view)
               const calculateTimeTotals = (timeItem) => {
-                // Get KPIs based on selected measure group
-                const kpis = kpiOptions;
+                // Get KPIs based on selected measure group, filter by impacted KPIs if toggle is on
+                let kpis = [...kpiOptions];
+                if (showImpactedKPIsOnly) {
+                  const impactedKPIsArray = Array.from(getImpactedKPIs);
+                  kpis = kpis.filter(kpi => impactedKPIsArray.includes(kpi));
+                }
                 return kpis.map(kpi => {
                   let total = 0;
                   const timePeriodIndex = timeItem.timeValue; // -1 for FY, -2 to -5 for quarters
@@ -18664,8 +18685,12 @@ function App() {
                 });
               };
               
-              // Get KPIs based on selected measure group
-              const kpis = kpiOptions;
+              // Get KPIs based on selected measure group, filter by impacted KPIs if toggle is on
+              let kpis = [...kpiOptions];
+              if (showImpactedKPIsOnly) {
+                const impactedKPIsArray = Array.from(getImpactedKPIs);
+                kpis = kpis.filter(kpi => impactedKPIsArray.includes(kpi));
+              }
               
               // Calculate grid columns dynamically based on number of KPIs
               const calculateHeaderGridColumns = () => {
@@ -20405,8 +20430,12 @@ function App() {
 
               // Calculate totals for a hierarchy item (recursively sums from children if needed)
               const calculateHeaderTotals = (hierarchyItem) => {
-                // Get KPIs based on selected measure group
-                const kpis = kpiOptions;
+                // Get KPIs based on selected measure group, filter by impacted KPIs if toggle is on
+                let kpis = [...kpiOptions];
+                if (showImpactedKPIsOnly) {
+                  const impactedKPIsArray = Array.from(getImpactedKPIs);
+                  kpis = kpis.filter(kpi => impactedKPIsArray.includes(kpi));
+                }
                 return kpis.map(kpi => {
                   let total = 0;
                   months.forEach((month, idx) => {
@@ -24388,9 +24417,25 @@ function App() {
                 </div>
                 
                 <div className="table-header" style={{
-                  gridTemplateColumns: applyColumnWidthMultiplier(`280px ${kpiOptions.map(() => '200px').join(' ')}`)
+                  gridTemplateColumns: applyColumnWidthMultiplier(`280px ${(() => {
+                    // Filter KPIs by impacted KPIs if toggle is on
+                    let kpisToDisplay = [...kpiOptions];
+                    if (showImpactedKPIsOnly) {
+                      const impactedKPIsArray = Array.from(getImpactedKPIs);
+                      kpisToDisplay = kpisToDisplay.filter(kpi => impactedKPIsArray.includes(kpi));
+                    }
+                    return kpisToDisplay.map(() => '200px').join(' ');
+                  })()}`)
                 }}>
-                  {kpiOptions.map((kpi) => {
+                  {(() => {
+                    // Filter KPIs by impacted KPIs if toggle is on
+                    let kpisToDisplay = [...kpiOptions];
+                    if (showImpactedKPIsOnly) {
+                      const impactedKPIsArray = Array.from(getImpactedKPIs);
+                      kpisToDisplay = kpisToDisplay.filter(kpi => impactedKPIsArray.includes(kpi));
+                    }
+                    return kpisToDisplay;
+                  })().map((kpi) => {
                     const isEditable = kpi.includes('[Editable]');
                     const displayName = getTimeSeriesKPIDisplay(kpi);
                     return (
@@ -26283,7 +26328,8 @@ function App() {
             const impactedKPIsArray = Array.from(getImpactedKPIs);
             const hasImpactedKPIs = impactedKPIsArray.length > 0;
             
-            if (!hasImpactedKPIs || selectedView !== 'KPI') return null;
+            // Show warning for KPI, Dimensions, and Time views
+            if (!hasImpactedKPIs || (selectedView !== 'KPI' && selectedView !== 'Dimensions' && selectedView !== 'Time')) return null;
             
             return (
               <div style={{ 
