@@ -19,7 +19,7 @@
     "build": "NODE_OPTIONS='--localstorage-file=/tmp/localstorage.json' react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
-    "heroku-postbuild": "NODE_OPTIONS='--localstorage-file=/tmp/localstorage.json' npm run build",
+    "heroku-postbuild": "npm run build",
     "serve": "serve -s build -l $PORT",
     "electron": "electron .",
     "electron-dev": "ELECTRON_IS_DEV=1 electron .",
