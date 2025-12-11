@@ -4,7 +4,6 @@
   "private": true,
   "main": "electron.js",
   "author": "Manufacturing Cloud",
-  "homepage": "./",
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
