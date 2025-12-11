@@ -8,6 +8,11 @@
 
 # Production
 /build
+/dist
+*.dmg
+*.zip
+ManufacturingCloudForecast-mac.zip
+dist/nov24_proto-mac-app.zip
 
 # Misc
 .DS_Store
