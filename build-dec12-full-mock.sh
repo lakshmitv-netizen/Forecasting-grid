@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# Build script for nov24_proto Mac app
+# Build script for dec12-full-mock Mac app
 # This script builds the React app and packages it as a Mac application
 
 set -e
 
-echo "🚀 Building nov24_proto Mac App..."
+echo "🚀 Building dec12-full-mock Mac App..."
 echo ""
 
 # Step 1: Build the React app
@@ -23,5 +23,5 @@ electron-builder --mac
 
 echo ""
 echo "✅ Build complete! The app is in the 'dist' directory."
-echo "📱 App name: nov24_proto"
+echo "📱 App name: dec12-full-mock"
 echo ""

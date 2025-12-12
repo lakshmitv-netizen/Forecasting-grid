@@ -16,7 +16,7 @@ function createWindow() {
       webSecurity: !isDev
     },
     backgroundColor: '#f3f3f3',
-    title: 'nov24_proto',
+    title: 'dec12-full-mock',
     // Ensure app works offline
     show: false // Don't show until ready
   });

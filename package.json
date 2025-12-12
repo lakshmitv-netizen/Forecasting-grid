@@ -1,5 +1,5 @@
 {
-  "name": "nov24_proto",
+  "name": "dec12-full-mock",
   "version": "1.0.0",
   "private": true,
   "main": "electron.js",
@@ -27,11 +27,11 @@
     "dist": "npm run build && electron-builder --mac",
     "dist-mac": "NODE_OPTIONS='--localstorage-file=/tmp/localstorage.json' npm run build && cp public/electron.js electron.js && cp public/preload.js preload.js && electron-builder --mac && rm electron.js preload.js",
     "package-mac": "NODE_OPTIONS='--localstorage-file=/tmp/localstorage.json' npm run build && electron-builder --mac --dir",
-    "build-nov24-proto": "NODE_OPTIONS='--localstorage-file=/tmp/localstorage.json' npm run build && cp public/electron.js electron.js && cp public/preload.js preload.js && electron-builder --mac && rm electron.js preload.js"
+    "build-dec12-full-mock": "NODE_OPTIONS='--localstorage-file=/tmp/localstorage.json' npm run build && cp public/electron.js electron.js && cp public/preload.js preload.js && electron-builder --mac && rm electron.js preload.js"
   },
   "build": {
-    "appId": "com.nov24proto.app",
-    "productName": "nov24_proto",
+    "appId": "com.dec12fullmock.app",
+    "productName": "dec12-full-mock",
     "extraMetadata": {
       "main": "electron.js"
     },
