@@ -1,19 +1,39 @@
 import { MeasureData, GridRow } from '../types';
 
-const monthlyValue = (base: number) => ({
-  jan2026: base,
-  feb2026: base,
-  mar2026: base,
-  apr2026: base,
-  may2026: base,
-  jun2026: base,
-  jul2026: base,
-  aug2026: base,
-  sep2026: base,
-  oct2026: base,
-  nov2026: base,
-  dec2026: base,
-});
+const monthlyValue = (base: number) => {
+  const months = {
+    jan2026: base,
+    feb2026: base,
+    mar2026: base,
+    apr2026: base,
+    may2026: base,
+    jun2026: base,
+    jul2026: base,
+    aug2026: base,
+    sep2026: base,
+    oct2026: base,
+    nov2026: base,
+    dec2026: base,
+  };
+  
+  // Calculate quarters
+  const q1 = months.jan2026 + months.feb2026 + months.mar2026;
+  const q2 = months.apr2026 + months.may2026 + months.jun2026;
+  const q3 = months.jul2026 + months.aug2026 + months.sep2026;
+  const q4 = months.oct2026 + months.nov2026 + months.dec2026;
+  
+  // Calculate year (sum of all months)
+  const year = q1 + q2 + q3 + q4;
+  
+  return {
+    year,
+    q1,
+    q2,
+    q3,
+    q4,
+    ...months,
+  };
+};
 
 // Helper function to create the standard hierarchy structure for a measure
 const createHierarchy = (

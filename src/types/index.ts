@@ -8,6 +8,11 @@ export interface GridRow {
   type: RowType;
   children?: GridRow[];
   values: {
+    year: number; // FY26 - sum of all months
+    q1: number;   // Q1 - sum of Jan, Feb, Mar
+    q2: number;   // Q2 - sum of Apr, May, Jun
+    q3: number;   // Q3 - sum of Jul, Aug, Sep
+    q4: number;   // Q4 - sum of Oct, Nov, Dec
     jan2026: number;
     feb2026: number;
     mar2026: number;
@@ -27,6 +32,11 @@ export interface MeasureData {
   id: string;
   name: string;
   values: {
+    year: number;
+    q1: number;
+    q2: number;
+    q3: number;
+    q4: number;
     jan2026: number;
     feb2026: number;
     mar2026: number;

@@ -1,6 +1,7 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { MeasureData, GridRow as GridRowType } from '../types';
 import GridRowComponent from './GridRow';
+import GridFooter from './GridFooter';
 import {
   propagateUpward,
   propagateDownward,
@@ -13,27 +14,98 @@ import '../styles/components/Grid.css';
 interface HierarchicalGridProps {
   data: MeasureData[];
   onDataChange?: (newData: MeasureData[]) => void;
+  selectedDimensionLevels?: Set<string>;
+  selectedTimeGranularities?: Set<string>;
+  columnWidth?: number; // Column width in pixels for time period columns
+  onExpandAllRows?: (handler: () => void) => void; // Callback to register expand handler
+  onCollapseAllRows?: (handler: () => void) => void; // Callback to register collapse handler
+  onSettingsClick?: () => void; // Callback to open settings panel
 }
 
-const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({ data, onDataChange }) => {
+const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({ data, onDataChange, selectedDimensionLevels, selectedTimeGranularities, columnWidth = 100, onExpandAllRows, onCollapseAllRows, onSettingsClick }) => {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [gridData, setGridData] = useState<MeasureData[]>(data);
+  // Track preserved values for year/quarter edits at account/category levels
+  const preservedValuesRef = useRef<Map<string, { monthKey: keyof GridRowType['values']; value: number }>>(new Map());
+  // Track focused cell for keyboard navigation
+  const [focusedCell, setFocusedCell] = useState<{ rowId: string; monthKey: keyof GridRowType['values'] } | null>(null);
+  const cellRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
+  // Track edited cells and their original values to show delta
+  const [editedCells, setEditedCells] = useState<Map<string, number>>(new Map()); // key: `${rowId}-${monthKey}`, value: originalValue
+  // Track impacted cells (cells that changed due to editing another cell) and their original values
+  const [impactedCells, setImpactedCells] = useState<Map<string, number>>(new Map()); // key: `${rowId}-${monthKey}`, value: originalValue
+  // Track saved edited cells (cells that were edited and saved - these keep the icon but no badge)
+  // Map key: `${rowId}-${monthKey}`, value: icon color ('#ff5d2d' for increment, '#2E76E1' for decrement)
+  const [savedEditedCells, setSavedEditedCells] = useState<Map<string, string>>(new Map());
+  // Edit history for undo/redo
+  const [editHistory, setEditHistory] = useState<MeasureData[][]>([]);
+  const [historyIndex, setHistoryIndex] = useState<number>(-1);
+  const [showOnlyImpactedKPI, setShowOnlyImpactedKPI] = useState<boolean>(false);
+  const originalDataRef = useRef<MeasureData[]>(JSON.parse(JSON.stringify(data)));
 
-  // Calculate measure values from children
-  const calculateMeasureValues = useCallback((dataToCalculate: MeasureData[]): MeasureData[] => {
+  // Calculate measure values from children and aggregate time periods
+  const calculateMeasureValues = useCallback((dataToCalculate: MeasureData[], skipTimeAggregationForRows?: Set<string>): MeasureData[] => {
     const updated = JSON.parse(JSON.stringify(dataToCalculate));
-    const monthKeys: (keyof GridRowType['values'])[] = [
-      'jan2026', 'feb2026', 'mar2026', 'apr2026', 'may2026', 'jun2026',
-      'jul2026', 'aug2026', 'sep2026', 'oct2026', 'nov2026', 'dec2026',
-    ];
+    const skipSet = skipTimeAggregationForRows || new Set<string>();
     
+    // Helper to calculate time aggregations for a row
+    const calculateTimeAggregations = (row: GridRowType | MeasureData) => {
+      // Only recalculate if this row is not in the skip set
+      if (!skipSet.has(row.id)) {
+        // Calculate quarters from months
+        row.values.q1 = row.values.jan2026 + row.values.feb2026 + row.values.mar2026;
+        row.values.q2 = row.values.apr2026 + row.values.may2026 + row.values.jun2026;
+        row.values.q3 = row.values.jul2026 + row.values.aug2026 + row.values.sep2026;
+        row.values.q4 = row.values.oct2026 + row.values.nov2026 + row.values.dec2026;
+        
+        // Calculate year from quarters (or sum of all months)
+        row.values.year = row.values.q1 + row.values.q2 + row.values.q3 + row.values.q4;
+      }
+    };
+    
+    // Recursively calculate aggregations for all rows
+    const calculateRowAggregations = (row: GridRowType | MeasureData) => {
+      if (row.children && row.children.length > 0) {
+        // First calculate children aggregations
+        row.children.forEach(calculateRowAggregations);
+        
+        // For parent rows, sum children values for MONTHS only
+        // Year and quarters are calculated from months, not summed from children
+        const monthKeys: (keyof GridRowType['values'])[] = [
+          'jan2026', 'feb2026', 'mar2026', 'apr2026', 'may2026', 'jun2026',
+          'jul2026', 'aug2026', 'sep2026', 'oct2026', 'nov2026', 'dec2026',
+        ];
+        
+        // Sum months from children ONLY if this row is not in the skip set
+        // (If year/quarter was edited, we've already distributed to months, so don't recalculate)
+        if (!skipSet.has(row.id)) {
+          for (const monthKey of monthKeys) {
+            row.values[monthKey] = row.children.reduce(
+              (sum: number, child: GridRowType) => sum + child.values[monthKey],
+              0
+            );
+          }
+          // After summing months, calculate quarters and year from months
+          calculateTimeAggregations(row);
+        }
+        // If row is in skip set, don't recalculate anything - preserve the edited values
+      } else {
+        // Leaf node - calculate time aggregations from months (unless skipped)
+        calculateTimeAggregations(row);
+      }
+    };
+    
+    // Calculate for all measures
     for (const measure of updated) {
-      for (const monthKey of monthKeys) {
+      // If measure is in skip set, don't recalculate its time aggregations
+      // But still need to calculate children (they might not be skipped)
+      if (!skipSet.has(measure.id)) {
+        calculateRowAggregations(measure);
+      } else {
+        // Measure is skipped - still calculate children, but don't sum months or recalculate time aggregations
         if (measure.children && measure.children.length > 0) {
-          measure.values[monthKey] = measure.children.reduce(
-            (sum, child) => sum + child.values[monthKey],
-            0
-          );
+          measure.children.forEach(calculateRowAggregations);
+          // Don't sum months from children or recalculate time aggregations - preserve the edited values
         }
       }
     }
@@ -43,7 +115,48 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({ data, onDataChange 
 
   // Update local state when prop changes and recalculate measure values
   React.useEffect(() => {
-    const calculatedData = calculateMeasureValues(data);
+    // Build skip set from preserved values (only the currently edited cell, if any)
+    const skipSet = new Set<string>();
+    preservedValuesRef.current.forEach((_, rowId) => {
+      skipSet.add(rowId);
+    });
+    
+    const calculatedData = calculateMeasureValues(data, skipSet);
+    
+    // After recalculation, restore preserved values ONLY for the currently edited cell
+    // This ensures that when data prop changes (e.g., from external source),
+    // the currently edited cell's value is preserved
+    if (preservedValuesRef.current.size > 0) {
+      preservedValuesRef.current.forEach((preserved, rowId) => {
+        // Check if it's a measure row
+        const measure = calculatedData.find(m => m.id === rowId);
+        if (measure) {
+          // Restore measure row value
+          measure.values[preserved.monthKey] = preserved.value;
+        } else {
+          // It's a child row, find and restore it
+          const updateRowValue = (rows: GridRowType[]) => {
+            for (const row of rows) {
+              if (row.id === rowId) {
+                row.values[preserved.monthKey] = preserved.value;
+                return true;
+              }
+              if (row.children && updateRowValue(row.children)) {
+                return true;
+              }
+            }
+            return false;
+          };
+          
+          for (const measureData of calculatedData) {
+            if (measureData.children && updateRowValue(measureData.children)) {
+              break;
+            }
+          }
+        }
+      });
+    }
+    
     setGridData(calculatedData);
   }, [data, calculateMeasureValues]);
 
@@ -59,11 +172,217 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({ data, onDataChange 
     });
   };
 
+  // Expand all rows that have children
+  const handleExpandAll = useCallback(() => {
+    const allExpandableIds = new Set<string>();
+    
+    // Recursive function to collect all row IDs that have children
+    const collectExpandableIds = (rows: GridRowType[]) => {
+      for (const row of rows) {
+        if (row.children && row.children.length > 0) {
+          allExpandableIds.add(row.id);
+          collectExpandableIds(row.children);
+        }
+      }
+    };
+    
+    // Collect from all measures
+    for (const measure of gridData) {
+      if (measure.children && measure.children.length > 0) {
+        allExpandableIds.add(measure.id);
+        collectExpandableIds(measure.children);
+      }
+    }
+    
+    setExpandedRows(allExpandableIds);
+  }, [gridData]);
+
+  // Collapse all rows
+  const handleCollapseAll = useCallback(() => {
+    setExpandedRows(new Set());
+  }, []);
+  
+  // Register handlers with parent component
+  useEffect(() => {
+    if (onExpandAllRows) {
+      onExpandAllRows(handleExpandAll);
+    }
+    if (onCollapseAllRows) {
+      onCollapseAllRows(handleCollapseAll);
+    }
+  }, [handleExpandAll, handleCollapseAll, onExpandAllRows, onCollapseAllRows]);
+
   const formatValue = (value: number): string => {
     return value.toLocaleString('en-US', {
       minimumFractionDigits: 0,
-      maximumFractionDigits: 1,
+      maximumFractionDigits: 2,
     });
+  };
+
+  // Get visible time keys based on selected granularities
+  const getVisibleTimeKeys = (): (keyof GridRowType['values'])[] => {
+    const allTimeKeys: { key: keyof GridRowType['values']; granularity: string; label: string }[] = [
+      { key: 'year', granularity: 'year', label: 'FY26' },
+      { key: 'q1', granularity: 'quarter', label: 'Q1' },
+      { key: 'q2', granularity: 'quarter', label: 'Q2' },
+      { key: 'q3', granularity: 'quarter', label: 'Q3' },
+      { key: 'q4', granularity: 'quarter', label: 'Q4' },
+      { key: 'jan2026', granularity: 'month', label: 'Jan' },
+      { key: 'feb2026', granularity: 'month', label: 'Feb' },
+      { key: 'mar2026', granularity: 'month', label: 'Mar' },
+      { key: 'apr2026', granularity: 'month', label: 'Apr' },
+      { key: 'may2026', granularity: 'month', label: 'May' },
+      { key: 'jun2026', granularity: 'month', label: 'Jun' },
+      { key: 'jul2026', granularity: 'month', label: 'Jul' },
+      { key: 'aug2026', granularity: 'month', label: 'Aug' },
+      { key: 'sep2026', granularity: 'month', label: 'Sep' },
+      { key: 'oct2026', granularity: 'month', label: 'Oct' },
+      { key: 'nov2026', granularity: 'month', label: 'Nov' },
+      { key: 'dec2026', granularity: 'month', label: 'Dec' },
+    ];
+
+    if (!selectedTimeGranularities || selectedTimeGranularities.size === 0) {
+      // If nothing selected, show all
+      return allTimeKeys.map(tk => tk.key);
+    }
+
+    return allTimeKeys
+      .filter(tk => selectedTimeGranularities.has(tk.granularity))
+      .map(tk => tk.key);
+  };
+
+  // Get visible time headers with labels
+  const getVisibleTimeHeaders = (): { key: keyof GridRowType['values']; label: string }[] => {
+    const allTimeKeys: { key: keyof GridRowType['values']; granularity: string; label: string }[] = [
+      { key: 'year', granularity: 'year', label: 'FY26' },
+      { key: 'q1', granularity: 'quarter', label: 'Q1' },
+      { key: 'q2', granularity: 'quarter', label: 'Q2' },
+      { key: 'q3', granularity: 'quarter', label: 'Q3' },
+      { key: 'q4', granularity: 'quarter', label: 'Q4' },
+      { key: 'jan2026', granularity: 'month', label: 'Jan' },
+      { key: 'feb2026', granularity: 'month', label: 'Feb' },
+      { key: 'mar2026', granularity: 'month', label: 'Mar' },
+      { key: 'apr2026', granularity: 'month', label: 'Apr' },
+      { key: 'may2026', granularity: 'month', label: 'May' },
+      { key: 'jun2026', granularity: 'month', label: 'Jun' },
+      { key: 'jul2026', granularity: 'month', label: 'Jul' },
+      { key: 'aug2026', granularity: 'month', label: 'Aug' },
+      { key: 'sep2026', granularity: 'month', label: 'Sep' },
+      { key: 'oct2026', granularity: 'month', label: 'Oct' },
+      { key: 'nov2026', granularity: 'month', label: 'Nov' },
+      { key: 'dec2026', granularity: 'month', label: 'Dec' },
+    ];
+
+    if (!selectedTimeGranularities || selectedTimeGranularities.size === 0) {
+      // If nothing selected, show all
+      return allTimeKeys.map(tk => ({ key: tk.key, label: tk.label }));
+    }
+
+    return allTimeKeys
+      .filter(tk => selectedTimeGranularities.has(tk.granularity))
+      .map(tk => ({ key: tk.key, label: tk.label }));
+  };
+
+  // Helper function to deep copy a row and all its children recursively
+  const deepCopyRow = useCallback((row: GridRowType): GridRowType => {
+    return {
+      ...row,
+      values: { ...row.values },
+      children: row.children ? row.children.map(child => deepCopyRow(child)) : undefined
+    };
+  }, []);
+
+  // Filter rows by selected dimension types
+  // If a parent is deselected but child is selected, show child directly under grandparent
+  const filterRowsByType = (
+    row: GridRowType,
+    selectedTypes: Set<string>
+  ): GridRowType | GridRowType[] | null => {
+    // Always show measure rows (they are not dimension levels)
+    if (row.type === 'measure') {
+      // Recursively filter children and flatten promoted children
+      if (row.children && row.children.length > 0) {
+        const filteredChildren: GridRowType[] = [];
+        
+        for (const child of row.children) {
+          const result = filterRowsByType(child, selectedTypes);
+          if (result !== null) {
+            if (Array.isArray(result)) {
+              // Promoted children (array) - add them directly
+              filteredChildren.push(...result);
+            } else {
+              // Single child - add it
+              filteredChildren.push(result);
+            }
+          }
+        }
+        
+        return {
+          ...row,
+          values: { ...row.values }, // Deep copy values to avoid stale references
+          children: filteredChildren.length > 0 ? filteredChildren : undefined
+        };
+      }
+      return { ...row, values: { ...row.values } }; // Copy to avoid stale references
+    }
+    
+    // If row type is selected, show it and filter children normally
+    if (selectedTypes.has(row.type)) {
+      if (row.children && row.children.length > 0) {
+        const filteredChildren: GridRowType[] = [];
+        
+        for (const child of row.children) {
+          const result = filterRowsByType(child, selectedTypes);
+          if (result !== null) {
+            if (Array.isArray(result)) {
+              filteredChildren.push(...result);
+            } else {
+              filteredChildren.push(result);
+            }
+          }
+        }
+        
+        return {
+          ...row,
+          values: { ...row.values }, // Deep copy values to avoid stale references
+          children: filteredChildren.length > 0 ? filteredChildren : undefined
+        };
+      }
+      return { ...row, values: { ...row.values } }; // Copy to avoid stale references
+    }
+    
+    // If row type is not selected, check if any descendants match selected types
+    // If so, promote those descendants to this level (skip this parent)
+    if (row.children && row.children.length > 0) {
+      const promotedChildren: GridRowType[] = [];
+      
+      for (const child of row.children) {
+        const result = filterRowsByType(child, selectedTypes);
+        if (result !== null) {
+          if (Array.isArray(result)) {
+            // Already promoted children - add them directly
+            promotedChildren.push(...result);
+          } else {
+            // Single child result
+            if (selectedTypes.has(child.type)) {
+              // Child matches selected types - add it directly
+              promotedChildren.push(result);
+            } else if (result.children && result.children.length > 0) {
+              // Child doesn't match but has matching descendants - promote those descendants
+              promotedChildren.push(...result.children);
+            }
+          }
+        }
+      }
+      
+      // If we have promoted children, return them as an array (to be flattened by parent)
+      if (promotedChildren.length > 0) {
+        return promotedChildren;
+      }
+    }
+    
+    // No matching descendants, filter out this row
+    return null;
   };
 
   // Update a single value in the data structure
@@ -102,14 +421,125 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({ data, onDataChange 
     };
 
     // Check if it's a measure row
-    const isMeasure = newData.some(m => m.id === rowId);
+    const isMeasure = newData.some((m: MeasureData) => m.id === rowId);
     if (isMeasure) {
       updateMeasureValue(newData, rowId);
     } else {
-      updateRowValue(newData.flatMap(m => m.children), rowId);
+      updateRowValue(newData.flatMap((m: MeasureData) => m.children), rowId);
     }
 
     return newData;
+  }, []);
+
+  // Helper function to recalculate time aggregations for a row
+  const recalculateTimeAggregations = useCallback((
+    rowId: string,
+    data: MeasureData[]
+  ): { rowId: string; monthKey: keyof GridRowType['values']; newValue: number }[] => {
+    const updates: { rowId: string; monthKey: keyof GridRowType['values']; newValue: number }[] = [];
+    const row = findRowById(rowId, data);
+    const measure = data.find(m => m.id === rowId);
+    const targetRow = row || measure;
+    
+    if (!targetRow) return updates;
+
+    // Recalculate quarters from months
+    const q1 = targetRow.values.jan2026 + targetRow.values.feb2026 + targetRow.values.mar2026;
+    const q2 = targetRow.values.apr2026 + targetRow.values.may2026 + targetRow.values.jun2026;
+    const q3 = targetRow.values.jul2026 + targetRow.values.aug2026 + targetRow.values.sep2026;
+    const q4 = targetRow.values.oct2026 + targetRow.values.nov2026 + targetRow.values.dec2026;
+    
+    // Recalculate year from quarters
+    const year = q1 + q2 + q3 + q4;
+
+    updates.push(
+      { rowId, monthKey: 'q1', newValue: q1 },
+      { rowId, monthKey: 'q2', newValue: q2 },
+      { rowId, monthKey: 'q3', newValue: q3 },
+      { rowId, monthKey: 'q4', newValue: q4 },
+      { rowId, monthKey: 'year', newValue: year }
+    );
+
+    return updates;
+  }, []);
+
+  // Helper to distribute quarter to months proportionally
+  const distributeQuarterToMonths = useCallback((
+    rowId: string,
+    quarter: 'q1' | 'q2' | 'q3' | 'q4',
+    newQuarterValue: number,
+    data: MeasureData[]
+  ): { rowId: string; monthKey: keyof GridRowType['values']; newValue: number }[] => {
+    const updates: { rowId: string; monthKey: keyof GridRowType['values']; newValue: number }[] = [];
+    const row = findRowById(rowId, data);
+    const measure = data.find(m => m.id === rowId);
+    const targetRow = row || measure;
+    
+    if (!targetRow) return updates;
+
+    const monthMap = {
+      q1: ['jan2026', 'feb2026', 'mar2026'] as const,
+      q2: ['apr2026', 'may2026', 'jun2026'] as const,
+      q3: ['jul2026', 'aug2026', 'sep2026'] as const,
+      q4: ['oct2026', 'nov2026', 'dec2026'] as const,
+    };
+
+    const months = monthMap[quarter];
+    const currentTotal = months.reduce((sum, month) => sum + targetRow.values[month], 0);
+
+    if (currentTotal === 0) {
+      // Equal distribution
+      const monthValue = newQuarterValue / 3;
+      months.forEach(month => {
+        updates.push({ rowId, monthKey: month, newValue: monthValue });
+      });
+    } else {
+      // Proportional distribution
+      months.forEach(month => {
+        const proportion = targetRow.values[month] / currentTotal;
+        const monthValue = newQuarterValue * proportion;
+        updates.push({ rowId, monthKey: month, newValue: monthValue });
+      });
+    }
+
+    return updates;
+  }, []);
+
+  // Helper to distribute year to quarters proportionally
+  const distributeYearToQuarters = useCallback((
+    rowId: string,
+    newYearValue: number,
+    data: MeasureData[]
+  ): { rowId: string; monthKey: keyof GridRowType['values']; newValue: number }[] => {
+    const updates: { rowId: string; monthKey: keyof GridRowType['values']; newValue: number }[] = [];
+    const row = findRowById(rowId, data);
+    const measure = data.find(m => m.id === rowId);
+    const targetRow = row || measure;
+    
+    if (!targetRow) return updates;
+
+    const currentTotal = targetRow.values.q1 + targetRow.values.q2 + targetRow.values.q3 + targetRow.values.q4;
+
+    if (currentTotal === 0) {
+      // Equal distribution
+      const quarterValue = newYearValue / 4;
+      updates.push(
+        { rowId, monthKey: 'q1', newValue: quarterValue },
+        { rowId, monthKey: 'q2', newValue: quarterValue },
+        { rowId, monthKey: 'q3', newValue: quarterValue },
+        { rowId, monthKey: 'q4', newValue: quarterValue }
+      );
+    } else {
+      // Proportional distribution
+      ['q1', 'q2', 'q3', 'q4'].forEach(quarter => {
+        const q = quarter as 'q1' | 'q2' | 'q3' | 'q4';
+        const proportion = targetRow.values[q] / currentTotal;
+        const quarterValue = newYearValue * proportion;
+        updates.push({ rowId, monthKey: q, newValue: quarterValue });
+      });
+    }
+
+    return updates;
   }, []);
 
   // Handle cell value change
@@ -118,6 +548,11 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({ data, onDataChange 
     monthKey: keyof GridRowType['values'],
     newValue: number
   ) => {
+    console.log('[HierarchicalGrid] handleCellChange called:', { rowId, monthKey, newValue });
+    // CRITICAL: Clear all preserved values from previous edits
+    // Only the currently edited cell should be preserved (if needed)
+    preservedValuesRef.current.clear();
+    
     // Check if it's a measure row
     const measure = gridData.find(m => m.id === rowId);
     const isMeasureRow = !!measure;
@@ -132,8 +567,54 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({ data, onDataChange 
     }
 
     const delta = newValue - oldValue;
+    const cellKey = `${rowId}-${monthKey}`;
 
-    if (delta === 0) return;
+    if (delta === 0) {
+      // If delta is 0, remove from edited cells
+      setEditedCells(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(cellKey);
+        return newMap;
+      });
+      return;
+    }
+    
+    // Track this as an edited cell with its original value
+    setEditedCells(prev => {
+      const newMap = new Map(prev);
+      if (!newMap.has(cellKey)) {
+        // Only store original value on first edit
+        newMap.set(cellKey, oldValue);
+      }
+      return newMap;
+    });
+    
+    // Remove from impactedCells if it was previously impacted (edited cells take precedence)
+    setImpactedCells(prev => {
+      const newMap = new Map(prev);
+      if (newMap.has(cellKey)) {
+        newMap.delete(cellKey);
+        console.log('[GRID] Removed cell from impactedCells (now edited):', cellKey);
+      }
+      return newMap;
+    });
+
+    // Store original values for impacted cells (all cells that will change except the directly edited one)
+    const originalValuesForImpacted = new Map<string, number>();
+    
+    // Helper function to store original value for impacted cells
+    const storeOriginalValueIfImpacted = (updateRowId: string, updateMonthKey: keyof GridRowType['values']) => {
+      if (updateRowId === rowId && updateMonthKey === monthKey) {
+        return; // Skip the directly edited cell
+      }
+      const impactedCellKey = `${updateRowId}-${updateMonthKey}`;
+      if (!originalValuesForImpacted.has(impactedCellKey)) {
+        const impactedRow = findRowById(updateRowId, gridData) || gridData.find(m => m.id === updateRowId);
+        if (impactedRow) {
+          originalValuesForImpacted.set(impactedCellKey, impactedRow.values[updateMonthKey]);
+        }
+      }
+    };
 
     // Collect all updates
     const allUpdates: { rowId: string; monthKey: keyof GridRowType['values']; newValue: number }[] = [];
@@ -141,11 +622,121 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({ data, onDataChange 
     // 1. Update the edited cell
     allUpdates.push({ rowId, monthKey, newValue });
 
-    // 2. Propagate upward (to ancestors)
-    const upwardUpdates = propagateUpward(rowId, monthKey, delta, gridData);
-    allUpdates.push(...upwardUpdates);
+    // 2. Handle time aggregation based on what was edited
+    // Track distributed time periods for downward propagation
+    const timeDistributionUpdates: { rowId: string; monthKey: keyof GridRowType['values']; newValue: number; oldValue: number }[] = [];
+    const row = findRowById(rowId, gridData) || gridData.find(m => m.id === rowId);
+    
+    if (monthKey === 'year') {
+      // Year edited → distribute to quarters → quarters distribute to months
+      const quarterUpdates = distributeYearToQuarters(rowId, newValue, gridData);
+      quarterUpdates.forEach(q => storeOriginalValueIfImpacted(q.rowId, q.monthKey));
+      allUpdates.push(...quarterUpdates);
+      
+      // Track quarter updates for downward propagation
+      if (row) {
+        quarterUpdates.forEach(qUpdate => {
+          const oldQValue = row.values[qUpdate.monthKey];
+          timeDistributionUpdates.push({ rowId, monthKey: qUpdate.monthKey, newValue: qUpdate.newValue, oldValue: oldQValue });
+        });
+      }
+      
+      // For each quarter update, distribute to its months
+      for (const quarterUpdate of quarterUpdates) {
+        const quarter = quarterUpdate.monthKey as 'q1' | 'q2' | 'q3' | 'q4';
+        const monthUpdates = distributeQuarterToMonths(rowId, quarter, quarterUpdate.newValue, gridData);
+        monthUpdates.forEach(m => storeOriginalValueIfImpacted(m.rowId, m.monthKey));
+        allUpdates.push(...monthUpdates);
+        
+        // Track month updates for downward propagation
+        if (row) {
+          monthUpdates.forEach(mUpdate => {
+            const oldMValue = row.values[mUpdate.monthKey];
+            timeDistributionUpdates.push({ rowId, monthKey: mUpdate.monthKey, newValue: mUpdate.newValue, oldValue: oldMValue });
+          });
+        }
+      }
+    } else if (monthKey === 'q1' || monthKey === 'q2' || monthKey === 'q3' || monthKey === 'q4') {
+      // Quarter edited → distribute to its months → recalculate year
+      const quarter = monthKey as 'q1' | 'q2' | 'q3' | 'q4';
+      const monthUpdates = distributeQuarterToMonths(rowId, quarter, newValue, gridData);
+      monthUpdates.forEach(m => storeOriginalValueIfImpacted(m.rowId, m.monthKey));
+      allUpdates.push(...monthUpdates);
+      
+      // Track month updates for downward propagation
+      if (row) {
+        monthUpdates.forEach(mUpdate => {
+          const oldMValue = row.values[mUpdate.monthKey];
+          timeDistributionUpdates.push({ rowId, monthKey: mUpdate.monthKey, newValue: mUpdate.newValue, oldValue: oldMValue });
+        });
+      }
+      
+      // Recalculate year from all quarters (will be updated after applying month updates)
+      if (row) {
+        // Calculate new year value after quarter change
+        const updatedQ1 = monthKey === 'q1' ? newValue : row.values.q1;
+        const updatedQ2 = monthKey === 'q2' ? newValue : row.values.q2;
+        const updatedQ3 = monthKey === 'q3' ? newValue : row.values.q3;
+        const updatedQ4 = monthKey === 'q4' ? newValue : row.values.q4;
+        const yearValue = updatedQ1 + updatedQ2 + updatedQ3 + updatedQ4;
+        storeOriginalValueIfImpacted(rowId, 'year');
+        allUpdates.push({ rowId, monthKey: 'year', newValue: yearValue });
+      }
+    } else {
+      // Month edited → recalculate its quarter → recalculate year
+      const timeAggUpdates = recalculateTimeAggregations(rowId, gridData);
+      timeAggUpdates.forEach(u => storeOriginalValueIfImpacted(u.rowId, u.monthKey));
+      allUpdates.push(...timeAggUpdates);
+    }
 
-    // 3. Propagate downward (to descendants)
+    // 3. Propagate upward (to ancestors) - for the edited time period
+    // BUT: Skip upward propagation for the edited row itself if it's a year/quarter edit at account/category level
+    // (because we're distributing downward, not summing upward)
+    const editedRowForPropagation = findRowById(rowId, gridData);
+    const isAccountOrCategoryYearQuarterEditForPropagation = editedRowForPropagation &&
+      (editedRowForPropagation.type === 'account' || editedRowForPropagation.type === 'category') &&
+      (monthKey === 'year' || monthKey === 'q1' || monthKey === 'q2' || monthKey === 'q3' || monthKey === 'q4');
+    
+    if (!isAccountOrCategoryYearQuarterEditForPropagation) {
+      // Normal case: propagate upward (sum children to parent)
+      const upwardUpdates = propagateUpward(rowId, monthKey, delta, gridData);
+      upwardUpdates.forEach(u => storeOriginalValueIfImpacted(u.rowId, u.monthKey));
+      allUpdates.push(...upwardUpdates);
+    } else {
+      // Special case: year/quarter edited at account/category level
+      // We need to update the parent by summing all children (including the edited one)
+      // Then propagate upward from the parent
+      console.log('[GRID] Skipping upward propagation for edited row:', rowId, 'type:', editedRowForPropagation.type);
+      
+      // Find parent and update it by summing all its children
+      if (editedRowForPropagation.parentId) {
+        const parentRow = findRowById(editedRowForPropagation.parentId, gridData) || gridData.find(m => m.id === editedRowForPropagation.parentId);
+        if (parentRow && parentRow.children) {
+          // Calculate new parent value by summing all children (including the edited one)
+          const childrenSum = parentRow.children.reduce((sum, child) => {
+            // Use the new value for the edited child, current value for others
+            const childValue = child.id === rowId ? newValue : child.values[monthKey];
+            return sum + childValue;
+          }, 0);
+          
+          const parentOldValue = parentRow.values[monthKey];
+          const parentDelta = childrenSum - parentOldValue;
+          
+          if (parentDelta !== 0) {
+            // Update parent value
+            storeOriginalValueIfImpacted(parentRow.id, monthKey);
+            allUpdates.push({ rowId: parentRow.id, monthKey, newValue: childrenSum });
+            
+            // Propagate upward from parent
+            const upwardUpdates = propagateUpward(parentRow.id, monthKey, parentDelta, gridData);
+            upwardUpdates.forEach(u => storeOriginalValueIfImpacted(u.rowId, u.monthKey));
+            allUpdates.push(...upwardUpdates);
+          }
+        }
+      }
+    }
+
+    // 4. Propagate downward (to descendants) - for the edited time period
     // For measure rows, propagate to account level proportionally
     if (isMeasureRow) {
       const measureData = gridData.find(m => m.id === rowId);
@@ -155,90 +746,785 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({ data, onDataChange 
           const account = measureData.children.find(c => c.id === accountId);
           if (account) {
             const accountNewValue = account.values[monthKey] + accountDelta;
+            storeOriginalValueIfImpacted(accountId, monthKey);
             allUpdates.push({ rowId: accountId, monthKey, newValue: accountNewValue });
             const accountUpdates = propagateDownward(accountId, monthKey, accountDelta, gridData);
+            accountUpdates.forEach(u => storeOriginalValueIfImpacted(u.rowId, u.monthKey));
             allUpdates.push(...accountUpdates);
           }
         }
       }
     } else {
+      // Propagate downward for the edited cell
       const downwardUpdates = propagateDownward(rowId, monthKey, delta, gridData);
+      downwardUpdates.forEach(u => storeOriginalValueIfImpacted(u.rowId, u.monthKey));
       allUpdates.push(...downwardUpdates);
+      
+      // Also propagate downward for all distributed time periods (quarters, months) to child dimensions
+      for (const timeUpdate of timeDistributionUpdates) {
+        const timeDelta = timeUpdate.newValue - timeUpdate.oldValue;
+        if (timeDelta !== 0) {
+          const timeDownwardUpdates = propagateDownward(rowId, timeUpdate.monthKey, timeDelta, gridData);
+          timeDownwardUpdates.forEach(u => storeOriginalValueIfImpacted(u.rowId, u.monthKey));
+          allUpdates.push(...timeDownwardUpdates);
+        }
+      }
     }
 
-    // 4. Update cross-measure dependencies (Orders = Sales Agreement)
+    // 5. Propagate time aggregations upward and downward
+    // After time aggregation updates, propagate them through hierarchy
+    const timeAggRow = findRowById(rowId, gridData) || gridData.find(m => m.id === rowId);
+    if (timeAggRow) {
+      // For each time aggregation update, propagate through hierarchy
+      const timeAggKeys: (keyof GridRowType['values'])[] = ['year', 'q1', 'q2', 'q3', 'q4'];
+      for (const aggKey of timeAggKeys) {
+        if (monthKey !== aggKey) {
+          const currentValue = timeAggRow.values[aggKey];
+          // Find the update for this aggregation key
+          const aggUpdate = allUpdates.find(u => u.rowId === rowId && u.monthKey === aggKey);
+          if (aggUpdate && aggUpdate.newValue !== currentValue) {
+            const aggDelta = aggUpdate.newValue - currentValue;
+            const aggUpwardUpdates = propagateUpward(rowId, aggKey, aggDelta, gridData);
+            allUpdates.push(...aggUpwardUpdates);
+            
+            if (isMeasureRow) {
+              const measureData = gridData.find(m => m.id === rowId);
+              if (measureData && measureData.children.length > 0) {
+                const accountDistribution = distributeProportionally(aggDelta, measureData.children, aggKey);
+                for (const [accountId, accountDelta] of accountDistribution.entries()) {
+                  const account = measureData.children.find(c => c.id === accountId);
+                  if (account) {
+                    const accountNewValue = account.values[aggKey] + accountDelta;
+                    allUpdates.push({ rowId: accountId, monthKey: aggKey, newValue: accountNewValue });
+                    const accountUpdates = propagateDownward(accountId, aggKey, accountDelta, gridData);
+                    allUpdates.push(...accountUpdates);
+                  }
+                }
+              }
+            } else {
+              const aggDownwardUpdates = propagateDownward(rowId, aggKey, aggDelta, gridData);
+              allUpdates.push(...aggDownwardUpdates);
+            }
+          }
+        }
+      }
+    }
+
+    // 6. Update cross-measure dependencies (Orders = Sales Agreement)
+    // Apply all updates first to get the correct state, then calculate cross-measure dependencies
+    let tempData = gridData;
+    for (const update of allUpdates) {
+      tempData = updateValue(update.rowId, update.monthKey, update.newValue, tempData);
+    }
+    
+    // Now calculate cross-measure dependencies with the updated data
+    // But we need to pass the original data for unit price calculations
+    // So we'll pass both: tempData (for finding rows) and gridData (for original values)
     console.log('[GRID] Calling updateCrossMeasureDependencies:', { rowId, monthKey, newValue });
-    const crossMeasureUpdates = updateCrossMeasureDependencies(rowId, monthKey, newValue, gridData);
-    console.log('[GRID] Cross-measure updates returned:', crossMeasureUpdates.length, 'updates');
+    
+    // For quarter/year edits, we need to trigger cross-measure dependencies at BOTH levels:
+    // 1. At the quarter/year level (for direct updates)
+    // 2. At the month level (for distributed months)
+    const isYearQuarterEdit = monthKey === 'year' || monthKey === 'q1' || monthKey === 'q2' || monthKey === 'q3' || monthKey === 'q4';
+    
+    let crossMeasureUpdates: { rowId: string; monthKey: keyof GridRowType['values']; newValue: number }[] = [];
+    
+    if (isYearQuarterEdit) {
+      // First, calculate cross-measure dependencies for the quarter/year level
+      const quarterYearCrossMeasureUpdates = updateCrossMeasureDependencies(rowId, monthKey, newValue, tempData, gridData);
+      console.log('[GRID] Quarter/Year cross-measure updates returned:', quarterYearCrossMeasureUpdates.length, 'updates');
+      crossMeasureUpdates.push(...quarterYearCrossMeasureUpdates);
+      
+      // Apply quarter/year cross-measure updates to tempData
+      for (const update of quarterYearCrossMeasureUpdates) {
+        tempData = updateValue(update.rowId, update.monthKey, update.newValue, tempData);
+      }
+      
+      // Then, for each month that was distributed from this quarter/year edit, trigger cross-measure dependencies
+      const monthKeys: (keyof GridRowType['values'])[] = [
+        'jan2026', 'feb2026', 'mar2026', 'apr2026', 'may2026', 'jun2026',
+        'jul2026', 'aug2026', 'sep2026', 'oct2026', 'nov2026', 'dec2026',
+      ];
+      
+      // Determine which months belong to the edited quarter/year
+      let relevantMonths: (keyof GridRowType['values'])[] = [];
+      if (monthKey === 'year') {
+        relevantMonths = monthKeys; // All months for year
+      } else if (monthKey === 'q1') {
+        relevantMonths = ['jan2026', 'feb2026', 'mar2026'];
+      } else if (monthKey === 'q2') {
+        relevantMonths = ['apr2026', 'may2026', 'jun2026'];
+      } else if (monthKey === 'q3') {
+        relevantMonths = ['jul2026', 'aug2026', 'sep2026'];
+      } else if (monthKey === 'q4') {
+        relevantMonths = ['oct2026', 'nov2026', 'dec2026'];
+      }
+      
+      // For each relevant month, trigger cross-measure dependencies
+      for (const monthKeyToProcess of relevantMonths) {
+        const monthUpdate = allUpdates.find(u => u.rowId === rowId && u.monthKey === monthKeyToProcess);
+        if (monthUpdate) {
+          // Get the updated row from tempData to get the new month value
+          const updatedRow = findRowById(rowId, tempData) || tempData.find(m => m.id === rowId);
+          if (updatedRow) {
+            const monthNewValue = updatedRow.values[monthKeyToProcess];
+            console.log('[GRID] Triggering cross-measure for distributed month:', { rowId, monthKey: monthKeyToProcess, newValue: monthNewValue });
+            const monthCrossMeasureUpdates = updateCrossMeasureDependencies(rowId, monthKeyToProcess, monthNewValue, tempData, gridData);
+            console.log('[GRID] Month cross-measure updates returned:', monthCrossMeasureUpdates.length, 'updates');
+            
+            // Add month cross-measure updates
+            crossMeasureUpdates.push(...monthCrossMeasureUpdates);
+            
+            // Apply these updates to tempData for next iteration
+            for (const update of monthCrossMeasureUpdates) {
+              tempData = updateValue(update.rowId, update.monthKey, update.newValue, tempData);
+            }
+          }
+        }
+      }
+    } else {
+      // For month edits, just calculate cross-measure dependencies normally
+      crossMeasureUpdates = updateCrossMeasureDependencies(rowId, monthKey, newValue, tempData, gridData);
+      console.log('[GRID] Cross-measure updates returned:', crossMeasureUpdates.length, 'updates');
+    }
+    
     allUpdates.push(...crossMeasureUpdates);
+    
+    // Store original values for cross-measure impacted cells
+    crossMeasureUpdates.forEach(update => storeOriginalValueIfImpacted(update.rowId, update.monthKey));
 
     // Apply all updates
-    let updatedData = gridData;
+    // Start with a deep copy to ensure we always have a new array reference
+    let updatedData = JSON.parse(JSON.stringify(gridData));
+    
+    // Check if this is a year/quarter edit that needs preservation
+    // For measure rows: preserve year/quarter edits
+    // For account/category rows: preserve year/quarter edits
+    // Note: isYearQuarterEdit is already declared above (line 692)
+    const editedRow = findRowById(rowId, gridData);
+    const editedMeasure = gridData.find(m => m.id === rowId);
+    const isAccountOrCategoryYearQuarterEdit = editedRow &&
+      (editedRow.type === 'account' || editedRow.type === 'category') &&
+      isYearQuarterEdit;
+    const isMeasureYearQuarterEdit = !!editedMeasure && isYearQuarterEdit;
+    
+    // Store the edited value to preserve it (for both measure and account/category year/quarter edits)
+    // ONLY preserve the currently edited cell - all other cells will be recalculated
+    const preservedValue = (isAccountOrCategoryYearQuarterEdit || isMeasureYearQuarterEdit) ? newValue : null;
+    
+    // Apply all updates
     for (const update of allUpdates) {
       updatedData = updateValue(update.rowId, update.monthKey, update.newValue, updatedData);
     }
 
+    // Store original measure row values BEFORE recalculation
+    // This allows us to track measure rows as impacted when their children change
+    const originalMeasureValues = new Map<string, Map<keyof GridRowType['values'], number>>();
+    for (const measure of updatedData) {
+      const measureValues = new Map<keyof GridRowType['values'], number>();
+      const timeKeys: (keyof GridRowType['values'])[] = [
+        'year', 'q1', 'q2', 'q3', 'q4',
+        'jan2026', 'feb2026', 'mar2026', 'apr2026', 'may2026', 'jun2026',
+        'jul2026', 'aug2026', 'sep2026', 'oct2026', 'nov2026', 'dec2026',
+      ];
+      for (const key of timeKeys) {
+        measureValues.set(key, measure.values[key]);
+      }
+      originalMeasureValues.set(measure.id, measureValues);
+    }
+    
     // Recalculate measure values from children after all updates
-    updatedData = calculateMeasureValues(updatedData);
+    // Skip recalculating ONLY for the currently edited cell (if it's a year/quarter edit)
+    // Do NOT skip for cross-measure updates - they should be recalculated
+    const skipTimeAggregation = new Set<string>();
+    if (isAccountOrCategoryYearQuarterEdit) {
+      skipTimeAggregation.add(rowId);
+      console.log('[GRID] Skipping recalculation for currently edited row:', rowId, 'type:', editedRow.type);
+    } else if (isMeasureYearQuarterEdit) {
+      skipTimeAggregation.add(rowId);
+      console.log('[GRID] Skipping recalculation for currently edited measure row:', rowId);
+    }
+    
+    updatedData = calculateMeasureValues(updatedData, skipTimeAggregation);
+    
+    // Track measure row cells as impacted if their values changed due to children being impacted
+    for (const measure of updatedData) {
+      const originalValues = originalMeasureValues.get(measure.id);
+      if (originalValues) {
+        for (const [key, originalValue] of originalValues.entries()) {
+          const newValue = measure.values[key];
+          // Skip if this is the directly edited cell
+          if (measure.id === rowId && key === monthKey) {
+            continue;
+          }
+          // If value changed, track as impacted
+          if (Math.abs(newValue - originalValue) > 0.01) { // Use small epsilon for floating point comparison
+            const measureCellKey = `${measure.id}-${key}`;
+            // Only add if not already tracked as edited
+            if (!editedCells.has(measureCellKey)) {
+              if (!originalValuesForImpacted.has(measureCellKey)) {
+                originalValuesForImpacted.set(measureCellKey, originalValue);
+                console.log('[GRID] Tracking measure row cell as impacted:', measureCellKey, 'original:', originalValue, 'new:', newValue);
+              }
+            }
+          }
+        }
+      }
+    }
+    
+    // CRITICAL: After recalculation, restore ONLY the currently edited cell's value (if it's a year/quarter edit)
+    // Do NOT restore cross-measure updated values - they should be recalculated
+    if (preservedValue !== null) {
+      console.log('[GRID] Restoring preserved value for currently edited cell:', preservedValue, 'for row:', rowId, 'monthKey:', monthKey);
+      updatedData = updateValue(rowId, monthKey, preservedValue, updatedData);
+      // Store in ref so it persists across recalculations triggered by useEffect
+      preservedValuesRef.current.set(rowId, { monthKey, value: preservedValue });
+    } else {
+      // Clear preserved value if this edit doesn't need preservation
+      preservedValuesRef.current.delete(rowId);
+    }
+
+    // Update impacted cells state with original values
+    // ACCUMULATE impacted cells across all edits (don't clear previous ones)
+    setImpactedCells(prev => {
+      const newMap = new Map(prev);
+      // Add new impacted cells to existing ones (don't clear)
+      originalValuesForImpacted.forEach((value, key) => {
+        // Only add if not already tracked as edited (edited cells take precedence)
+        if (!editedCells.has(key)) {
+          // If already exists, keep the original value (first edit's original)
+          if (!newMap.has(key)) {
+            newMap.set(key, value);
+            console.log('[GRID] Adding impacted cell:', key, 'original value:', value);
+          } else {
+            console.log('[GRID] Impacted cell already exists, keeping original:', key);
+          }
+        }
+      });
+      console.log('[GRID] Total impacted cells after update:', newMap.size);
+      return newMap;
+    });
+
+    // Add to edit history for undo/redo
+    setEditHistory(prev => {
+      const newHistory = prev.slice(0, historyIndex + 1);
+      newHistory.push(JSON.parse(JSON.stringify(updatedData)));
+      return newHistory;
+    });
+    setHistoryIndex(prev => prev + 1);
 
     setGridData(updatedData);
+    
+    // Add to edit history for undo/redo
+    setEditHistory(prev => {
+      const newHistory = prev.slice(0, historyIndex + 1);
+      newHistory.push(JSON.parse(JSON.stringify(updatedData)));
+      return newHistory;
+    });
+    setHistoryIndex(prev => prev + 1);
+    
     if (onDataChange) {
       onDataChange(updatedData);
     }
-  }, [gridData, updateValue, onDataChange, calculateMeasureValues]);
+  }, [gridData, updateValue, onDataChange, calculateMeasureValues, recalculateTimeAggregations, distributeQuarterToMonths, distributeYearToQuarters, historyIndex]);
 
-  const monthLabels = [
-    'Jan 26',
-    'Feb 26',
-    'Mar 26',
-    'Apr 26',
-    'May 26',
-    'Jun 26',
-    'Jul 26',
-    'Aug 26',
-    'Sep 26',
-    'Oct 26',
-    'Nov 26',
-    'Dec 26',
-  ];
+  // Collect all visible rows in order for keyboard navigation
+  const getAllVisibleRows = useCallback((): GridRowType[] => {
+    const visibleRows: GridRowType[] = [];
+    
+    const collectRows = (row: GridRowType) => {
+      visibleRows.push(row);
+      if (row.children && expandedRows.has(row.id)) {
+        row.children.forEach(collectRows);
+      }
+    };
+    
+    gridData.forEach((measure) => {
+      // Deep copy the measure row to ensure all children have fresh values
+      const measureRow: GridRowType = deepCopyRow({
+        id: measure.id,
+        name: measure.name,
+        parentId: null,
+        level: 0,
+        type: 'measure',
+        children: measure.children,
+        values: measure.values,
+      });
+      
+      if (selectedDimensionLevels) {
+        const filteredResult = filterRowsByType(measureRow, selectedDimensionLevels);
+        if (filteredResult) {
+          const filteredRow = Array.isArray(filteredResult) ? measureRow : filteredResult;
+          collectRows(filteredRow);
+        }
+      } else {
+        collectRows(measureRow);
+      }
+    });
+    
+    return visibleRows;
+  }, [gridData, expandedRows, selectedDimensionLevels, filterRowsByType, deepCopyRow]);
+
+  // Handle keyboard navigation
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    // Don't handle navigation if user is typing in an input field
+    const activeElement = document.activeElement;
+    if (activeElement && activeElement.tagName === 'INPUT' && activeElement.classList.contains('cell-input')) {
+      return;
+    }
+    
+    const visibleRows = getAllVisibleRows();
+    const visibleTimeKeys = getVisibleTimeKeys();
+    
+    if (visibleRows.length === 0 || visibleTimeKeys.length === 0) return;
+    
+    if (!focusedCell) {
+      // If no cell is focused, focus the first editable cell
+      for (const row of visibleRows) {
+        if (row.type !== 'measure') {
+          setFocusedCell({ rowId: row.id, monthKey: visibleTimeKeys[0] });
+          return;
+        }
+      }
+      return;
+    }
+    
+    const currentRowIndex = visibleRows.findIndex(r => r.id === focusedCell.rowId);
+    const currentColIndex = visibleTimeKeys.findIndex(k => k === focusedCell.monthKey);
+    
+    if (currentRowIndex === -1 || currentColIndex === -1) return;
+    
+    let newRowIndex = currentRowIndex;
+    let newColIndex = currentColIndex;
+    
+    switch (e.key) {
+      case 'ArrowUp':
+        e.preventDefault();
+        newRowIndex = Math.max(0, currentRowIndex - 1);
+        break;
+      case 'ArrowDown':
+        e.preventDefault();
+        newRowIndex = Math.min(visibleRows.length - 1, currentRowIndex + 1);
+        break;
+      case 'ArrowLeft':
+        e.preventDefault();
+        newColIndex = Math.max(0, currentColIndex - 1);
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        newColIndex = Math.min(visibleTimeKeys.length - 1, currentColIndex + 1);
+        break;
+      case 'Tab':
+        // Tab navigation handled by browser, but we can enhance it
+        if (e.shiftKey) {
+          e.preventDefault();
+          if (currentColIndex > 0) {
+            newColIndex = currentColIndex - 1;
+          } else if (currentRowIndex > 0) {
+            newRowIndex = currentRowIndex - 1;
+            newColIndex = visibleTimeKeys.length - 1;
+          }
+        } else {
+          e.preventDefault();
+          if (currentColIndex < visibleTimeKeys.length - 1) {
+            newColIndex = currentColIndex + 1;
+          } else if (currentRowIndex < visibleRows.length - 1) {
+            newRowIndex = currentRowIndex + 1;
+            newColIndex = 0;
+          }
+        }
+        break;
+      case 'Enter':
+        e.preventDefault();
+        // Focus the cell - edit mode will be triggered by the cell's onClick handler
+        if (visibleRows[currentRowIndex] && visibleRows[currentRowIndex].type !== 'measure') {
+          const cellKey = `${visibleRows[currentRowIndex].id}-${visibleTimeKeys[currentColIndex]}`;
+          const cellElement = cellRefs.current.get(cellKey);
+          if (cellElement) {
+            cellElement.click(); // Trigger click to start editing
+          }
+        }
+        return;
+      case 'Home':
+        e.preventDefault();
+        if (e.ctrlKey || e.metaKey) {
+          // Ctrl+Home: Go to first cell
+          newRowIndex = 0;
+          newColIndex = 0;
+        } else {
+          // Home: Go to first column of current row
+          newColIndex = 0;
+        }
+        break;
+      case 'End':
+        e.preventDefault();
+        if (e.ctrlKey || e.metaKey) {
+          // Ctrl+End: Go to last cell
+          newRowIndex = visibleRows.length - 1;
+          newColIndex = visibleTimeKeys.length - 1;
+        } else {
+          // End: Go to last column of current row
+          newColIndex = visibleTimeKeys.length - 1;
+        }
+        break;
+      default:
+        return; // Don't prevent default for other keys
+    }
+    
+    // Skip measure rows when navigating
+    while (newRowIndex < visibleRows.length && visibleRows[newRowIndex].type === 'measure') {
+      if (e.key === 'ArrowDown' || (!e.shiftKey && e.key === 'Tab')) {
+        newRowIndex++;
+      } else {
+        break;
+      }
+    }
+    
+    if (newRowIndex >= 0 && newRowIndex < visibleRows.length && 
+        newColIndex >= 0 && newColIndex < visibleTimeKeys.length) {
+      setFocusedCell({ 
+        rowId: visibleRows[newRowIndex].id, 
+        monthKey: visibleTimeKeys[newColIndex] 
+      });
+      
+      // Scroll into view
+      const cellKey = `${visibleRows[newRowIndex].id}-${visibleTimeKeys[newColIndex]}`;
+      const cellElement = cellRefs.current.get(cellKey);
+      if (cellElement) {
+        cellElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        cellElement.focus();
+      }
+    }
+  }, [focusedCell, getAllVisibleRows, getVisibleTimeKeys, handleCellChange]);
+
+  // Memoize the deep-copied measure rows to prevent unnecessary re-renders
+  // Only recreate when gridData actually changes
+  const memoizedMeasureRows = useMemo(() => {
+    console.log('[GRID] Recalculating memoizedMeasureRows, gridData length:', gridData.length);
+    return gridData.map((measure) => {
+      return deepCopyRow({
+        id: measure.id,
+        name: measure.name,
+        parentId: null,
+        level: 0,
+        type: 'measure',
+        children: measure.children,
+        values: measure.values,
+      });
+    });
+  }, [gridData, deepCopyRow]);
+
+  // Calculate impacted measures count
+  const impactedMeasuresCount = useMemo(() => {
+    const impactedMeasureIds = new Set<string>();
+    
+    console.log('[FOOTER] Calculating impacted measures count. editedCells:', editedCells.size, 'impactedCells:', impactedCells.size);
+    
+    // Helper function to extract measure ID from rowId
+    const getMeasureIdFromRowId = (rowId: string): string | null => {
+      // Check if rowId is directly a measure ID
+      const directMeasure = gridData.find(m => m.id === rowId);
+      if (directMeasure) {
+        return directMeasure.id;
+      }
+      
+      // Extract measure ID from rowId pattern: account-measure-xxx, category-xxx-measure-xxx, product-xxx-measure-xxx
+      // Or measure row cells: measure-xxx
+      const parts = rowId.split('-');
+      
+      // Look for 'measure-' in the parts
+      const measureIndex = parts.findIndex(part => part === 'measure');
+      if (measureIndex !== -1 && measureIndex < parts.length - 1) {
+        // Reconstruct measure ID: measure-xxx
+        const measureId = `measure-${parts.slice(measureIndex + 1).join('-')}`;
+        // Verify it exists in gridData
+        if (gridData.find(m => m.id === measureId)) {
+          return measureId;
+        }
+      }
+      
+      // Fallback: search through all measures to find which one contains this row
+      for (const m of gridData) {
+        const row = findRowById(rowId, [m]);
+        if (row) {
+          return m.id;
+        }
+      }
+      
+      return null;
+    };
+    
+    // Get measure IDs from edited cells
+    editedCells.forEach((_, cellKey) => {
+      // cellKey format: `${rowId}-${monthKey}`
+      // Extract rowId by removing the last part (monthKey like 'feb2026', 'jan2026', etc.)
+      const parts = cellKey.split('-');
+      // MonthKey is always the last part (e.g., 'feb2026', 'jan2026', 'year', 'q1', etc.)
+      // Reconstruct rowId from all parts except the last one
+      const rowId = parts.slice(0, -1).join('-');
+      const measureId = getMeasureIdFromRowId(rowId);
+      if (measureId) {
+        console.log('[FOOTER] Found edited cell in measure:', measureId, 'from rowId:', rowId, 'cellKey:', cellKey);
+        impactedMeasureIds.add(measureId);
+      }
+    });
+    
+    // Get measure IDs from impacted cells
+    impactedCells.forEach((_, cellKey) => {
+      // cellKey format: `${rowId}-${monthKey}`
+      // Extract rowId by removing the last part (monthKey like 'feb2026', 'jan2026', etc.)
+      const parts = cellKey.split('-');
+      // MonthKey is always the last part (e.g., 'feb2026', 'jan2026', 'year', 'q1', etc.)
+      // Reconstruct rowId from all parts except the last one
+      const rowId = parts.slice(0, -1).join('-');
+      const measureId = getMeasureIdFromRowId(rowId);
+      if (measureId) {
+        console.log('[FOOTER] Found impacted cell in measure:', measureId, 'from rowId:', rowId, 'cellKey:', cellKey);
+        impactedMeasureIds.add(measureId);
+      }
+    });
+    
+    console.log('[FOOTER] Total impacted measures:', impactedMeasureIds.size, 'measures:', Array.from(impactedMeasureIds));
+    return impactedMeasureIds.size;
+  }, [editedCells, impactedCells, gridData]);
+
+  // Undo handler
+  const handleUndo = useCallback(() => {
+    if (historyIndex > 0) {
+      const newIndex = historyIndex - 1;
+      const previousData = editHistory[newIndex];
+      setGridData(JSON.parse(JSON.stringify(previousData)));
+      setHistoryIndex(newIndex);
+      // Clear edited/impacted cells when undoing
+      setEditedCells(new Map());
+      setImpactedCells(new Map());
+    }
+  }, [historyIndex, editHistory]);
+
+  // Redo handler
+  const handleRedo = useCallback(() => {
+    if (historyIndex < editHistory.length - 1) {
+      const newIndex = historyIndex + 1;
+      const nextData = editHistory[newIndex];
+      setGridData(JSON.parse(JSON.stringify(nextData)));
+      setHistoryIndex(newIndex);
+      // Clear edited/impacted cells when redoing
+      setEditedCells(new Map());
+      setImpactedCells(new Map());
+      // Also clear saved edited cells
+      setSavedEditedCells(new Map());
+    }
+  }, [historyIndex, editHistory]);
+
+  // Cancel handler
+  const handleCancel = useCallback(() => {
+    // Restore to original data
+    setGridData(JSON.parse(JSON.stringify(originalDataRef.current)));
+    setEditHistory([]);
+    setHistoryIndex(-1);
+    setEditedCells(new Map());
+    setImpactedCells(new Map());
+    // Also clear saved edited cells
+    setSavedEditedCells(new Map());
+  }, []);
+
+  // Save handler
+  const handleSave = useCallback(() => {
+    // Update original data reference
+    originalDataRef.current = JSON.parse(JSON.stringify(gridData));
+    // Clear history and reset
+    setEditHistory([]);
+    setHistoryIndex(-1);
+    // Mark all currently edited cells as saved (they keep the icon but lose the badge)
+    // Store the icon color based on whether it was an increment or decrement
+    setSavedEditedCells(prev => {
+      const newMap = new Map(prev);
+      editedCells.forEach((originalValue, cellKey) => {
+        // Extract rowId and monthKey from cellKey
+        const parts = cellKey.split('-');
+        const monthKey = parts[parts.length - 1] as keyof GridRowType['values'];
+        const rowId = parts.slice(0, -1).join('-');
+        
+        // Find the current value for this cell
+        let currentValue = 0;
+        const measure = gridData.find(m => m.id === rowId);
+        if (measure) {
+          currentValue = measure.values[monthKey] || 0;
+        } else {
+          const row = findRowById(rowId, gridData);
+          if (row) {
+            currentValue = row.values[monthKey] || 0;
+          }
+        }
+        
+        // Calculate if it was an increment or decrement
+        const isIncrement = originalValue !== 0 && currentValue > originalValue;
+        const iconColor = isIncrement ? '#ff5d2d' : '#2E76E1';
+        
+        newMap.set(cellKey, iconColor);
+        console.log('[SAVE] Adding cell to savedEditedCells:', cellKey, 'iconColor:', iconColor, 'originalValue:', originalValue, 'currentValue:', currentValue);
+      });
+      console.log('[SAVE] Total saved edited cells:', newMap.size);
+      return newMap;
+    });
+    // Clear impacted cells (they're now saved)
+    setImpactedCells(new Map());
+    // Clear editedCells (they're now saved, but savedEditedCells will track them for icon display)
+    setEditedCells(new Map());
+    // Reset "Show Only Impacted KPI" filter since there are no more unsaved edits
+    setShowOnlyImpactedKPI(false);
+    // Notify parent
+    if (onDataChange) {
+      onDataChange(gridData);
+    }
+  }, [gridData, onDataChange, editedCells]);
+
+  // Check if footer should be visible (only if there are unsaved edits)
+  const isFooterVisible = editedCells.size > 0 || impactedCells.size > 0;
+
+  // Filter rows based on "Show Only Impacted KPI" setting
+  const getFilteredRows = useCallback((measureRow: GridRowType): GridRowType | GridRowType[] | null => {
+    if (!showOnlyImpactedKPI) {
+      return measureRow;
+    }
+    
+    // Check if this measure has any edited or impacted cells
+    const measureHasChanges = Array.from(editedCells.keys()).some(key => key.startsWith(measureRow.id + '-')) ||
+                              Array.from(impactedCells.keys()).some(key => key.startsWith(measureRow.id + '-'));
+    
+    if (!measureHasChanges) {
+      // Check children
+      const hasChangedChildren = measureRow.children?.some(child => {
+        const childHasChanges = Array.from(editedCells.keys()).some(key => key.startsWith(child.id + '-')) ||
+                                Array.from(impactedCells.keys()).some(key => key.startsWith(child.id + '-'));
+        return childHasChanges || (child.children && child.children.some(grandchild => 
+          Array.from(editedCells.keys()).some(key => key.startsWith(grandchild.id + '-')) ||
+          Array.from(impactedCells.keys()).some(key => key.startsWith(grandchild.id + '-'))
+        ));
+      });
+      
+      if (!hasChangedChildren) {
+        return null; // Filter out this measure
+      }
+    }
+    
+    return measureRow;
+  }, [showOnlyImpactedKPI, editedCells, impactedCells]);
 
   return (
-    <div className="grid-container">
-      <table className="grid-table">
-        <thead className="grid-header">
-          <tr>
-            <th>Measures / Dimensions x Time</th>
-            {monthLabels.map((month) => (
-              <th key={month}>{month}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="grid-body">
-          {gridData.map((measure) => {
-            const measureRow: GridRowType = {
-              id: measure.id,
-              name: measure.name,
-              parentId: null,
-              level: 0,
-              type: 'measure',
-              children: measure.children,
-              values: measure.values,
-            };
-            return (
-              <GridRowComponent
-                key={measure.id}
-                row={measureRow}
-                level={0}
-                isExpanded={expandedRows.has(measure.id)}
-                expandedRows={expandedRows}
-                onToggleExpand={toggleExpand}
-                formatValue={formatValue}
-                onCellChange={handleCellChange}
-              />
-            );
-          })}
-        </tbody>
-      </table>
+    <div className="grid-container-wrapper">
+      <div className="grid-container" onKeyDown={handleKeyDown} tabIndex={0}>
+        <table className="grid-table">
+          <thead className="grid-header">
+            <tr>
+              <th>
+                <div className="grid-header-title-container">
+                  <span>Measures / Dimensions x Time</span>
+                  {onSettingsClick && (
+                    <button 
+                      className="grid-header-settings-button"
+                      onClick={onSettingsClick}
+                      title="Settings"
+                      type="button"
+                    >
+                      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              </th>
+              {getVisibleTimeHeaders().map((header) => (
+                <th key={header.key} style={{ minWidth: `${columnWidth}px`, width: `${columnWidth}px` }}>{header.label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="grid-body">
+            {memoizedMeasureRows.map((measureRow, index) => {
+              const measure = gridData[index];
+              
+              // Apply "Show Only Impacted KPI" filter first
+              const impactedFilteredRow = getFilteredRows(measureRow);
+              if (!impactedFilteredRow) {
+                return null;
+              }
+              const rowAfterImpactedFilter = Array.isArray(impactedFilteredRow) ? measureRow : impactedFilteredRow;
+              
+              // Apply filtering if selectedDimensionLevels is provided
+              if (selectedDimensionLevels) {
+                // Create a fresh copy for filtering to ensure we don't mutate the memoized row
+                const rowForFiltering = deepCopyRow(rowAfterImpactedFilter);
+                const filteredResult = filterRowsByType(rowForFiltering, selectedDimensionLevels);
+                
+                // Skip rendering if the row was filtered out
+                if (!filteredResult) {
+                  return null;
+                }
+                
+                // Measure rows should always return a single GridRowType, not an array
+                // But handle array case just in case (shouldn't happen)
+                const filteredRow = Array.isArray(filteredResult) ? measureRow : filteredResult;
+                
+                return (
+                  <GridRowComponent
+                    key={measure.id}
+                    row={filteredRow}
+                    level={0}
+                    isExpanded={expandedRows.has(measure.id)}
+                    expandedRows={expandedRows}
+                    onToggleExpand={toggleExpand}
+                    formatValue={formatValue}
+                    onCellChange={handleCellChange}
+                    visibleTimeKeys={getVisibleTimeKeys()}
+                    focusedCell={focusedCell}
+                    onCellFocus={setFocusedCell}
+                  cellRefs={cellRefs}
+                  editedCells={editedCells}
+                  impactedCells={impactedCells}
+                  savedEditedCells={savedEditedCells}
+                  columnWidth={columnWidth}
+                />
+                );
+              }
+              
+              // No filtering - render normally
+              return (
+                <GridRowComponent
+                  key={measure.id}
+                  row={rowAfterImpactedFilter}
+                  level={0}
+                  isExpanded={expandedRows.has(measure.id)}
+                  expandedRows={expandedRows}
+                  onToggleExpand={toggleExpand}
+                  formatValue={formatValue}
+                  onCellChange={handleCellChange}
+                  visibleTimeKeys={getVisibleTimeKeys()}
+                  focusedCell={focusedCell}
+                  onCellFocus={setFocusedCell}
+                  cellRefs={cellRefs}
+                  editedCells={editedCells}
+                  impactedCells={impactedCells}
+                  savedEditedCells={savedEditedCells}
+                  columnWidth={columnWidth}
+                />
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <GridFooter
+        isVisible={isFooterVisible}
+        impactedMeasuresCount={impactedMeasuresCount}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        onCancel={handleCancel}
+        onSave={handleSave}
+        canUndo={historyIndex > 0}
+        canRedo={historyIndex < editHistory.length - 1}
+        showOnlyImpactedKPI={showOnlyImpactedKPI}
+        onToggleShowOnlyImpactedKPI={setShowOnlyImpactedKPI}
+      />
     </div>
   );
 };
