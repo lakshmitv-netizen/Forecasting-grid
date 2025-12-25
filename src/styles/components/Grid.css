@@ -1,0 +1,303 @@
+.forecasting-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: var(--spacing-4);
+  background-color: var(--color-surface-white);
+}
+
+.page-header {
+  margin-bottom: var(--spacing-4);
+}
+
+.breadcrumbs {
+  font-size: var(--font-size-base) !important;
+  color: var(--color-neutral-text) !important;
+  margin-bottom: var(--spacing-2);
+  line-height: var(--line-height-base) !important;
+}
+
+.breadcrumbs-separator {
+  margin: 0 var(--spacing-2);
+  color: var(--color-border);
+}
+
+.page-title-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-3);
+}
+
+.page-title {
+  font-size: var(--font-size-4) !important;
+  font-weight: var(--font-weight-regular) !important;
+  color: var(--color-dark-text) !important;
+  line-height: var(--line-height-4) !important;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.title-dropdown {
+  width: 16px;
+  height: 16px;
+  color: var(--color-neutral-text);
+  cursor: pointer;
+}
+
+.last-refreshed {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  font-size: var(--font-size-base);
+  color: var(--color-neutral-text);
+  line-height: var(--line-height-base);
+}
+
+.refresh-icon {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  color: var(--color-neutral-text);
+}
+
+.refresh-icon:hover {
+  color: var(--color-primary-blue);
+}
+
+.grid-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-3);
+  padding: var(--spacing-2) 0;
+}
+
+.grid-search {
+  position: relative;
+  width: 300px;
+}
+
+.grid-search-input {
+  width: 100%;
+  padding: var(--spacing-2) var(--spacing-4) var(--spacing-2) var(--spacing-8);
+  border: var(--border-width-1) solid var(--color-border);
+  border-radius: var(--border-radius-1);
+  font-size: var(--font-size-base);
+  color: var(--color-dark-text);
+  background-color: var(--color-surface-white);
+}
+
+.grid-search-input:focus {
+  outline: none;
+  border-color: var(--color-primary-blue);
+}
+
+.grid-search-icon {
+  position: absolute;
+  left: var(--spacing-3);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  color: var(--color-neutral-text);
+}
+
+.grid-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.grid-action-icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--border-radius-circle);
+  cursor: pointer;
+  color: var(--color-neutral-text);
+  transition: background-color 0.2s;
+}
+
+.grid-action-icon:hover {
+  background-color: var(--color-surface-gray);
+}
+
+.grid-action-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.grid-container {
+  border: var(--border-width-1) solid var(--color-border) !important;
+  border-radius: var(--border-radius-1);
+  overflow: auto;
+  background-color: var(--color-surface-white) !important;
+}
+
+.grid-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-base);
+}
+
+.grid-header {
+  background-color: var(--color-surface-gray) !important;
+  border-bottom: var(--border-width-2) solid var(--color-border) !important;
+}
+
+.grid-header th {
+  padding: var(--spacing-3) var(--spacing-4);
+  text-align: left;
+  font-weight: var(--font-weight-semibold) !important;
+  font-size: var(--font-size-base) !important;
+  color: var(--color-dark-text) !important;
+  line-height: var(--line-height-base) !important;
+  border-right: var(--border-width-1) solid var(--color-border) !important;
+  white-space: nowrap;
+  background-color: var(--color-surface-gray) !important;
+}
+
+.grid-header th:last-child {
+  border-right: none;
+}
+
+.grid-header th:first-child {
+  min-width: 300px;
+}
+
+.grid-header th:not(:first-child) {
+  text-align: right;
+  min-width: 120px;
+}
+
+.grid-body {
+  background-color: var(--color-surface-white) !important;
+}
+
+.grid-row {
+  border-bottom: var(--border-width-1) solid var(--color-border) !important;
+  transition: background-color 0.2s;
+  background-color: var(--color-surface-white) !important;
+}
+
+.grid-row:hover {
+  background-color: var(--color-surface-gray) !important;
+}
+
+.grid-row.measure-row {
+  background-color: var(--color-surface-white) !important;
+  font-weight: var(--font-weight-semibold) !important;
+}
+
+.grid-cell {
+  padding: var(--spacing-3) var(--spacing-4);
+  border-right: var(--border-width-1) solid var(--color-border) !important;
+  vertical-align: middle;
+  background-color: inherit !important;
+}
+
+.grid-cell:last-child {
+  border-right: none;
+}
+
+.cell-content {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.cell-indent {
+  display: inline-block;
+}
+
+.cell-indent.level-0 {
+  width: 0;
+}
+
+.cell-indent.level-1 {
+  width: var(--spacing-4);
+}
+
+.cell-indent.level-2 {
+  width: calc(var(--spacing-4) * 2);
+}
+
+.cell-indent.level-3 {
+  width: calc(var(--spacing-4) * 3);
+}
+
+.chevron-icon {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--color-neutral-text);
+  flex-shrink: 0;
+}
+
+.chevron-icon:hover {
+  color: var(--color-primary-blue);
+}
+
+.chevron-icon svg {
+  width: 12px;
+  height: 12px;
+  transition: transform 0.2s;
+}
+
+.chevron-icon.expanded svg {
+  transform: rotate(90deg);
+}
+
+.measure-icon {
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-neutral-text);
+  flex-shrink: 0;
+}
+
+.cell-name {
+  color: var(--color-dark-text) !important;
+  font-size: var(--font-size-base) !important;
+  line-height: var(--line-height-base) !important;
+}
+
+.cell-value {
+  text-align: right !important;
+  color: var(--color-dark-text) !important;
+  font-size: var(--font-size-base) !important;
+  line-height: var(--line-height-base) !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.cell-value-cell {
+  text-align: right;
+}
+
+.cell-input {
+  width: 100%;
+  text-align: right;
+  border: 1px solid var(--color-primary-blue);
+  border-radius: 2px;
+  padding: 2px 4px;
+  font-size: var(--font-size-base);
+  font-family: var(--font-family-base);
+  color: var(--color-dark-text);
+  background-color: var(--color-surface-white);
+  outline: none;
+}
+
+.cell-input:focus {
+  border-color: var(--color-primary-blue);
+  box-shadow: 0 0 0 2px rgba(6, 106, 254, 0.1);
+}
+

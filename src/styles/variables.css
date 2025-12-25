@@ -1,0 +1,54 @@
+:root {
+  /* Colors from Figma - Exact matches */
+  --color-primary-blue: #066AFE !important;
+  --color-accent-blue: #0250D9 !important;
+  --color-dark-text: #03234D !important;
+  --color-neutral-text: #5C5C5C !important;
+  --color-surface-white: #FFFFFF !important;
+  --color-surface-gray: #F3F3F3 !important;
+  --color-border: #C9C9C9 !important;
+  --color-on-surface-1: #5C5C5C !important;
+  --color-on-surface-2: #2E2E2E !important;
+  --color-on-surface-3: #03234D !important;
+  --color-on-accent: #FFFFFF !important;
+  
+  /* Spacing */
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-5: 20px;
+  --spacing-6: 24px;
+  --spacing-7: 32px;
+  --spacing-8: 48px;
+  --spacing-9: 56px;
+  --spacing-10: 64px;
+  
+  /* Typography */
+  --font-family-base: -apple-system, BlinkMacSystemFont, 'SF Pro', 'SF Pro Display', 'Segoe UI', 'Roboto', sans-serif;
+  --font-size-base: 13px;
+  --font-size-1: 14px;
+  --font-size-2: 16px;
+  --font-size-4: 24px;
+  --font-size-5: 28px;
+  
+  --line-height-base: 18px;
+  --line-height-1: 19px;
+  --line-height-2: 22px;
+  --line-height-4: 32px;
+  --line-height-5: 35px;
+  
+  --font-weight-regular: 400;
+  --font-weight-semibold: 590;
+  
+  /* Borders */
+  --border-radius-1: 8px;
+  --border-radius-2: 20px;
+  --border-radius-circle: 9999px;
+  --border-width-1: 1px;
+  --border-width-2: 2px;
+  
+  /* Shadows */
+  --shadow-2: 0 0 2.9px rgba(0, 0, 0, 0.09), 0 -2.8px 2.9px rgba(0, 0, 0, 0.09), 0 1px 1.2px rgba(0, 0, 0, 0.04);
+}
+

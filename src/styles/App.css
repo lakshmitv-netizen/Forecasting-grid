@@ -1,0 +1,55 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Prevent any plugin or browser defaults from overriding our styles */
+table {
+  border-collapse: collapse !important;
+  border-spacing: 0 !important;
+}
+
+button {
+  background: none !important;
+  border: none !important;
+  font: inherit !important;
+  color: inherit !important;
+  cursor: pointer !important;
+}
+
+input {
+  font: inherit !important;
+  color: inherit !important;
+}
+
+body {
+  font-family: var(--font-family-base) !important;
+  font-size: var(--font-size-base) !important;
+  line-height: var(--line-height-base) !important;
+  color: var(--color-dark-text) !important;
+  background-color: var(--color-surface-white) !important;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-surface-white);
+}
+

@@ -1,0 +1,155 @@
+.header {
+  background-color: var(--color-surface-white) !important;
+  border-bottom: var(--border-width-1) solid var(--color-border) !important;
+  padding: var(--spacing-2) var(--spacing-4);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 64px;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  box-shadow: var(--shadow-2);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+}
+
+.salesforce-logo {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.logo-icon {
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, var(--color-primary-blue) 0%, var(--color-accent-blue) 100%);
+  border-radius: var(--border-radius-1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-on-accent);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-1);
+}
+
+.sales-text {
+  font-size: var(--font-size-1) !important;
+  font-weight: var(--font-weight-semibold) !important;
+  color: var(--color-dark-text) !important;
+  line-height: var(--line-height-1) !important;
+}
+
+.app-launcher {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  margin-left: var(--spacing-4);
+  padding: var(--spacing-1) var(--spacing-2);
+  border-radius: var(--border-radius-1);
+  cursor: pointer;
+}
+
+.app-launcher:hover {
+  background-color: var(--color-surface-gray);
+}
+
+.app-launcher-icon {
+  width: 16px;
+  height: 16px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+}
+
+.app-launcher-icon span {
+  width: 4px;
+  height: 4px;
+  background-color: var(--color-neutral-text);
+  border-radius: 1px;
+}
+
+.header-center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.search-bar {
+  width: 100%;
+  max-width: 500px;
+  position: relative;
+}
+
+.search-input {
+  width: 100%;
+  padding: var(--spacing-2) var(--spacing-4) var(--spacing-2) var(--spacing-8);
+  border: var(--border-width-1) solid var(--color-border);
+  border-radius: var(--border-radius-1);
+  font-size: var(--font-size-base);
+  color: var(--color-dark-text);
+  background-color: var(--color-surface-white);
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--color-primary-blue);
+}
+
+.search-icon {
+  position: absolute;
+  left: var(--spacing-3);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  color: var(--color-neutral-text);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.header-icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--border-radius-circle);
+  cursor: pointer;
+  color: var(--color-neutral-text);
+  transition: background-color 0.2s;
+}
+
+.header-icon:hover {
+  background-color: var(--color-surface-gray);
+}
+
+.header-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--border-radius-circle);
+  background-color: var(--color-primary-blue);
+  color: var(--color-on-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+
