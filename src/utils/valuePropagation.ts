@@ -1263,6 +1263,122 @@ export const updateCrossMeasureDependencies = (
     }
   }
   
+  // Adjustment Measures Dependencies
+  // Final Forecast = Average of (Baseline Forecast + Account Manager Adjusted Forecast + Sales Manager Adjusted Forecast + Regional Director Adjusted Forecast)
+  const adjustmentMeasureIds = [
+    'measure-baseline-forecast',
+    'measure-account-manager-adjusted',
+    'measure-sales-manager-adjusted',
+    'measure-regional-director-adjusted'
+  ];
+  
+  if (measureId && adjustmentMeasureIds.includes(measureId)) {
+    console.log('[CROSS-MEASURE] Processing Adjustment Measure dependency:', measureId);
+    const finalForecastMeasureId = 'measure-final-forecast';
+    const finalForecastMeasure = data.find(m => m.id === finalForecastMeasureId);
+    
+    if (finalForecastMeasure) {
+      // Get all 4 independent measures
+      const baselineMeasure = data.find(m => m.id === 'measure-baseline-forecast');
+      const accountManagerMeasure = data.find(m => m.id === 'measure-account-manager-adjusted');
+      const salesManagerMeasure = data.find(m => m.id === 'measure-sales-manager-adjusted');
+      const regionalDirectorMeasure = data.find(m => m.id === 'measure-regional-director-adjusted');
+      
+      if (baselineMeasure && accountManagerMeasure && salesManagerMeasure && regionalDirectorMeasure) {
+        // Calculate average for Final Forecast
+        // If editing at measure level, update measure-level value
+        if (directMeasure) {
+          const baselineValue = baselineMeasure.values[monthKey];
+          const accountManagerValue = accountManagerMeasure.values[monthKey];
+          const salesManagerValue = salesManagerMeasure.values[monthKey];
+          const regionalDirectorValue = regionalDirectorMeasure.values[monthKey];
+          
+          const averageValue = (baselineValue + accountManagerValue + salesManagerValue + regionalDirectorValue) / 4;
+          const finalForecastValue = finalForecastMeasure.values[monthKey];
+          
+          if (Math.abs(averageValue - finalForecastValue) > 0.01) {
+            updates.push({ rowId: finalForecastMeasureId, monthKey, newValue: averageValue });
+            const delta = averageValue - finalForecastValue;
+            if (Math.abs(delta) > 0.01) {
+              updates.push(...propagateUpward(finalForecastMeasureId, monthKey, delta, data));
+              updates.push(...propagateDownward(finalForecastMeasureId, monthKey, delta, data));
+            }
+            console.log('[CROSS-MEASURE] Updated Final Forecast measure-level:', averageValue);
+          }
+        } 
+        // If editing at row level, update corresponding row in Final Forecast at the same hierarchy level
+        else if (row && path.length > 0) {
+          // Find corresponding rows at the same hierarchy level in each measure
+          const finalForecastRow = findRowByPath(finalForecastMeasure.children, 0);
+          const baselineRow = findRowByPath(baselineMeasure.children, 0);
+          const accountManagerRow = findRowByPath(accountManagerMeasure.children, 0);
+          const salesManagerRow = findRowByPath(salesManagerMeasure.children, 0);
+          const regionalDirectorRow = findRowByPath(regionalDirectorMeasure.children, 0);
+          
+          if (finalForecastRow && baselineRow && accountManagerRow && salesManagerRow && regionalDirectorRow) {
+            // Recursively update Final Forecast at all hierarchy levels
+            const updateFinalForecastRecursive = (
+              finalRow: GridRow,
+              baselineRow: GridRow,
+              accountManagerRow: GridRow,
+              salesManagerRow: GridRow,
+              regionalDirectorRow: GridRow
+            ) => {
+              // Calculate average for current level
+              const baselineValue = baselineRow.values[monthKey];
+              const accountManagerValue = accountManagerRow.values[monthKey];
+              const salesManagerValue = salesManagerRow.values[monthKey];
+              const regionalDirectorValue = regionalDirectorRow.values[monthKey];
+              
+              const averageValue = (baselineValue + accountManagerValue + salesManagerValue + regionalDirectorValue) / 4;
+              const finalForecastCurrentValue = finalRow.values[monthKey];
+              
+              if (Math.abs(averageValue - finalForecastCurrentValue) > 0.01) {
+                updates.push({ rowId: finalRow.id, monthKey, newValue: averageValue });
+                const delta = averageValue - finalForecastCurrentValue;
+                if (Math.abs(delta) > 0.01) {
+                  updates.push(...propagateUpward(finalRow.id, monthKey, delta, data));
+                  updates.push(...propagateDownward(finalRow.id, monthKey, delta, data));
+                }
+                console.log('[CROSS-MEASURE] Updated Final Forecast at row:', finalRow.name, 'value:', averageValue);
+              }
+              
+              // Recursively update children if they exist
+              if (finalRow.children && baselineRow.children && accountManagerRow.children && 
+                  salesManagerRow.children && regionalDirectorRow.children) {
+                for (let i = 0; i < finalRow.children.length; i++) {
+                  const finalChild = finalRow.children[i];
+                  const baselineChild = baselineRow.children.find(c => c.name === finalChild.name);
+                  const accountManagerChild = accountManagerRow.children.find(c => c.name === finalChild.name);
+                  const salesManagerChild = salesManagerRow.children.find(c => c.name === finalChild.name);
+                  const regionalDirectorChild = regionalDirectorRow.children.find(c => c.name === finalChild.name);
+                  
+                  if (baselineChild && accountManagerChild && salesManagerChild && regionalDirectorChild) {
+                    updateFinalForecastRecursive(
+                      finalChild,
+                      baselineChild,
+                      accountManagerChild,
+                      salesManagerChild,
+                      regionalDirectorChild
+                    );
+                  }
+                }
+              }
+            };
+            
+            updateFinalForecastRecursive(
+              finalForecastRow,
+              baselineRow,
+              accountManagerRow,
+              salesManagerRow,
+              regionalDirectorRow
+            );
+          }
+        }
+      }
+    }
+  }
+  
   return updates;
 };
 

@@ -20,16 +20,56 @@ interface HierarchicalGridProps {
   onExpandAllRows?: (handler: () => void) => void; // Callback to register expand handler
   onCollapseAllRows?: (handler: () => void) => void; // Callback to register collapse handler
   onSettingsClick?: () => void; // Callback to open settings panel
+  initialFocusedCell?: { rowId: string; monthKey: string } | null; // Initial focused cell when switching layouts
+  onFocusedCellChange?: (focus: { rowId: string; monthKey: string } | null) => void; // Callback when focused cell changes
 }
 
-const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({ data, onDataChange, selectedDimensionLevels, selectedTimeGranularities, columnWidth = 100, onExpandAllRows, onCollapseAllRows, onSettingsClick }) => {
+const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({ 
+  data, 
+  onDataChange, 
+  selectedDimensionLevels, 
+  selectedTimeGranularities, 
+  columnWidth = 100, 
+  onExpandAllRows, 
+  onCollapseAllRows, 
+  onSettingsClick,
+  initialFocusedCell,
+  onFocusedCellChange
+}) => {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [gridData, setGridData] = useState<MeasureData[]>(data);
   // Track preserved values for year/quarter edits at account/category levels
   const preservedValuesRef = useRef<Map<string, { monthKey: keyof GridRowType['values']; value: number }>>(new Map());
   // Track focused cell for keyboard navigation
-  const [focusedCell, setFocusedCell] = useState<{ rowId: string; monthKey: keyof GridRowType['values'] } | null>(null);
+  const [focusedCell, setFocusedCell] = useState<{ rowId: string; monthKey: keyof GridRowType['values'] } | null>(
+    initialFocusedCell ? { rowId: initialFocusedCell.rowId, monthKey: initialFocusedCell.monthKey as keyof GridRowType['values'] } : null
+  );
   const cellRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
+
+  // Restore focus when initialFocusedCell changes (layout switch)
+  useEffect(() => {
+    if (initialFocusedCell) {
+      const cellKey = `${initialFocusedCell.rowId}-${initialFocusedCell.monthKey}`;
+      setTimeout(() => {
+        const cellElement = cellRefs.current.get(cellKey);
+        if (cellElement) {
+          cellElement.focus();
+          setFocusedCell({ 
+            rowId: initialFocusedCell.rowId, 
+            monthKey: initialFocusedCell.monthKey as keyof GridRowType['values'] 
+          });
+        }
+      }, 100);
+    }
+  }, [initialFocusedCell]);
+
+  // Notify parent when focus changes
+  const handleFocusChange = useCallback((focus: { rowId: string; monthKey: keyof GridRowType['values'] } | null) => {
+    setFocusedCell(focus);
+    if (onFocusedCellChange) {
+      onFocusedCellChange(focus ? { rowId: focus.rowId, monthKey: focus.monthKey as string } : null);
+    }
+  }, [onFocusedCellChange]);
   // Track edited cells and their original values to show delta
   const [editedCells, setEditedCells] = useState<Map<string, number>>(new Map()); // key: `${rowId}-${monthKey}`, value: originalValue
   // Track impacted cells (cells that changed due to editing another cell) and their original values
@@ -211,6 +251,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({ data, onDataChange,
       onCollapseAllRows(handleCollapseAll);
     }
   }, [handleExpandAll, handleCollapseAll, onExpandAllRows, onCollapseAllRows]);
+
 
   const formatValue = (value: number): string => {
     return value.toLocaleString('en-US', {
@@ -1069,7 +1110,9 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({ data, onDataChange,
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
     // Don't handle navigation if user is typing in an input field
     const activeElement = document.activeElement;
-    if (activeElement && activeElement.tagName === 'INPUT' && activeElement.classList.contains('cell-input')) {
+    if (activeElement && (
+      (activeElement.tagName === 'INPUT' && activeElement.classList.contains('cell-input'))
+    )) {
       return;
     }
     
@@ -1136,12 +1179,19 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({ data, onDataChange,
         break;
       case 'Enter':
         e.preventDefault();
-        // Focus the cell - edit mode will be triggered by the cell's onClick handler
+        // Enter edit mode - GridRow's onKeyDown will handle this
         if (visibleRows[currentRowIndex] && visibleRows[currentRowIndex].type !== 'measure') {
           const cellKey = `${visibleRows[currentRowIndex].id}-${visibleTimeKeys[currentColIndex]}`;
           const cellElement = cellRefs.current.get(cellKey);
           if (cellElement) {
-            cellElement.click(); // Trigger click to start editing
+            // Create and dispatch a keyboard event to trigger the cell's onKeyDown handler
+            const enterEvent = new KeyboardEvent('keydown', {
+              key: 'Enter',
+              code: 'Enter',
+              bubbles: true,
+              cancelable: true,
+            });
+            cellElement.dispatchEvent(enterEvent);
           }
         }
         return;
@@ -1478,14 +1528,14 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({ data, onDataChange,
                     onCellChange={handleCellChange}
                     visibleTimeKeys={getVisibleTimeKeys()}
                     focusedCell={focusedCell}
-                    onCellFocus={setFocusedCell}
+                    onCellFocus={handleFocusChange}
                   cellRefs={cellRefs}
                   editedCells={editedCells}
                   impactedCells={impactedCells}
                   savedEditedCells={savedEditedCells}
                   columnWidth={columnWidth}
                 />
-                );
+              );
               }
               
               // No filtering - render normally

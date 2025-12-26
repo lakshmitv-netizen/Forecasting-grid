@@ -12,6 +12,10 @@ interface SettingsPanelProps {
   onColumnWidthChange: (width: number) => void;
   onExpandAllRows?: () => void;
   onCollapseAllRows?: () => void;
+  selectedMeasureSubgroup?: string;
+  onMeasureSubgroupChange?: (subgroup: string) => void;
+  selectedLayout?: string;
+  onLayoutChange?: (layout: string) => void;
 }
 
 const layoutOptions = [
@@ -26,6 +30,15 @@ const layoutOptions = [
   {
     value: 'Time / Dimensions x Measures',
     subtitle: 'Time, Dimension in Rows, Measures in columns'
+  }
+];
+
+const measureSubgroupOptions = [
+  {
+    value: 'Revenue and Quantity Measures'
+  },
+  {
+    value: 'Adjustment Measures'
   }
 ];
 
@@ -62,11 +75,34 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   columnWidth,
   onColumnWidthChange,
   onExpandAllRows,
-  onCollapseAllRows
+  onCollapseAllRows,
+  selectedMeasureSubgroup: propSelectedMeasureSubgroup,
+  onMeasureSubgroupChange,
+  selectedLayout: propSelectedLayout,
+  onLayoutChange
 }) => {
-  const [selectedLayout, setSelectedLayout] = useState(layoutOptions[0].value);
+  const [selectedLayout, setSelectedLayout] = useState(propSelectedLayout || layoutOptions[0].value);
   const [isLayoutDropdownOpen, setIsLayoutDropdownOpen] = useState(false);
   const layoutDropdownRef = useRef<HTMLDivElement>(null);
+  
+  const [selectedMeasureSubgroup, setSelectedMeasureSubgroup] = useState(
+    propSelectedMeasureSubgroup || measureSubgroupOptions[0].value
+  );
+  const [isMeasureSubgroupDropdownOpen, setIsMeasureSubgroupDropdownOpen] = useState(false);
+  const measureSubgroupDropdownRef = useRef<HTMLDivElement>(null);
+  
+  // Sync internal state with props
+  useEffect(() => {
+    if (propSelectedMeasureSubgroup !== undefined) {
+      setSelectedMeasureSubgroup(propSelectedMeasureSubgroup);
+    }
+  }, [propSelectedMeasureSubgroup]);
+
+  useEffect(() => {
+    if (propSelectedLayout !== undefined) {
+      setSelectedLayout(propSelectedLayout);
+    }
+  }, [propSelectedLayout]);
   
   const [isDimensionDropdownOpen, setIsDimensionDropdownOpen] = useState(false);
   const dimensionDropdownRef = useRef<HTMLDivElement>(null);
@@ -78,16 +114,29 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const sliderRef = useRef<HTMLDivElement>(null);
   
-  // Convert pixel width (50-200px) to slider value (0-100)
-  const pixelToSliderValue = (pixels: number): number => {
-    // Map 50px to 0, 200px to 100
-    return ((pixels - 50) / (200 - 50)) * 100;
+  // Get slider range based on selected layout
+  const getSliderRange = (): { min: number; max: number } => {
+    if (selectedLayout === 'Dimensions / Time x Measures' || selectedLayout === 'Time / Dimensions x Measures') {
+      return { min: 50, max: 300 }; // Range for measure columns
+    }
+    // Default range for "Measures / Dimensions x Time" (time period columns)
+    return { min: 50, max: 200 };
   };
   
-  // Convert slider value (0-100) to pixel width (50-200px)
+  const sliderRange = getSliderRange();
+  
+  // Convert pixel width to slider value (0-100) based on current layout's range
+  const pixelToSliderValue = (pixels: number): number => {
+    const { min, max } = sliderRange;
+    // Map min to 0, max to 100
+    return ((pixels - min) / (max - min)) * 100;
+  };
+  
+  // Convert slider value (0-100) to pixel width based on current layout's range
   const sliderValueToPixel = (value: number): number => {
-    // Map 0 to 50px, 100 to 200px
-    return 50 + (value / 100) * (200 - 50);
+    const { min, max } = sliderRange;
+    // Map 0 to min, 100 to max
+    return min + (value / 100) * (max - min);
   };
   
   const sliderValue = pixelToSliderValue(columnWidth);
@@ -121,7 +170,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, onColumnWidthChange]);
+  }, [isDragging, onColumnWidthChange, sliderRange]);
   
   const handleSliderClick = (e: React.MouseEvent) => {
     if (!sliderRef.current) return;
@@ -132,15 +181,18 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     onColumnWidthChange(Math.round(newWidth));
   };
 
-  // Reset column width to default (100px)
+  // Reset column width to minimum for current layout
   const handleResetColumnWidth = () => {
-    onColumnWidthChange(100);
+    onColumnWidthChange(sliderRange.min);
   };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (layoutDropdownRef.current && !layoutDropdownRef.current.contains(event.target as Node)) {
         setIsLayoutDropdownOpen(false);
+      }
+      if (measureSubgroupDropdownRef.current && !measureSubgroupDropdownRef.current.contains(event.target as Node)) {
+        setIsMeasureSubgroupDropdownOpen(false);
       }
       if (dimensionDropdownRef.current && !dimensionDropdownRef.current.contains(event.target as Node)) {
         setIsDimensionDropdownOpen(false);
@@ -150,14 +202,14 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       }
     };
 
-    if (isLayoutDropdownOpen || isDimensionDropdownOpen || isTimeGranularityDropdownOpen) {
+    if (isLayoutDropdownOpen || isMeasureSubgroupDropdownOpen || isDimensionDropdownOpen || isTimeGranularityDropdownOpen) {
       document.addEventListener('mousedown', handleClickOutside);
     }
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [isLayoutDropdownOpen, isDimensionDropdownOpen, isTimeGranularityDropdownOpen]);
+  }, [isLayoutDropdownOpen, isMeasureSubgroupDropdownOpen, isDimensionDropdownOpen, isTimeGranularityDropdownOpen]);
 
   const toggleDimensionLevel = (levelId: string) => {
     const newSet = new Set(selectedDimensionLevels);
@@ -256,6 +308,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                         onClick={() => {
                           setSelectedLayout(option.value);
                           setIsLayoutDropdownOpen(false);
+                          if (onLayoutChange) {
+                            onLayoutChange(option.value);
+                          }
                         }}
                       >
                         <div className="settings-dropdown-option-title">{option.value}</div>
@@ -269,16 +324,37 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
             <div className="settings-field">
               <label className="settings-field-label">Measure Subgroup</label>
-              <div className="settings-input-wrapper">
-                <input 
-                  type="text" 
-                  className="settings-input" 
-                  placeholder="Planning Measures"
-                  readOnly
-                />
-                <svg className="settings-input-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
+              <div className="settings-dropdown-wrapper" ref={measureSubgroupDropdownRef}>
+                <div 
+                  className={`settings-dropdown-trigger ${isMeasureSubgroupDropdownOpen ? 'open' : ''}`}
+                  onClick={() => setIsMeasureSubgroupDropdownOpen(!isMeasureSubgroupDropdownOpen)}
+                >
+                  <span className={selectedMeasureSubgroup ? 'settings-dropdown-value' : 'settings-dropdown-placeholder'}>
+                    {selectedMeasureSubgroup || 'Select Measure Subgroup'}
+                  </span>
+                  <svg className="settings-input-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+                {isMeasureSubgroupDropdownOpen && (
+                  <div className="settings-dropdown-list">
+                    {measureSubgroupOptions.map((option, index) => (
+                      <div
+                        key={index}
+                        className={`settings-dropdown-option ${selectedMeasureSubgroup === option.value ? 'selected' : ''}`}
+                        onClick={() => {
+                          setSelectedMeasureSubgroup(option.value);
+                          setIsMeasureSubgroupDropdownOpen(false);
+                          if (onMeasureSubgroupChange) {
+                            onMeasureSubgroupChange(option.value);
+                          }
+                        }}
+                      >
+                        <div className="settings-dropdown-option-title">{option.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <a href="#" className="settings-link">Reorder Measures</a>
             </div>
@@ -421,7 +497,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <div className="settings-field">
               <label className="settings-field-label">Column Width</label>
               <div className="settings-slider-wrapper">
-                <span className="settings-slider-label">0-100</span>
+                <span className="settings-slider-label">{sliderRange.min}-{sliderRange.max}px</span>
                 <div className="settings-slider-container" ref={sliderRef} onClick={handleSliderClick}>
                   <div className="settings-slider-track">
                     <div className="settings-slider-fill" style={{ width: `${sliderValue}%` }}></div>
@@ -432,7 +508,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     ></div>
                   </div>
                 </div>
-                <span className="settings-slider-value">{Math.round(sliderValue)}</span>
+                <span className="settings-slider-value">{columnWidth}px</span>
               </div>
             </div>
           </div>

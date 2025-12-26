@@ -71,8 +71,25 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     }
   }, [editingCell]);
 
-  const handleCellClick = (monthKey: keyof GridRowType['values']) => {
-    console.log('[GridRow] Cell clicked:', { rowId: row.id, rowType: row.type, monthKey, hasOnCellChange: !!onCellChange });
+
+  const handleCellValueClick = (monthKey: keyof GridRowType['values'], e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent cell click from firing
+    console.log('[GridRow] Cell value clicked (entering edit mode):', { rowId: row.id, rowType: row.type, monthKey });
+    // Measure rows are calculated values and should not be editable
+    if (row.type === 'measure') {
+      console.log('[GridRow] Measure row is not editable, returning');
+      return;
+    }
+    if (!onCellChange) {
+      console.log('[GridRow] No onCellChange handler, returning');
+      return;
+    }
+    setEditingCell({ monthKey });
+    setEditValue(row.values[monthKey].toString());
+  };
+
+  const handleCellEnterKey = (monthKey: keyof GridRowType['values']) => {
+    console.log('[GridRow] Enter key pressed (entering edit mode):', { rowId: row.id, rowType: row.type, monthKey });
     // Measure rows are calculated values and should not be editable
     if (row.type === 'measure') {
       console.log('[GridRow] Measure row is not editable, returning');
@@ -210,12 +227,15 @@ const GridRowComponent: React.FC<GridRowProps> = ({
           ref={inputRef}
           type="text"
           className="cell-input"
+          data-cell-key={`${row.id}-${monthKey}`}
           value={editValue}
           onChange={(e) => setEditValue(e.target.value)}
           onBlur={(e) => handleCellBlur(monthKey, e.target.value)}
           onKeyDown={(e) => handleCellKeyDown(e, monthKey)}
           onClick={(e) => e.stopPropagation()}
-          onFocus={(e) => e.stopPropagation()}
+          onFocus={(e) => {
+            e.stopPropagation();
+          }}
         />
       );
     }
@@ -265,6 +285,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
             <span 
               className={`cell-value cell-value-edited ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
               style={{ cursor: isEditable ? 'pointer' : 'default', color: deltaColor }}
+              onClick={isEditable ? (e) => handleCellValueClick(monthKey, e) : undefined}
             >
               {formatValue(currentValue)}
             </span>
@@ -291,6 +312,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
           <span 
             className={`cell-value ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
             style={{ cursor: isEditable ? 'pointer' : 'default' }}
+            onClick={isEditable ? (e) => handleCellValueClick(monthKey, e) : undefined}
           >
             {formatValue(currentValue)}
           </span>
@@ -323,6 +345,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
             <span 
               className={`cell-value cell-value-impacted ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
               style={{ cursor: isEditable ? 'pointer' : 'default', color: deltaColor }}
+              onClick={isEditable ? (e) => handleCellValueClick(monthKey, e) : undefined}
             >
               {formatValue(currentValue)}
             </span>
@@ -335,6 +358,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
       <span 
         className={`cell-value ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
         style={{ cursor: isEditable ? 'pointer' : 'default' }}
+        onClick={isEditable ? (e) => handleCellValueClick(monthKey, e) : undefined}
       >
         {formatValue(row.values[monthKey])}
       </span>
@@ -403,11 +427,12 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                   onCellFocus({ rowId: row.id, monthKey: key });
                 }
               }}
-              onClick={() => {
-                if (isEditable && onCellFocus) {
-                  onCellFocus({ rowId: row.id, monthKey: key });
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && isEditable) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleCellEnterKey(key);
                 }
-                handleCellClick(key);
               }}
             >
               {renderCellValue(key)}
@@ -434,6 +459,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               editedCells={editedCells}
               impactedCells={impactedCells}
               savedEditedCells={savedEditedCells}
+              columnWidth={columnWidth}
             />
           ))}
         </>

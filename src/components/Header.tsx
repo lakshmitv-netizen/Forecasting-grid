@@ -5,10 +5,6 @@ const Header: React.FC = () => {
   return (
     <header className="header">
       <div className="header-left">
-        <div className="salesforce-logo">
-          <div className="logo-icon">S</div>
-          <span className="sales-text">Sales</span>
-        </div>
         <div className="app-launcher">
           <div className="app-launcher-icon">
             <span></span>
@@ -21,7 +17,7 @@ const Header: React.FC = () => {
             <span></span>
             <span></span>
           </div>
-          <span className="sales-text">Sales</span>
+          <span className="sales-text">Manufacturing Cloud</span>
         </div>
       </div>
       

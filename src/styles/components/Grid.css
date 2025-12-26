@@ -180,6 +180,16 @@
   table-layout: auto;
 }
 
+.grid-table.dimensions-time-table {
+  table-layout: fixed;
+}
+
+.grid-table.dimensions-time-table .grid-header th {
+  white-space: normal;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
 .grid-header {
   background-color: var(--color-surface-gray) !important;
   border-bottom: var(--border-width-2) solid var(--color-border) !important;
@@ -265,6 +275,55 @@
   font-weight: var(--font-weight-semibold) !important;
 }
 
+.grid-row.dimension-row {
+  background-color: var(--color-surface-white) !important;
+  font-weight: 600 !important;
+}
+
+.grid-row.time-row {
+  background-color: var(--color-surface-white) !important;
+  font-weight: 600 !important;
+}
+
+.grid-row.time-row.year {
+  background-color: var(--color-surface-white) !important;
+  font-weight: 600 !important;
+}
+
+.grid-row.time-row.quarter {
+  background-color: var(--color-surface-white) !important;
+  font-weight: 600 !important;
+}
+
+.grid-row.time-row.month {
+  background-color: var(--color-surface-white) !important;
+  font-weight: 600 !important;
+}
+
+/* For Dimensions / Time x Measures layout: Dimension rows bold, Time rows normal */
+.dimensions-time-table:not(.time-dimensions-table) .grid-row.dimension-row {
+  font-weight: 600 !important;
+}
+
+.dimensions-time-table:not(.time-dimensions-table) .grid-row.time-row,
+.dimensions-time-table:not(.time-dimensions-table) .grid-row.time-row.year,
+.dimensions-time-table:not(.time-dimensions-table) .grid-row.time-row.quarter,
+.dimensions-time-table:not(.time-dimensions-table) .grid-row.time-row.month {
+  font-weight: normal !important;
+}
+
+/* For Time / Dimensions x Measures layout: Time rows bold, Dimension rows normal */
+.time-dimensions-table .grid-row.time-row,
+.time-dimensions-table .grid-row.time-row.year,
+.time-dimensions-table .grid-row.time-row.quarter,
+.time-dimensions-table .grid-row.time-row.month {
+  font-weight: 600 !important;
+}
+
+.time-dimensions-table .grid-row.dimension-row {
+  font-weight: normal !important;
+}
+
 .grid-cell {
   padding: var(--spacing-3) var(--spacing-4);
   border-right: var(--border-width-1) solid var(--color-border) !important;
@@ -317,6 +376,18 @@
 
 .cell-indent.level-3 {
   width: calc(var(--spacing-4) * 3);
+}
+
+.cell-indent.level-4 {
+  width: calc(var(--spacing-4) * 4);
+}
+
+.cell-indent.level-5 {
+  width: calc(var(--spacing-4) * 5);
+}
+
+.cell-indent.level-6 {
+  width: calc(var(--spacing-4) * 6);
 }
 
 .chevron-icon {
@@ -502,6 +573,7 @@
   cursor: pointer;
   user-select: none;
 }
+
 
 .cell-value-cell:hover {
   background-color: rgba(0, 123, 255, 0.05);
