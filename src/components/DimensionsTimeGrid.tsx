@@ -3,6 +3,14 @@ import { MeasureData } from '../types';
 import DimensionsTimeRowComponent from './DimensionsTimeRow';
 import GridFooter from './GridFooter';
 import { transformToDimensionsTimeLayout, TransformedRow } from '../utils/layoutTransform';
+import {
+  extractSearchTerms,
+  transformedRowMatchesSearch,
+  separateSearchTerms,
+  matchesText,
+  getMatchingTimePeriodKeys,
+} from '../utils/searchUtils';
+import { SearchHighlight } from './SearchHighlight';
 import '../styles/components/Grid.css';
 
 interface DimensionsTimeGridProps {
@@ -16,6 +24,8 @@ interface DimensionsTimeGridProps {
   onSettingsClick?: () => void;
   initialFocusedCell?: { rowId: string; measureId: string } | null; // Initial focused cell when switching layouts
   onFocusedCellChange?: (focus: { rowId: string; measureId: string } | null) => void; // Callback when focused cell changes
+  searchTerm?: string; // Search term for filtering rows and columns
+  onEditHistory?: (entry: { cellKey: string; rowId: string; timeKey?: string; measureId?: string; oldValue: number; newValue: number }) => void; // Callback to track edit history
 }
 
 const DimensionsTimeGrid: React.FC<DimensionsTimeGridProps> = ({
@@ -29,6 +39,8 @@ const DimensionsTimeGrid: React.FC<DimensionsTimeGridProps> = ({
   onSettingsClick,
   initialFocusedCell,
   onFocusedCellChange,
+  searchTerm = '',
+  onEditHistory
 }) => {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [focusedCell, setFocusedCell] = useState<{ rowId: string; measureId: string } | null>(initialFocusedCell || null);
@@ -37,6 +49,29 @@ const DimensionsTimeGrid: React.FC<DimensionsTimeGridProps> = ({
   const [impactedCells, setImpactedCells] = useState<Map<string, number>>(new Map());
   const [savedEditedCells] = useState<Map<string, string>>(new Map()); // TODO: Implement save functionality
   const [gridData, setGridData] = useState<MeasureData[]>(data);
+
+  // Debug: Log when onEditHistory prop changes
+  useEffect(() => {
+    console.log('[DimensionsTimeGrid] Component mounted/updated, onEditHistory prop:', typeof onEditHistory, !!onEditHistory);
+    if (onEditHistory) {
+      console.log('[DimensionsTimeGrid] Testing onEditHistory callback...');
+      try {
+        onEditHistory({
+          cellKey: 'test-cell-key-dimensions',
+          rowId: 'test-row-id-dimensions',
+          timeKey: 'jan2026',
+          measureId: 'test-measure',
+          oldValue: 100,
+          newValue: 200,
+        });
+        console.log('[DimensionsTimeGrid] ✓ Test callback succeeded');
+      } catch (error) {
+        console.error('[DimensionsTimeGrid] ✗ Test callback failed:', error);
+      }
+    } else {
+      console.warn('[DimensionsTimeGrid] ⚠ onEditHistory is NOT available!');
+    }
+  }, [onEditHistory]);
 
   // Debug: Log impacted cells when they change
   useEffect(() => {
@@ -62,6 +97,21 @@ const DimensionsTimeGrid: React.FC<DimensionsTimeGridProps> = ({
       return [];
     }
   }, [gridData]);
+
+  // Expand all rows by default
+  useEffect(() => {
+    const allRowIds = new Set<string>();
+    const collectRowIds = (rows: TransformedRow[]) => {
+      rows.forEach(row => {
+        if (row.children && row.children.length > 0) {
+          allRowIds.add(row.id);
+          collectRowIds(row.children);
+        }
+      });
+    };
+    collectRowIds(transformedRows);
+    setExpandedRows(allRowIds);
+  }, [transformedRows]);
 
   // Aggregate time hierarchies from multiple children into one parent time hierarchy
   const aggregateTimeHierarchies = useCallback((
@@ -325,20 +375,237 @@ const DimensionsTimeGrid: React.FC<DimensionsTimeGridProps> = ({
   }, []);
 
   // Apply time granularity filtering
-  const filteredRows = useMemo(() => {
+  const timeGranularityFilteredRows = useMemo(() => {
     if (!selectedTimeGranularities || selectedTimeGranularities.size === 0) {
       return dimensionFilteredRows;
     }
     return filterRowsByTimeGranularities(dimensionFilteredRows, selectedTimeGranularities);
   }, [dimensionFilteredRows, selectedTimeGranularities, filterRowsByTimeGranularities]);
 
-  // Get measures list
+  // Apply search filtering to rows
+  const filteredRows = useMemo(() => {
+    try {
+      if (!searchTerm || !searchTerm.trim()) {
+        return timeGranularityFilteredRows;
+      }
+
+      const searchTerms = extractSearchTerms(searchTerm);
+      if (searchTerms.length === 0) {
+        return timeGranularityFilteredRows;
+      }
+
+      const { timeTerms, otherTerms } = separateSearchTerms(searchTerms);
+      
+      // Get matching time period keys if there are time terms
+      const matchingTimeKeys = timeTerms.length > 0 ? getMatchingTimePeriodKeys(timeTerms) : new Set<string>();
+      const hasTimeTerms = timeTerms.length > 0;
+
+      // Check if any measure names match the search terms
+      const allMeasures = gridData.map(measure => ({
+        id: measure.id,
+        name: measure.name,
+      }));
+      const matchingMeasures = allMeasures.filter(measure => 
+        matchesText(measure.name, otherTerms)
+      );
+      const hasMatchingMeasures = matchingMeasures.length > 0;
+
+      // If measure names match, show all rows (since all rows have those measure columns)
+      // Still filter rows based on row names, cell values, and time periods, but don't exclude rows if only measures match
+      const filterRow = (row: TransformedRow): TransformedRow | null => {
+        try {
+          // Check if time period matches (for time rows like month, quarter, year)
+          let timeMatches = false;
+          if (hasTimeTerms && row.timeKey) {
+            timeMatches = matchingTimeKeys.has(row.timeKey);
+          }
+
+          // Check if row name or cell values match (for dimension rows)
+          // For dimension rows, only check against non-time terms
+          const isDimensionRow = row.type === 'account' || row.type === 'category' || row.type === 'product';
+          let rowMatches = timeMatches;
+          if (isDimensionRow) {
+            // If we're searching for ONLY time periods, dimension rows should not match
+            if (hasTimeTerms && otherTerms.length === 0) {
+              rowMatches = false; // Only time terms - dimension rows don't match
+            } else {
+              // Check against non-time terms
+              const matchResult = transformedRowMatchesSearch(row, otherTerms);
+              rowMatches = matchResult.matches;
+            }
+          } else {
+            // For time rows, also check row name against non-time terms
+            if (!rowMatches && otherTerms.length > 0) {
+              const matchResult = transformedRowMatchesSearch(row, otherTerms);
+              rowMatches = matchResult.matches;
+            }
+          }
+          
+          // Process children
+          let filteredChildren: TransformedRow[] = [];
+          if (row.children && row.children.length > 0) {
+            // Always filter children recursively to ensure only matching time periods are shown
+            // Even if parent matches, we need to filter children based on time terms
+            for (const child of row.children) {
+              try {
+                const filteredChild = filterRow(child);
+                if (filteredChild) {
+                  filteredChildren.push(filteredChild);
+                }
+              } catch (e) {
+                console.error('[DimensionsTimeGrid] Error filtering child:', e);
+              }
+            }
+          }
+
+          // Show row if:
+          // 1. Measure names match (all rows should be shown)
+          // 2. Row name or cell values match
+          // 3. Has matching children
+          if (hasMatchingMeasures || rowMatches || filteredChildren.length > 0) {
+            return {
+              ...row,
+              children: filteredChildren.length > 0 ? filteredChildren : row.children,
+            };
+          }
+
+          return null;
+        } catch (e) {
+          console.error('[DimensionsTimeGrid] Error in filterRow:', e);
+          // If measures match, show row even on error
+          return hasMatchingMeasures ? row : null;
+        }
+      };
+
+      const filtered: TransformedRow[] = [];
+      for (const row of timeGranularityFilteredRows) {
+        try {
+          const filteredRowResult = filterRow(row);
+          if (filteredRowResult) {
+            filtered.push(filteredRowResult);
+          }
+        } catch (e) {
+          console.error('[DimensionsTimeGrid] Error processing row:', e);
+          // If measures match, include row even on error
+          if (hasMatchingMeasures) {
+            filtered.push(row);
+          }
+        }
+      }
+
+      return filtered;
+    } catch (error) {
+      console.error('[DimensionsTimeGrid] Error in filteredRows search:', error);
+      return timeGranularityFilteredRows;
+    }
+  }, [timeGranularityFilteredRows, searchTerm]);
+
+  // Auto-expand rows that match search
+  useEffect(() => {
+    if (!searchTerm || searchTerm.trim() === '') {
+      return;
+    }
+
+    try {
+      const searchTerms = extractSearchTerms(searchTerm);
+      if (searchTerms.length === 0) {
+        return;
+      }
+
+      const { otherTerms } = separateSearchTerms(searchTerms);
+      if (otherTerms.length === 0) {
+        return;
+      }
+
+      const rowsToExpand = new Set<string>();
+      
+      const checkRow = (row: TransformedRow) => {
+        try {
+          const matchResult = transformedRowMatchesSearch(row, otherTerms);
+          if (matchResult.matches) {
+            // Add this row and all its parents to expanded set
+            let currentRow: TransformedRow | null = row;
+            while (currentRow && currentRow.parentId) {
+              rowsToExpand.add(currentRow.parentId);
+              // Find parent in filteredRows
+              const findParent = (rows: TransformedRow[]): TransformedRow | null => {
+                for (const r of rows) {
+                  if (r.id === currentRow!.parentId) return r;
+                  if (r.children) {
+                    const found = findParent(r.children);
+                    if (found) return found;
+                  }
+                }
+                return null;
+              };
+              currentRow = findParent(filteredRows);
+            }
+            rowsToExpand.add(row.id);
+          }
+          
+          if (row.children) {
+            row.children.forEach(child => checkRow(child));
+          }
+        } catch (e) {
+          console.error('[DimensionsTimeGrid] Error in checkRow:', e);
+        }
+      };
+
+      filteredRows.forEach(row => checkRow(row));
+
+      setExpandedRows(prev => {
+        const newSet = new Set(prev);
+        rowsToExpand.forEach(id => newSet.add(id));
+        return newSet;
+      });
+    } catch (error) {
+      console.error('[DimensionsTimeGrid] Error in auto-expand useEffect:', error);
+    }
+  }, [searchTerm, filteredRows]);
+
+  // Get measures list with search filtering
   const measures = useMemo(() => {
-    return data.map(measure => ({
+    const allMeasures = gridData.map(measure => ({
       id: measure.id,
       name: measure.name,
     }));
-  }, [data]);
+
+    if (!searchTerm || !searchTerm.trim()) {
+      return allMeasures;
+    }
+
+    try {
+      const searchTerms = extractSearchTerms(searchTerm);
+      if (searchTerms.length === 0) {
+        return allMeasures;
+      }
+
+      const { otherTerms } = separateSearchTerms(searchTerms);
+      
+      // Filter measures based on search terms (excluding time terms)
+      if (otherTerms.length === 0) {
+        // Only time terms, show all measures
+        return allMeasures;
+      }
+
+      // Check if any measure names match
+      const matchingMeasures = allMeasures.filter(measure => 
+        matchesText(measure.name, otherTerms)
+      );
+
+      // Only filter measures if some measures match
+      // If no measures match but rows match, show all measures
+      if (matchingMeasures.length > 0) {
+        return matchingMeasures;
+      }
+
+      // No measures match - show all measures (user is searching for rows, not measures)
+      return allMeasures;
+    } catch (error) {
+      console.error('[DimensionsTimeGrid] Error filtering measures:', error);
+      return allMeasures;
+    }
+  }, [gridData, searchTerm]);
 
   const toggleExpand = (id: string) => {
     setExpandedRows((prev) => {
@@ -578,7 +845,27 @@ const DimensionsTimeGrid: React.FC<DimensionsTimeGridProps> = ({
       return;
     }
 
-    // Track this as an edited cell with its original value
+    // Track edit history - track EVERY edit, not just the first one
+    if (onEditHistory) {
+      const historyCellKey = `${dimensionId}-${measureId}`;
+      console.log('[DimensionsTimeGrid] ✓ Calling onEditHistory:', { historyCellKey, dimensionId, measureId, timeKeyToUse, oldValue: originalValue, newValue });
+      try {
+        onEditHistory({
+          cellKey: historyCellKey,
+          rowId: dimensionId,
+          timeKey: timeKeyToUse,
+          measureId,
+          oldValue: originalValue,
+          newValue,
+        });
+        console.log('[DimensionsTimeGrid] ✓ onEditHistory called successfully');
+      } catch (error) {
+        console.error('[DimensionsTimeGrid] ✗ Error calling onEditHistory:', error);
+      }
+    } else {
+      console.log('[DimensionsTimeGrid] ✗ onEditHistory is not available');
+    }
+    
     setEditedCells(prev => {
       const newMap = new Map(prev);
       if (!newMap.has(cellKey)) {
@@ -1074,14 +1361,17 @@ const DimensionsTimeGrid: React.FC<DimensionsTimeGridProps> = ({
       console.error('[DimensionsTimeGrid] Error in handleCellChange:', error);
       console.error('[DimensionsTimeGrid] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     }
-  }, [gridData, onDataChange, editedCells, transformedRows]);
+  }, [gridData, onDataChange, editedCells, transformedRows, onEditHistory]);
 
   console.log('[DimensionsTimeGrid] Rendering, transformedRows:', transformedRows.length, 'measures:', measures.length);
   
+  // Check if search is active (filtering columns)
+  const isFiltering = searchTerm && searchTerm.trim().length > 0;
+
   return (
     <div className="grid-container-wrapper">
       <div className="grid-container" tabIndex={0}>
-        <table className="grid-table dimensions-time-table">
+        <table className={`grid-table dimensions-time-table ${isFiltering ? 'filtered' : ''}`}>
           <thead className="grid-header">
             <tr>
               <th style={{ width: '300px', minWidth: '300px' }}>
@@ -1102,20 +1392,28 @@ const DimensionsTimeGrid: React.FC<DimensionsTimeGridProps> = ({
                   )}
                 </div>
               </th>
-              {measures.map((measure) => (
-                <th 
-                  key={measure.id} 
-                  style={{ 
-                    minWidth: `${columnWidth}px`, 
-                    width: `${columnWidth}px`,
-                    whiteSpace: 'normal',
-                    wordWrap: 'break-word',
-                    overflowWrap: 'break-word'
-                  }}
-                >
-                  {measure.name}
-                </th>
-              ))}
+              {measures.map((measure) => {
+                const searchTerms = searchTerm && searchTerm.trim() ? extractSearchTerms(searchTerm) : [];
+                const { otherTerms } = searchTerms.length > 0 ? separateSearchTerms(searchTerms) : { otherTerms: [] };
+                return (
+                  <th 
+                    key={measure.id} 
+                    style={{ 
+                      minWidth: `${columnWidth}px`, 
+                      width: `${columnWidth}px`,
+                      whiteSpace: 'normal',
+                      wordWrap: 'break-word',
+                      overflowWrap: 'break-word'
+                    }}
+                  >
+                    {otherTerms.length > 0 ? (
+                      <SearchHighlight text={measure.name} searchTerms={otherTerms} />
+                    ) : (
+                      measure.name
+                    )}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody className="grid-body">
@@ -1123,6 +1421,12 @@ const DimensionsTimeGrid: React.FC<DimensionsTimeGridProps> = ({
               <tr>
                 <td colSpan={measures.length + 1} style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
                   No data available. Please check the console for errors.
+                </td>
+              </tr>
+            ) : filteredRows.length === 0 ? (
+              <tr>
+                <td colSpan={measures.length + 1} className="grid-no-results">
+                  {searchTerm && searchTerm.trim() ? `No results found for '${searchTerm}'` : 'No data available'}
                 </td>
               </tr>
             ) : (
@@ -1144,6 +1448,7 @@ const DimensionsTimeGrid: React.FC<DimensionsTimeGridProps> = ({
                   impactedCells={impactedCells}
                   savedEditedCells={savedEditedCells}
                   columnWidth={columnWidth}
+                  searchTerm={searchTerm}
                 />
               ))
             )}

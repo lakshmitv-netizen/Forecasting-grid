@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react'
 import { MeasureData, GridRow as GridRowType } from '../types';
 import GridRowComponent from './GridRow';
 import GridFooter from './GridFooter';
+import CellNotePopover from './CellNotePopover';
 import {
   propagateUpward,
   propagateDownward,
@@ -9,6 +10,13 @@ import {
   findRowById,
   distributeProportionally,
 } from '../utils/valuePropagation';
+import {
+  extractSearchTerms,
+  rowMatchesSearch,
+  getMatchingTimePeriodKeys,
+  separateSearchTerms,
+} from '../utils/searchUtils';
+import { SearchHighlight } from './SearchHighlight';
 import '../styles/components/Grid.css';
 
 interface HierarchicalGridProps {
@@ -22,20 +30,65 @@ interface HierarchicalGridProps {
   onSettingsClick?: () => void; // Callback to open settings panel
   initialFocusedCell?: { rowId: string; monthKey: string } | null; // Initial focused cell when switching layouts
   onFocusedCellChange?: (focus: { rowId: string; monthKey: string } | null) => void; // Callback when focused cell changes
+  searchTerm?: string; // Search term for filtering rows and columns
+  onEditHistory?: (entry: { cellKey: string; rowId: string; timeKey?: string; oldValue: number; newValue: number; note?: string }) => void; // Callback to track edit history
+  onAddAdjustmentNote?: (note: Omit<import('../types/adjustmentNote').AdjustmentNote, 'id' | 'timestamp' | 'userId' | 'userName'>) => void; // Callback to add adjustment note
+  cellEditHistory?: import('../types/editHistory').CellEditHistoryEntry[]; // Edit history to check for notes
 }
 
 const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({ 
   data, 
   onDataChange, 
   selectedDimensionLevels, 
-  selectedTimeGranularities, 
+  selectedTimeGranularities,
+  onAddAdjustmentNote, 
   columnWidth = 100, 
   onExpandAllRows, 
   onCollapseAllRows, 
   onSettingsClick,
   initialFocusedCell,
-  onFocusedCellChange
+  onFocusedCellChange,
+  searchTerm = '',
+  onEditHistory,
+  cellEditHistory = []
 }) => {
+  // Store onEditHistory in a ref so it's always available in callbacks
+  const onEditHistoryRef = useRef(onEditHistory);
+  useEffect(() => {
+    onEditHistoryRef.current = onEditHistory;
+  }, [onEditHistory]);
+  
+  // Debug: Log when onEditHistory prop changes
+  useEffect(() => {
+    const logMessage = `[HierarchicalGrid] Component mounted/updated, onEditHistory exists: ${!!onEditHistory}`;
+    console.error('========================================');
+    console.error(logMessage);
+    console.error('onEditHistory type:', typeof onEditHistory);
+    console.error('========================================');
+    console.log(logMessage);
+    console.warn(logMessage);
+    // Store on window for debugging
+    if (typeof window !== 'undefined') {
+      (window as any).hierarchicalGridOnEditHistory = onEditHistory;
+    }
+    if (onEditHistory) {
+      console.error('[HierarchicalGrid] Testing onEditHistory callback...');
+      try {
+        onEditHistory({
+          cellKey: 'test-cell-key',
+          rowId: 'test-row-id',
+          timeKey: 'jan2026',
+          oldValue: 100,
+          newValue: 200,
+        });
+        console.error('[HierarchicalGrid] ✓ Test callback succeeded');
+      } catch (error) {
+        console.error('[HierarchicalGrid] ✗ Test callback failed:', error);
+      }
+    } else {
+      console.error('[HierarchicalGrid] ⚠⚠⚠ onEditHistory is NOT available! ⚠⚠⚠');
+    }
+  }, [onEditHistory]);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [gridData, setGridData] = useState<MeasureData[]>(data);
   // Track preserved values for year/quarter edits at account/category levels
@@ -45,6 +98,45 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     initialFocusedCell ? { rowId: initialFocusedCell.rowId, monthKey: initialFocusedCell.monthKey as keyof GridRowType['values'] } : null
   );
   const cellRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
+  // Track editing cell for note popover - use a ref to track active input
+  const [editingCell, setEditingCell] = useState<{ rowId: string; monthKey: keyof GridRowType['values'] } | null>(null);
+  const editingInputRef = useRef<HTMLInputElement | null>(null);
+  
+  // Listen for input focus events globally
+  useEffect(() => {
+    const handleInputFocus = (e: FocusEvent) => {
+      const target = e.target as HTMLInputElement;
+      if (target && target.classList.contains('cell-input')) {
+        const cellKey = target.getAttribute('data-cell-key');
+        if (cellKey) {
+          const [rowId, monthKey] = cellKey.split('-');
+          editingInputRef.current = target;
+          setEditingCell({ rowId, monthKey: monthKey as keyof GridRowType['values'] });
+        }
+      }
+    };
+    
+    const handleInputBlur = (e: FocusEvent) => {
+      const target = e.target as HTMLInputElement;
+      if (target && target.classList.contains('cell-input')) {
+        // Delay clearing to allow save to complete
+        setTimeout(() => {
+          if (document.activeElement !== target) {
+            editingInputRef.current = null;
+            setEditingCell(null);
+          }
+        }, 100);
+      }
+    };
+    
+    document.addEventListener('focusin', handleInputFocus);
+    document.addEventListener('focusout', handleInputBlur);
+    
+    return () => {
+      document.removeEventListener('focusin', handleInputFocus);
+      document.removeEventListener('focusout', handleInputBlur);
+    };
+  }, []);
 
   // Restore focus when initialFocusedCell changes (layout switch)
   useEffect(() => {
@@ -70,6 +162,16 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       onFocusedCellChange(focus ? { rowId: focus.rowId, monthKey: focus.monthKey as string } : null);
     }
   }, [onFocusedCellChange]);
+  
+  // Memoized callback for cell edit state changes to prevent re-renders
+  const handleCellEditStateChange = useCallback((isEditing: boolean, rowId: string, monthKey: string) => {
+    if (isEditing) {
+      setEditingCell({ rowId, monthKey: monthKey as keyof GridRowType['values'] });
+    } else {
+      setEditingCell(null);
+    }
+  }, []);
+  
   // Track edited cells and their original values to show delta
   const [editedCells, setEditedCells] = useState<Map<string, number>>(new Map()); // key: `${rowId}-${monthKey}`, value: originalValue
   // Track impacted cells (cells that changed due to editing another cell) and their original values
@@ -200,6 +302,29 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     setGridData(calculatedData);
   }, [data, calculateMeasureValues]);
 
+  // Expand all rows by default
+  useEffect(() => {
+    const allRowIds = new Set<string>();
+    const collectRowIds = (rows: GridRowType[]) => {
+      for (const row of rows) {
+        if (row.children && row.children.length > 0) {
+          allRowIds.add(row.id);
+          collectRowIds(row.children);
+        }
+      }
+    };
+    
+    // Collect from all measures
+    for (const measure of gridData) {
+      if (measure.children && measure.children.length > 0) {
+        allRowIds.add(measure.id);
+        collectRowIds(measure.children);
+      }
+    }
+    
+    setExpandedRows(allRowIds);
+  }, [gridData]);
+
   const toggleExpand = (id: string) => {
     setExpandedRows((prev) => {
       const newSet = new Set(prev);
@@ -241,6 +366,15 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   const handleCollapseAll = useCallback(() => {
     setExpandedRows(new Set());
   }, []);
+
+  // Handle toggle for "Show Only Impacted KPI" - collapse all when checked
+  const handleToggleShowOnlyImpactedKPI = useCallback((checked: boolean) => {
+    setShowOnlyImpactedKPI(checked);
+    if (checked) {
+      // Collapse all rows when showing only impacted measures
+      setExpandedRows(new Set());
+    }
+  }, []);
   
   // Register handlers with parent component
   useEffect(() => {
@@ -260,8 +394,8 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     });
   };
 
-  // Get visible time keys based on selected granularities
-  const getVisibleTimeKeys = (): (keyof GridRowType['values'])[] => {
+  // Get visible time headers with labels (filtered by granularity and search) - memoized
+  const visibleTimeHeaders = useMemo(() => {
     const allTimeKeys: { key: keyof GridRowType['values']; granularity: string; label: string }[] = [
       { key: 'year', granularity: 'year', label: 'FY26' },
       { key: 'q1', granularity: 'quarter', label: 'Q1' },
@@ -282,47 +416,41 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       { key: 'dec2026', granularity: 'month', label: 'Dec' },
     ];
 
-    if (!selectedTimeGranularities || selectedTimeGranularities.size === 0) {
-      // If nothing selected, show all
-      return allTimeKeys.map(tk => tk.key);
+    // Filter by granularity first
+    let filteredKeys = allTimeKeys;
+    if (selectedTimeGranularities && selectedTimeGranularities.size > 0) {
+      filteredKeys = allTimeKeys.filter(tk => selectedTimeGranularities.has(tk.granularity));
     }
 
-    return allTimeKeys
-      .filter(tk => selectedTimeGranularities.has(tk.granularity))
-      .map(tk => tk.key);
-  };
-
-  // Get visible time headers with labels
-  const getVisibleTimeHeaders = (): { key: keyof GridRowType['values']; label: string }[] => {
-    const allTimeKeys: { key: keyof GridRowType['values']; granularity: string; label: string }[] = [
-      { key: 'year', granularity: 'year', label: 'FY26' },
-      { key: 'q1', granularity: 'quarter', label: 'Q1' },
-      { key: 'q2', granularity: 'quarter', label: 'Q2' },
-      { key: 'q3', granularity: 'quarter', label: 'Q3' },
-      { key: 'q4', granularity: 'quarter', label: 'Q4' },
-      { key: 'jan2026', granularity: 'month', label: 'Jan' },
-      { key: 'feb2026', granularity: 'month', label: 'Feb' },
-      { key: 'mar2026', granularity: 'month', label: 'Mar' },
-      { key: 'apr2026', granularity: 'month', label: 'Apr' },
-      { key: 'may2026', granularity: 'month', label: 'May' },
-      { key: 'jun2026', granularity: 'month', label: 'Jun' },
-      { key: 'jul2026', granularity: 'month', label: 'Jul' },
-      { key: 'aug2026', granularity: 'month', label: 'Aug' },
-      { key: 'sep2026', granularity: 'month', label: 'Sep' },
-      { key: 'oct2026', granularity: 'month', label: 'Oct' },
-      { key: 'nov2026', granularity: 'month', label: 'Nov' },
-      { key: 'dec2026', granularity: 'month', label: 'Dec' },
-    ];
-
-    if (!selectedTimeGranularities || selectedTimeGranularities.size === 0) {
-      // If nothing selected, show all
-      return allTimeKeys.map(tk => ({ key: tk.key, label: tk.label }));
+    // Apply search filter if search term exists
+    if (searchTerm && searchTerm.trim()) {
+      const searchTerms = extractSearchTerms(searchTerm);
+      if (searchTerms.length > 0) {
+        const { timeTerms, otherTerms } = separateSearchTerms(searchTerms);
+        console.log('[GRID] getVisibleTimeHeaders - Search terms:', { searchTerm, searchTerms, timeTerms, otherTerms });
+        if (timeTerms.length > 0) {
+          // Filter columns based on time period search
+          const matchingKeys = getMatchingTimePeriodKeys(timeTerms);
+          console.log('[GRID] getVisibleTimeHeaders - Matching time period keys:', Array.from(matchingKeys));
+          // Only show columns that match or are parents/children of matches
+          filteredKeys = filteredKeys.filter(tk => matchingKeys.has(tk.key));
+          console.log('[GRID] getVisibleTimeHeaders - Filtered keys after search:', filteredKeys.map(tk => tk.key));
+        }
+        // If there are other terms (non-time), don't filter columns - show all
+        // This allows searching for row names without filtering columns
+      }
     }
 
-    return allTimeKeys
-      .filter(tk => selectedTimeGranularities.has(tk.granularity))
-      .map(tk => ({ key: tk.key, label: tk.label }));
-  };
+    return filteredKeys.map(tk => ({
+      key: tk.key,
+      label: tk.label,
+    }));
+  }, [selectedTimeGranularities, searchTerm]);
+
+  // Get visible time keys based on selected granularities and search - use visibleTimeHeaders
+  const getVisibleTimeKeys = useCallback((): (keyof GridRowType['values'])[] => {
+    return visibleTimeHeaders.map(h => h.key);
+  }, [visibleTimeHeaders]);
 
   // Helper function to deep copy a row and all its children recursively
   const deepCopyRow = useCallback((row: GridRowType): GridRowType => {
@@ -587,11 +715,10 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   const handleCellChange = useCallback((
     rowId: string,
     monthKey: keyof GridRowType['values'],
-    newValue: number
+    newValue: number,
+    note?: string
   ) => {
-    console.log('[HierarchicalGrid] handleCellChange called:', { rowId, monthKey, newValue });
     // CRITICAL: Clear all preserved values from previous edits
-    // Only the currently edited cell should be preserved (if needed)
     preservedValuesRef.current.clear();
     
     // Check if it's a measure row
@@ -603,15 +730,20 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       oldValue = measure.values[monthKey];
     } else {
       const row = findRowById(rowId, gridData);
-      if (!row) return;
+      if (!row) {
+        return;
+      }
       oldValue = row.values[monthKey];
     }
 
     const delta = newValue - oldValue;
     const cellKey = `${rowId}-${monthKey}`;
+    
+    // Check if note exists and is not empty
+    const hasNote = note && note.trim() !== '';
 
-    if (delta === 0) {
-      // If delta is 0, remove from edited cells
+    if (delta === 0 && !hasNote) {
+      // If delta is 0 and no note, remove from edited cells
       setEditedCells(prev => {
         const newMap = new Map(prev);
         newMap.delete(cellKey);
@@ -620,7 +752,40 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       return;
     }
     
-    // Track this as an edited cell with its original value
+    // Track edit history - track EVERY edit, not just the first one
+    // Also track note-only entries (when delta is 0 but note exists)
+    // CRITICAL: Call onEditHistory if available - try ref first, then direct prop
+    try {
+      const callbackToCall = onEditHistoryRef.current || onEditHistory;
+      
+      if (callbackToCall && typeof callbackToCall === 'function') {
+        // Always call callback if we have a note OR a delta change
+        if (delta === 0 && hasNote) {
+          // Note-only entry (no value change) - ensure note is passed
+          callbackToCall({
+            cellKey,
+            rowId,
+            timeKey: monthKey,
+            oldValue: oldValue,
+            newValue: newValue,
+            note: note.trim(),
+          });
+        } else if (delta !== 0) {
+          // Edit with optional note - always include note if present
+          callbackToCall({
+            cellKey,
+            rowId,
+            timeKey: monthKey,
+            oldValue,
+            newValue,
+            note: hasNote ? note.trim() : undefined,
+          });
+        }
+      }
+    } catch (error) {
+      console.error('[HierarchicalGrid] Error calling onEditHistory:', error);
+    }
+    
     setEditedCells(prev => {
       const newMap = new Map(prev);
       if (!newMap.has(cellKey)) {
@@ -1067,7 +1232,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     if (onDataChange) {
       onDataChange(updatedData);
     }
-  }, [gridData, updateValue, onDataChange, calculateMeasureValues, recalculateTimeAggregations, distributeQuarterToMonths, distributeYearToQuarters, historyIndex]);
+  }, [gridData, updateValue, onDataChange, calculateMeasureValues, recalculateTimeAggregations, distributeQuarterToMonths, distributeYearToQuarters, historyIndex, editedCells]);
 
   // Collect all visible rows in order for keyboard navigation
   const getAllVisibleRows = useCallback((): GridRowType[] => {
@@ -1247,22 +1412,233 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     }
   }, [focusedCell, getAllVisibleRows, getVisibleTimeKeys, handleCellChange]);
 
-  // Memoize the deep-copied measure rows to prevent unnecessary re-renders
-  // Only recreate when gridData actually changes
-  const memoizedMeasureRows = useMemo(() => {
-    console.log('[GRID] Recalculating memoizedMeasureRows, gridData length:', gridData.length);
-    return gridData.map((measure) => {
-      return deepCopyRow({
-        id: measure.id,
-        name: measure.name,
-        parentId: null,
-        level: 0,
-        type: 'measure',
-        children: measure.children,
-        values: measure.values,
+  // Auto-expand rows that match search (only when searchTerm changes, not gridData)
+  useEffect(() => {
+    if (!searchTerm || searchTerm.trim() === '') {
+      return;
+    }
+
+    try {
+      const searchTerms = extractSearchTerms(searchTerm);
+      if (searchTerms.length === 0) {
+        return;
+      }
+
+      const rowsToExpand = new Set<string>();
+      
+      const checkRow = (row: GridRowType, measureName: string) => {
+        try {
+          const matchResult = rowMatchesSearch(row, searchTerms, measureName);
+          if (matchResult.matches) {
+            // Add this row and all its parents to expanded set
+            let currentRow: GridRowType | null = row;
+            while (currentRow && currentRow.parentId) {
+              rowsToExpand.add(currentRow.parentId);
+              // Find parent in current gridData
+              let foundParent: GridRowType | null = null;
+              for (const m of gridData) {
+                if (m.id === currentRow!.parentId) {
+                  foundParent = {
+                    id: m.id,
+                    name: m.name,
+                    parentId: null,
+                    level: 0,
+                    type: 'measure',
+                    children: m.children,
+                    values: m.values,
+                  };
+                  break;
+                }
+                if (m.children) {
+                  const findParentInChildren = (rows: GridRowType[]): GridRowType | null => {
+                    for (const r of rows) {
+                      if (r.id === currentRow!.parentId) return r;
+                      if (r.children) {
+                        const found = findParentInChildren(r.children);
+                        if (found) return found;
+                      }
+                    }
+                    return null;
+                  };
+                  foundParent = findParentInChildren(m.children);
+                  if (foundParent) break;
+                }
+              }
+              currentRow = foundParent;
+            }
+            rowsToExpand.add(row.id);
+          }
+          
+          if (row.children) {
+            row.children.forEach(child => checkRow(child, measureName));
+          }
+        } catch (e) {
+          console.error('[GRID] Error in checkRow:', e);
+        }
+      };
+
+      gridData.forEach(measure => {
+        try {
+          checkRow({
+            id: measure.id,
+            name: measure.name,
+            parentId: null,
+            level: 0,
+            type: 'measure',
+            children: measure.children,
+            values: measure.values,
+          }, measure.name);
+        } catch (e) {
+          console.error('[GRID] Error checking measure:', e);
+        }
       });
-    });
-  }, [gridData, deepCopyRow]);
+
+      setExpandedRows(prev => {
+        const newSet = new Set(prev);
+        rowsToExpand.forEach(id => newSet.add(id));
+        return newSet;
+      });
+    } catch (error) {
+      console.error('[GRID] Error in auto-expand useEffect:', error);
+    }
+  }, [searchTerm]); // Removed gridData dependency to prevent infinite loops
+
+  // Memoize the deep-copied measure rows with search filtering
+  const memoizedMeasureRows = useMemo(() => {
+    try {
+      if (!gridData || gridData.length === 0) {
+        return [];
+      }
+
+      // If no search term, return all rows
+      if (!searchTerm || !searchTerm.trim()) {
+        return gridData.map((measure) => {
+          return deepCopyRow({
+            id: measure.id,
+            name: measure.name,
+            parentId: null,
+            level: 0,
+            type: 'measure',
+            children: measure.children,
+            values: measure.values,
+          });
+        });
+      }
+
+      const searchTerms = extractSearchTerms(searchTerm);
+      if (searchTerms.length === 0) {
+        // No valid search terms, return all rows
+        return gridData.map((measure) => {
+          return deepCopyRow({
+            id: measure.id,
+            name: measure.name,
+            parentId: null,
+            level: 0,
+            type: 'measure',
+            children: measure.children,
+            values: measure.values,
+          });
+        });
+      }
+      
+      const filteredRows: GridRowType[] = [];
+      
+      for (const measure of gridData) {
+        try {
+          let measureRow: GridRowType = deepCopyRow({
+            id: measure.id,
+            name: measure.name,
+            parentId: null,
+            level: 0,
+            type: 'measure',
+            children: measure.children,
+            values: measure.values,
+          });
+
+          // Apply search filtering
+          const { otherTerms } = separateSearchTerms(searchTerms);
+          if (otherTerms.length > 0) {
+            // Filter rows based on search (excluding time terms)
+            const filterRow = (row: GridRowType): GridRowType | null => {
+              try {
+                const matchResult = rowMatchesSearch(row, otherTerms, measure.name);
+                
+                // Process children
+                let filteredChildren: GridRowType[] = [];
+                if (row.children && row.children.length > 0) {
+                  for (const child of row.children) {
+                    try {
+                      const filteredChild = filterRow(child);
+                      if (filteredChild) {
+                        filteredChildren.push(filteredChild);
+                      }
+                    } catch (e) {
+                      console.error('[GRID] Error filtering child:', e);
+                      // Skip child if filtering fails
+                    }
+                  }
+                }
+
+                // Show row if it matches or has matching children
+                if (matchResult.matches || filteredChildren.length > 0) {
+                  return {
+                    ...row,
+                    children: filteredChildren.length > 0 ? filteredChildren : row.children,
+                  };
+                }
+
+                return null;
+              } catch (e) {
+                console.error('[GRID] Error in filterRow:', e);
+                return null;
+              }
+            };
+
+            const filteredRow = filterRow(measureRow);
+            if (filteredRow) {
+              filteredRows.push(filteredRow);
+            }
+          } else {
+            // Only time terms, show all rows
+            filteredRows.push(measureRow);
+          }
+        } catch (e) {
+          console.error('[GRID] Error processing measure:', e);
+          // Include measure even if filtering fails to prevent data loss
+          filteredRows.push(deepCopyRow({
+            id: measure.id,
+            name: measure.name,
+            parentId: null,
+            level: 0,
+            type: 'measure',
+            children: measure.children,
+            values: measure.values,
+          }));
+        }
+      }
+      
+      return filteredRows;
+    } catch (error) {
+      console.error('[GRID] Error in memoizedMeasureRows:', error);
+      // Return all rows on error to prevent blank page
+      try {
+        return gridData.map((measure) => {
+          return deepCopyRow({
+            id: measure.id,
+            name: measure.name,
+            parentId: null,
+            level: 0,
+            type: 'measure',
+            children: measure.children,
+            values: measure.values,
+          });
+        });
+      } catch (e) {
+        console.error('[GRID] Error creating fallback rows:', e);
+        return [];
+      }
+    }
+  }, [gridData, deepCopyRow, searchTerm]);
 
   // Calculate impacted measures count
   const impactedMeasuresCount = useMemo(() => {
@@ -1461,10 +1837,13 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     return measureRow;
   }, [showOnlyImpactedKPI, editedCells, impactedCells]);
 
+  // Check if search is active (filtering columns)
+  const isFiltering = searchTerm && searchTerm.trim().length > 0;
+
   return (
     <div className="grid-container-wrapper">
       <div className="grid-container" onKeyDown={handleKeyDown} tabIndex={0}>
-        <table className="grid-table">
+        <table className={`grid-table ${isFiltering ? 'filtered' : ''}`}>
           <thead className="grid-header">
             <tr>
               <th>
@@ -1485,20 +1864,41 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                   )}
                 </div>
               </th>
-              {getVisibleTimeHeaders().map((header) => (
-                <th key={header.key} style={{ minWidth: `${columnWidth}px`, width: `${columnWidth}px` }}>{header.label}</th>
-              ))}
+              {visibleTimeHeaders.map((header) => {
+                const searchTerms = searchTerm && searchTerm.trim() ? extractSearchTerms(searchTerm) : [];
+                return (
+                  <th 
+                    key={header.key} 
+                    style={{ minWidth: `${columnWidth}px`, width: `${columnWidth}px` }}
+                  >
+                    {searchTerms.length > 0 ? (
+                      <SearchHighlight text={header.label} searchTerms={searchTerms} />
+                    ) : (
+                      header.label
+                    )}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody className="grid-body">
-            {memoizedMeasureRows.map((measureRow, index) => {
-              const measure = gridData[index];
+            {!memoizedMeasureRows || memoizedMeasureRows.length === 0 ? (
+              <tr>
+                <td colSpan={visibleTimeHeaders.length + 1} className="grid-no-results">
+                  {searchTerm && searchTerm.trim() ? `No results found for '${searchTerm}'` : 'No data available'}
+                </td>
+              </tr>
+            ) : (
+              memoizedMeasureRows.map((measureRow) => {
+                if (!measureRow) return null;
+                const measure = gridData.find(m => m.id === measureRow.id);
+                if (!measure) return null;
               
-              // Apply "Show Only Impacted KPI" filter first
-              const impactedFilteredRow = getFilteredRows(measureRow);
-              if (!impactedFilteredRow) {
-                return null;
-              }
+                // Apply "Show Only Impacted KPI" filter first
+                const impactedFilteredRow = getFilteredRows(measureRow);
+                if (!impactedFilteredRow) {
+                  return null;
+                }
               const rowAfterImpactedFilter = Array.isArray(impactedFilteredRow) ? measureRow : impactedFilteredRow;
               
               // Apply filtering if selectedDimensionLevels is provided
@@ -1525,16 +1925,21 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                     expandedRows={expandedRows}
                     onToggleExpand={toggleExpand}
                     formatValue={formatValue}
-                    onCellChange={handleCellChange}
+                    onCellChange={(rowId, monthKey, newValue, note) => {
+                      handleCellChange(rowId, monthKey, newValue, note);
+                    }}
                     visibleTimeKeys={getVisibleTimeKeys()}
                     focusedCell={focusedCell}
                     onCellFocus={handleFocusChange}
-                  cellRefs={cellRefs}
-                  editedCells={editedCells}
-                  impactedCells={impactedCells}
-                  savedEditedCells={savedEditedCells}
-                  columnWidth={columnWidth}
-                />
+                    cellRefs={cellRefs}
+                    editedCells={editedCells}
+                    impactedCells={impactedCells}
+                    savedEditedCells={savedEditedCells}
+                    columnWidth={columnWidth}
+                    searchTerm={searchTerm}
+                    onCellEditStateChange={handleCellEditStateChange}
+                    editHistory={cellEditHistory}
+                  />
               );
               }
               
@@ -1548,7 +1953,9 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                   expandedRows={expandedRows}
                   onToggleExpand={toggleExpand}
                   formatValue={formatValue}
-                  onCellChange={handleCellChange}
+                  onCellChange={(rowId, monthKey, newValue, note) => {
+                    handleCellChange(rowId, monthKey, newValue, note);
+                  }}
                   visibleTimeKeys={getVisibleTimeKeys()}
                   focusedCell={focusedCell}
                   onCellFocus={setFocusedCell}
@@ -1557,13 +1964,17 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                   impactedCells={impactedCells}
                   savedEditedCells={savedEditedCells}
                   columnWidth={columnWidth}
+                  searchTerm={searchTerm}
+                  onCellEditStateChange={handleCellEditStateChange}
+                  editHistory={cellEditHistory}
                 />
               );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <GridFooter
+            })
+          )}
+        </tbody>
+      </table>
+    </div>
+    <GridFooter
         isVisible={isFooterVisible}
         impactedMeasuresCount={impactedMeasuresCount}
         onUndo={handleUndo}
@@ -1573,8 +1984,25 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
         canUndo={historyIndex > 0}
         canRedo={historyIndex < editHistory.length - 1}
         showOnlyImpactedKPI={showOnlyImpactedKPI}
-        onToggleShowOnlyImpactedKPI={setShowOnlyImpactedKPI}
+        onToggleShowOnlyImpactedKPI={handleToggleShowOnlyImpactedKPI}
       />
+      
+      {/* Cell Note Popover */}
+      {editingCell && onAddAdjustmentNote && editingInputRef.current && (
+        <CellNotePopover
+          key={`${editingCell.rowId}-${editingCell.monthKey}`}
+          isOpen={true}
+          cellElement={editingInputRef.current.parentElement as HTMLElement || cellRefs.current.get(`${editingCell.rowId}-${editingCell.monthKey}`) || null}
+          cellKey={`${editingCell.rowId}-${editingCell.monthKey}`}
+          rowId={editingCell.rowId}
+          timeKey={editingCell.monthKey as string}
+          onAddNote={onAddAdjustmentNote}
+          onClose={() => {
+            setEditingCell(null);
+            editingInputRef.current = null;
+          }}
+        />
+      )}
     </div>
   );
 };

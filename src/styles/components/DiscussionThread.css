@@ -1,0 +1,261 @@
+/* Discussion Thread Styles */
+
+.discussion-thread {
+  background: #ffffff;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.discussion-thread.resolved {
+  background: #f8fdf8;
+  border-color: #d4edda;
+}
+
+.discussion-thread-main {
+  display: flex;
+  gap: 10px;
+}
+
+.discussion-thread-avatar {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  background: #0176d3;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+}
+
+.discussion-thread-avatar.small {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+}
+
+.discussion-thread-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.discussion-thread-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.discussion-thread-username {
+  font-size: 13px;
+  font-weight: 600;
+  color: #181818;
+}
+
+.discussion-thread-timestamp {
+  font-size: 11px;
+  color: #706e6b;
+}
+
+.discussion-thread-message {
+  font-size: 13px;
+  color: #3e3e3c;
+  line-height: 1.5;
+  margin: 0 0 8px 0;
+  word-wrap: break-word;
+}
+
+.discussion-thread-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.discussion-thread-reply-btn,
+.discussion-thread-resolve-btn {
+  background: none;
+  border: none;
+  font-size: 12px;
+  color: #0176d3;
+  cursor: pointer;
+  padding: 0;
+  font-weight: 500;
+}
+
+.discussion-thread-reply-btn:hover,
+.discussion-thread-resolve-btn:hover {
+  text-decoration: underline;
+}
+
+.discussion-thread-resolved-badge {
+  font-size: 11px;
+  color: #2e844a;
+  font-weight: 500;
+}
+
+/* Replies */
+.discussion-thread-replies {
+  margin-top: 12px;
+  padding-left: 42px;
+  border-left: 2px solid #e5e5e5;
+  margin-left: 16px;
+}
+
+.discussion-thread-reply {
+  display: flex;
+  gap: 8px;
+  padding: 8px 0 8px 12px;
+}
+
+.discussion-thread-reply:first-child {
+  padding-top: 0;
+}
+
+.discussion-thread-reply .discussion-thread-message {
+  margin-bottom: 0;
+}
+
+/* Reply Input */
+.discussion-thread-reply-input {
+  margin-top: 12px;
+  padding-left: 42px;
+}
+
+.discussion-thread-reply-input textarea {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #c9c9c9;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: none;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.discussion-thread-reply-input textarea:focus {
+  border-color: #0176d3;
+}
+
+.discussion-thread-reply-input textarea::placeholder {
+  color: #706e6b;
+}
+
+.discussion-thread-reply-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.discussion-thread-cancel-btn {
+  background: none;
+  border: 1px solid #c9c9c9;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: #3e3e3c;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.discussion-thread-cancel-btn:hover {
+  background: #f3f2f2;
+}
+
+.discussion-thread-submit-btn {
+  background: #0176d3;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: #ffffff;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.discussion-thread-submit-btn:hover {
+  background: #014486;
+}
+
+.discussion-thread-submit-btn:disabled {
+  background: #c9c9c9;
+  cursor: not-allowed;
+}
+
+/* New Discussion Input */
+.discussion-new-thread {
+  margin-bottom: 16px;
+}
+
+.discussion-new-thread textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #c9c9c9;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: none;
+  outline: none;
+  transition: border-color 0.2s;
+  min-height: 60px;
+}
+
+.discussion-new-thread textarea:focus {
+  border-color: #0176d3;
+}
+
+.discussion-new-thread textarea::placeholder {
+  color: #706e6b;
+}
+
+.discussion-new-thread-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.discussion-new-thread-submit {
+  background: #0176d3;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-size: 13px;
+  color: #ffffff;
+  cursor: pointer;
+  transition: background 0.2s;
+  font-weight: 500;
+}
+
+.discussion-new-thread-submit:hover {
+  background: #014486;
+}
+
+.discussion-new-thread-submit:disabled {
+  background: #c9c9c9;
+  cursor: not-allowed;
+}
+
+/* Discussion Section */
+.discussion-section {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid #e5e5e5;
+}
+
+.discussion-section-title {
+  font-size: 16px;
+  font-weight: normal;
+  color: #181818;
+  margin: 0 0 16px 0;
+}
+
+.discussion-empty {
+  text-align: center;
+  padding: 20px;
+  color: #706e6b;
+  font-size: 13px;
+}
+

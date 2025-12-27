@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { TransformedRow } from '../utils/layoutTransform';
+import { extractSearchTerms, separateSearchTerms, matchesNumber, matchesTimePeriod } from '../utils/searchUtils';
+import { SearchHighlight } from './SearchHighlight';
 import '../styles/components/Grid.css';
 
 interface DimensionsTimeRowProps {
@@ -18,6 +20,7 @@ interface DimensionsTimeRowProps {
   impactedCells?: Map<string, number>;
   savedEditedCells?: Map<string, string>;
   columnWidth?: number;
+  searchTerm?: string;
 }
 
 const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
@@ -36,6 +39,7 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
   impactedCells,
   savedEditedCells,
   columnWidth = 100,
+  searchTerm = '',
 }) => {
   const hasChildren = row.children && row.children.length > 0;
   const [editingCell, setEditingCell] = useState<{ measureId: string } | null>(null);
@@ -199,7 +203,16 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
               className={`cell-value cell-value-edited ${!isEditable ? 'cell-value-readonly' : ''}`}
               style={{ color: deltaColor }}
             >
-              {formatValue(currentValue)}
+              {searchTerm && searchTerm.trim() ? (() => {
+                const searchTerms = extractSearchTerms(searchTerm);
+                const { otherTerms } = separateSearchTerms(searchTerms);
+                const valueStr = formatValue(currentValue);
+                return otherTerms.length > 0 && matchesNumber(currentValue, otherTerms) ? (
+                  <SearchHighlight text={valueStr} searchTerms={otherTerms} />
+                ) : (
+                  valueStr
+                );
+              })() : formatValue(currentValue)}
             </span>
           </div>
           <div className="cell-edit-icon">
@@ -228,7 +241,16 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
           <span 
             className={`cell-value ${!isEditable ? 'cell-value-readonly' : ''}`}
           >
-            {formatValue(currentValue)}
+            {searchTerm && searchTerm.trim() ? (() => {
+              const searchTerms = extractSearchTerms(searchTerm);
+              const { otherTerms } = separateSearchTerms(searchTerms);
+              const valueStr = formatValue(currentValue);
+              return otherTerms.length > 0 && matchesNumber(currentValue, otherTerms) ? (
+                <SearchHighlight text={valueStr} searchTerms={otherTerms} />
+              ) : (
+                valueStr
+              );
+            })() : formatValue(currentValue)}
           </span>
           <div className="cell-edit-icon cell-edit-icon-saved">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -264,7 +286,16 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
               className={`cell-value cell-value-impacted ${!isEditable ? 'cell-value-readonly' : ''}`}
               style={{ color: deltaColor }}
             >
-              {formatValue(currentValue)}
+              {searchTerm && searchTerm.trim() ? (() => {
+                const searchTerms = extractSearchTerms(searchTerm);
+                const { otherTerms } = separateSearchTerms(searchTerms);
+                const valueStr = formatValue(currentValue);
+                return otherTerms.length > 0 && matchesNumber(currentValue, otherTerms) ? (
+                  <SearchHighlight text={valueStr} searchTerms={otherTerms} />
+                ) : (
+                  valueStr
+                );
+              })() : formatValue(currentValue)}
             </span>
           </div>
         </div>
@@ -277,7 +308,16 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
         style={{ cursor: isEditable ? 'pointer' : 'default' }}
         onClick={isEditable ? (e) => handleCellValueClick(measureId, e) : undefined}
       >
-        {formatValue(currentValue)}
+        {searchTerm && searchTerm.trim() ? (() => {
+          const searchTerms = extractSearchTerms(searchTerm);
+          const { otherTerms } = separateSearchTerms(searchTerms);
+          const valueStr = formatValue(currentValue);
+          return otherTerms.length > 0 && matchesNumber(currentValue, otherTerms) ? (
+            <SearchHighlight text={valueStr} searchTerms={otherTerms} />
+          ) : (
+            valueStr
+          );
+        })() : formatValue(currentValue)}
       </span>
     );
   };
@@ -301,7 +341,30 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
               </div>
             )}
             {!hasChildren && <span style={{ width: '16px', display: 'inline-block' }}></span>}
-            <span className="cell-name">{row.name}</span>
+            <span className="cell-name">
+              {searchTerm && searchTerm.trim() ? (() => {
+                const searchTerms = extractSearchTerms(searchTerm);
+                const { timeTerms, otherTerms } = separateSearchTerms(searchTerms);
+                const allTerms = [...timeTerms, ...otherTerms];
+                
+                // Check if this is a time row and if it matches time terms
+                let shouldHighlight = false;
+                if (timeTerms.length > 0 && row.timeKey) {
+                  shouldHighlight = matchesTimePeriod(row.timeKey, timeTerms);
+                }
+                // Also check if row name matches other terms
+                if (!shouldHighlight && otherTerms.length > 0) {
+                  const textLower = row.name.toLowerCase();
+                  shouldHighlight = otherTerms.some(term => textLower.includes(term.toLowerCase()));
+                }
+                
+                return shouldHighlight && allTerms.length > 0 ? (
+                  <SearchHighlight text={row.name} searchTerms={allTerms} />
+                ) : (
+                  row.name
+                );
+              })() : row.name}
+            </span>
           </div>
         </td>
         {measures.map((measure) => {
@@ -400,6 +463,7 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
               impactedCells={impactedCells}
               savedEditedCells={savedEditedCells}
               columnWidth={columnWidth}
+              searchTerm={searchTerm}
             />
           ))}
         </>

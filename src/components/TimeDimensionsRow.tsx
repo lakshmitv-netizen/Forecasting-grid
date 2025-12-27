@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { TransformedRow } from '../utils/layoutTransform';
+import { extractSearchTerms, separateSearchTerms, matchesNumber } from '../utils/searchUtils';
+import { SearchHighlight } from './SearchHighlight';
 import '../styles/components/Grid.css';
 
 interface TimeDimensionsRowProps {
@@ -18,6 +20,7 @@ interface TimeDimensionsRowProps {
   impactedCells?: Map<string, number>;
   savedEditedCells?: Map<string, string>;
   columnWidth?: number;
+  searchTerm?: string;
 }
 
 const TimeDimensionsRowComponent: React.FC<TimeDimensionsRowProps> = ({
@@ -36,6 +39,7 @@ const TimeDimensionsRowComponent: React.FC<TimeDimensionsRowProps> = ({
   impactedCells,
   savedEditedCells,
   columnWidth = 100,
+  searchTerm = '',
 }) => {
   const hasChildren = row.children && row.children.length > 0;
   const [editingCell, setEditingCell] = useState<{ measureId: string } | null>(null);
@@ -202,7 +206,16 @@ const TimeDimensionsRowComponent: React.FC<TimeDimensionsRowProps> = ({
               className={`cell-value cell-value-edited ${!isEditable ? 'cell-value-readonly' : ''}`}
               style={{ color: deltaColor }}
             >
-              {formatValue(currentValue)}
+              {searchTerm && searchTerm.trim() ? (() => {
+                const searchTerms = extractSearchTerms(searchTerm);
+                const { otherTerms } = separateSearchTerms(searchTerms);
+                const valueStr = formatValue(currentValue);
+                return otherTerms.length > 0 && matchesNumber(currentValue, otherTerms) ? (
+                  <SearchHighlight text={valueStr} searchTerms={otherTerms} />
+                ) : (
+                  valueStr
+                );
+              })() : formatValue(currentValue)}
             </span>
           </div>
           <div className="cell-edit-icon">
@@ -231,7 +244,16 @@ const TimeDimensionsRowComponent: React.FC<TimeDimensionsRowProps> = ({
           <span 
             className={`cell-value ${!isEditable ? 'cell-value-readonly' : ''}`}
           >
-            {formatValue(currentValue)}
+            {searchTerm && searchTerm.trim() ? (() => {
+              const searchTerms = extractSearchTerms(searchTerm);
+              const { otherTerms } = separateSearchTerms(searchTerms);
+              const valueStr = formatValue(currentValue);
+              return otherTerms.length > 0 && matchesNumber(currentValue, otherTerms) ? (
+                <SearchHighlight text={valueStr} searchTerms={otherTerms} />
+              ) : (
+                valueStr
+              );
+            })() : formatValue(currentValue)}
           </span>
           <div className="cell-edit-icon cell-edit-icon-saved">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -267,7 +289,16 @@ const TimeDimensionsRowComponent: React.FC<TimeDimensionsRowProps> = ({
               className={`cell-value cell-value-impacted ${!isEditable ? 'cell-value-readonly' : ''}`}
               style={{ color: deltaColor }}
             >
-              {formatValue(currentValue)}
+              {searchTerm && searchTerm.trim() ? (() => {
+                const searchTerms = extractSearchTerms(searchTerm);
+                const { otherTerms } = separateSearchTerms(searchTerms);
+                const valueStr = formatValue(currentValue);
+                return otherTerms.length > 0 && matchesNumber(currentValue, otherTerms) ? (
+                  <SearchHighlight text={valueStr} searchTerms={otherTerms} />
+                ) : (
+                  valueStr
+                );
+              })() : formatValue(currentValue)}
             </span>
           </div>
         </div>
@@ -280,7 +311,16 @@ const TimeDimensionsRowComponent: React.FC<TimeDimensionsRowProps> = ({
         style={{ cursor: isEditable ? 'pointer' : 'default' }}
         onClick={isEditable ? (e) => handleCellValueClick(measureId, e) : undefined}
       >
-        {formatValue(currentValue)}
+        {searchTerm && searchTerm.trim() ? (() => {
+          const searchTerms = extractSearchTerms(searchTerm);
+          const { otherTerms } = separateSearchTerms(searchTerms);
+          const valueStr = formatValue(currentValue);
+          return otherTerms.length > 0 && matchesNumber(currentValue, otherTerms) ? (
+            <SearchHighlight text={valueStr} searchTerms={otherTerms} />
+          ) : (
+            valueStr
+          );
+        })() : formatValue(currentValue)}
       </span>
     );
   };
@@ -304,7 +344,18 @@ const TimeDimensionsRowComponent: React.FC<TimeDimensionsRowProps> = ({
               </div>
             )}
             {!hasChildren && <span style={{ width: '16px', display: 'inline-block' }}></span>}
-            <span className="cell-name">{row.name}</span>
+            <span className="cell-name">
+              {searchTerm && searchTerm.trim() ? (() => {
+                const searchTerms = extractSearchTerms(searchTerm);
+                const { timeTerms, otherTerms } = separateSearchTerms(searchTerms);
+                const allTerms = [...timeTerms, ...otherTerms];
+                return allTerms.length > 0 ? (
+                  <SearchHighlight text={row.name} searchTerms={allTerms} />
+                ) : (
+                  row.name
+                );
+              })() : row.name}
+            </span>
           </div>
         </td>
         {measures.map((measure) => {
@@ -387,6 +438,7 @@ const TimeDimensionsRowComponent: React.FC<TimeDimensionsRowProps> = ({
               impactedCells={impactedCells}
               savedEditedCells={savedEditedCells}
               columnWidth={columnWidth}
+              searchTerm={searchTerm}
             />
           ))}
         </>
@@ -396,4 +448,5 @@ const TimeDimensionsRowComponent: React.FC<TimeDimensionsRowProps> = ({
 };
 
 export default TimeDimensionsRowComponent;
+
 

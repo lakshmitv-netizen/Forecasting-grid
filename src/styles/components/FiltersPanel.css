@@ -1,0 +1,492 @@
+/* Filters Panel - Similar to Settings Panel */
+.filters-panel {
+  width: 420px;
+  height: calc(100vh - 180px);
+  background-color: var(--color-surface-white);
+  border: 1px solid var(--color-border);
+  border-radius: 0 20px 20px 0;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow: hidden;
+  min-width: 420px;
+  max-width: 420px;
+  box-shadow: 0px 0px 4.4px 0px rgba(0, 0, 0, 0.09), -4px 0px 4.4px 0px rgba(0, 0, 0, 0.09), -1px 0px 1.44px 0px rgba(0, 0, 0, 0.03);
+  align-self: flex-start;
+}
+
+/* Panel Header */
+.filters-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-2);
+  min-height: 50px;
+  padding: var(--spacing-3);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.filters-panel-title-section {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  flex: 1;
+  min-width: 0;
+}
+
+.filters-panel-back-button {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  border-radius: var(--border-radius-circle);
+  color: var(--color-accent-blue);
+  transition: background-color 0.2s;
+  flex-shrink: 0;
+}
+
+.filters-panel-back-button:hover {
+  background-color: var(--color-surface-gray);
+}
+
+.filters-panel-back-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.filters-panel-title {
+  font-family: var(--font-family-base);
+  font-size: 20px;
+  font-weight: var(--font-weight-regular);
+  line-height: 28px;
+  color: var(--color-on-surface-3);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.filters-panel-info-icon {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--color-accent-blue);
+  border-radius: var(--border-radius-circle);
+  flex-shrink: 0;
+}
+
+.filters-panel-info-icon svg {
+  width: 12px;
+  height: 12px;
+  color: var(--color-on-accent);
+}
+
+.filters-panel-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--spacing-1);
+  flex-shrink: 0;
+}
+
+.filters-panel-close {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  border-radius: var(--border-radius-circle);
+  color: var(--color-on-surface-3);
+  transition: background-color 0.2s;
+}
+
+.filters-panel-close:hover {
+  background-color: var(--color-surface-gray);
+}
+
+.filters-panel-close svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Panel Body */
+.filters-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--spacing-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+/* Top Section - Dropdowns */
+.filters-top-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  background-color: #f0f0f0;
+  padding-top: var(--spacing-4);
+  padding-bottom: var(--spacing-4);
+  padding-left: var(--spacing-3);
+  padding-right: var(--spacing-3);
+  margin: calc(-1 * var(--spacing-3)) calc(-1 * var(--spacing-3)) var(--spacing-3) calc(-1 * var(--spacing-3));
+  border-bottom: 1px solid var(--color-border);
+}
+
+.filters-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
+.filters-field:not(:last-child) {
+  margin-bottom: var(--spacing-2);
+}
+
+.filters-field-label {
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-base);
+  color: var(--color-on-surface-2);
+  margin: 0;
+}
+
+/* Dropdown Wrapper */
+.filters-dropdown-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.filters-dropdown-trigger {
+  width: 100%;
+  min-height: 32px;
+  padding: 5px var(--spacing-6) 5px var(--spacing-2);
+  border: 1px solid #747474;
+  border-radius: 4px;
+  background-color: var(--color-surface-white);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: relative;
+}
+
+.filters-dropdown-trigger.open {
+  box-shadow: 0px 0px 0px 2px white, 0px 0px 0px 3.5px #0b5cab;
+}
+
+.filters-dropdown-trigger:not(.open) {
+  box-shadow: none;
+  border-color: var(--color-border);
+}
+
+.filters-dropdown-value {
+  font-family: var(--font-family-base);
+  font-size: 13px;
+  line-height: 20px;
+  color: #181818;
+  flex: 1;
+}
+
+.filters-dropdown-placeholder {
+  font-family: var(--font-family-base);
+  font-size: 13px;
+  line-height: 20px;
+  color: #747474;
+  flex: 1;
+}
+
+.filters-dropdown-trigger .filters-input-icon {
+  position: absolute;
+  right: var(--spacing-2);
+  width: 16px;
+  height: 16px;
+  color: #747474;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+.filters-dropdown-list {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  background-color: var(--color-surface-white);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  box-shadow: 0px 2px 3px 0px rgba(0, 0, 0, 0.16);
+  z-index: 100;
+  overflow: hidden;
+  padding: 4px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.filters-dropdown-option {
+  min-height: 44px;
+  padding: 8px 12px;
+  margin: 0 4px;
+  cursor: pointer;
+  background-color: var(--color-surface-white);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  transition: background-color 0.15s;
+  border-radius: 2px;
+}
+
+.filters-dropdown-option:hover {
+  background-color: var(--color-surface-gray);
+}
+
+.filters-dropdown-option.selected {
+  background-color: var(--color-surface-gray);
+}
+
+.filters-dropdown-option-title {
+  font-family: var(--font-family-base);
+  font-size: 13px;
+  line-height: 20px;
+  color: #181818;
+  margin-bottom: 2px;
+}
+
+/* Dimension Levels Dropdown with Checkboxes */
+.filters-dimension-dropdown {
+  padding: 0;
+}
+
+.filters-dropdown-header {
+  font-family: var(--font-family-base);
+  font-size: 13px;
+  font-weight: var(--font-weight-semibold);
+  line-height: 20px;
+  color: #181818;
+  padding: 8px 12px 4px 12px;
+  background-color: var(--color-surface-white);
+}
+
+.filters-dropdown-checkbox-option {
+  min-height: 32px;
+  padding: 6px 12px;
+  margin: 0 4px;
+  cursor: pointer;
+  background-color: var(--color-surface-white);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  transition: background-color 0.15s;
+  border-radius: 2px;
+}
+
+.filters-dropdown-checkbox-option:hover {
+  background-color: var(--color-surface-gray);
+}
+
+.filters-checkbox-wrapper {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1.5px solid #747474;
+  border-radius: 2px;
+  background-color: var(--color-surface-white);
+  transition: all 0.15s;
+}
+
+.filters-checkbox-wrapper.checked {
+  border-color: var(--color-accent-blue);
+  background-color: var(--color-accent-blue);
+}
+
+.filters-checkbox-icon {
+  width: 12px;
+  height: 12px;
+  color: var(--color-on-accent);
+  stroke-width: 2.5;
+}
+
+.filters-dropdown-checkbox-label {
+  font-family: var(--font-family-base);
+  font-size: 13px;
+  line-height: 20px;
+  color: #181818;
+}
+
+/* Filter Cards */
+.filters-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.filter-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: var(--spacing-3);
+  background-color: var(--color-surface-white);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  min-height: 66px;
+  position: relative;
+}
+
+.filter-card-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.filter-card-clickable {
+  cursor: pointer;
+}
+
+.filter-card-label {
+  font-family: 'Segoe UI', var(--font-family-base);
+  font-size: 12px;
+  font-weight: var(--font-weight-regular);
+  line-height: 18px;
+  color: #444444;
+  margin: 0;
+}
+
+.filter-card-value {
+  font-family: 'Segoe UI', var(--font-family-base);
+  font-size: 13px;
+  font-weight: var(--font-weight-regular);
+  line-height: 20px;
+  color: #181818;
+  margin: 0;
+}
+
+.filter-card-remove {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  border-radius: var(--border-radius-circle);
+  color: #747474;
+  transition: background-color 0.2s;
+  flex-shrink: 0;
+  margin-left: var(--spacing-2);
+}
+
+.filter-card-remove:hover {
+  background-color: var(--color-surface-gray);
+}
+
+.filter-card-remove svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Action Links */
+.filters-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-top: var(--spacing-2);
+}
+
+.filters-link {
+  font-family: var(--font-family-base);
+  font-size: 13px;
+  font-weight: var(--font-weight-regular);
+  line-height: 18px;
+  color: var(--color-accent-blue);
+  text-decoration: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: text-decoration 0.2s;
+}
+
+.filters-link:hover {
+  text-decoration: underline;
+}
+
+.filters-link-right {
+  margin-left: auto;
+}
+
+/* Panel Footer */
+.filters-panel-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 64px;
+  padding: var(--spacing-3);
+  border-top: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.filters-footer-buttons {
+  display: flex;
+  gap: var(--spacing-2);
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.filters-button {
+  padding: var(--spacing-2) var(--spacing-4);
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-base);
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid;
+  min-width: 80px;
+}
+
+.filters-button-cancel {
+  background-color: var(--color-surface-white);
+  border-color: var(--color-accent-blue);
+  color: var(--color-accent-blue);
+  border-radius: 4px;
+}
+
+.filters-button-cancel:hover {
+  background-color: var(--color-surface-gray);
+}
+
+.filters-button-save {
+  background-color: var(--color-accent-blue);
+  border-color: var(--color-accent-blue);
+  color: var(--color-on-accent);
+  border-radius: 2px;
+}
+
+.filters-button-save:hover {
+  background-color: var(--color-primary-blue);
+  border-color: var(--color-primary-blue);
+}
+

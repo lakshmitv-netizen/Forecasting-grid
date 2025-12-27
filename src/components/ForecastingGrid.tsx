@@ -1,5 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { MeasureData } from '../types';
+import { CellEditHistoryEntry } from '../types/editHistory';
+import { AdjustmentNote } from '../types/adjustmentNote';
 import { mockData } from '../data/mockData';
 import { adjustmentMeasuresData } from '../data/adjustmentMeasuresData';
 import HierarchicalGrid from './HierarchicalGrid';
@@ -7,6 +9,8 @@ import DimensionsTimeGrid from './DimensionsTimeGrid';
 import TimeDimensionsGrid from './TimeDimensionsGrid';
 import GridToolbar from './GridToolbar';
 import SettingsPanel from './SettingsPanel';
+import FiltersPanel from './FiltersPanel';
+import CellDetailsHistoryPanel from './CellDetailsHistoryPanel';
 import '../styles/components/Grid.css';
 
 // Cell focus types for different layouts
@@ -24,6 +28,68 @@ const ForecastingGrid: React.FC = () => {
   const dimensionsTimeGridFocusRef = useRef<DimensionsTimeGridFocus>(null);
   const timeDimensionsGridFocusRef = useRef<TimeDimensionsGridFocus>(null);
   
+  // State to track current focused cell for CellDetailsHistoryPanel (triggers re-render)
+  const [currentFocusedCell, setCurrentFocusedCell] = useState<{ rowId: string; monthKey?: string; measureId?: string } | null>(null);
+  
+  // State to track edit history for all cells (includes both edits and notes)
+  const [editHistory, setEditHistory] = useState<CellEditHistoryEntry[]>([]);
+  
+  // Function to add edit history entry
+  const addEditHistory = useCallback((entry: Omit<CellEditHistoryEntry, 'id' | 'timestamp' | 'userId' | 'userName'>) => {
+    const newEntry: CellEditHistoryEntry = {
+      ...entry,
+      id: `${entry.cellKey}-${Date.now()}-${Math.random()}`,
+      timestamp: new Date(),
+      userId: 'john-carter',
+      userName: 'John Carter',
+    };
+    
+    // Ensure note is preserved
+    if (entry.note) {
+      newEntry.note = entry.note.trim();
+    }
+    
+    setEditHistory(prev => [newEntry, ...prev]);
+  }, []);
+  
+  // Function to add adjustment note (for notes added separately, not during edit)
+  const addAdjustmentNote = useCallback((note: Omit<AdjustmentNote, 'id' | 'timestamp' | 'userId' | 'userName'>) => {
+    // Add as note-only entry in edit history
+    const newEntry: CellEditHistoryEntry = {
+      cellKey: note.cellKey,
+      rowId: note.rowId,
+      timeKey: note.timeKey,
+      measureId: note.measureId,
+      note: note.note,
+      id: `note-${note.cellKey}-${Date.now()}-${Math.random()}`,
+      timestamp: new Date(),
+      userId: 'john-carter',
+      userName: 'John Carter',
+    };
+    
+    setEditHistory(prev => [newEntry, ...prev]);
+  }, []);
+
+  // Handler for adding note from the panel footer
+  const handlePanelAddNote = useCallback((rowId: string, monthKey: string, note: string) => {
+    const cellKey = `${rowId}-${monthKey}`;
+    addAdjustmentNote({
+      cellKey,
+      rowId,
+      timeKey: monthKey,
+      measureId: undefined,
+      note,
+    });
+  }, [addAdjustmentNote]);
+  
+  // Debug: Log when editHistory changes
+  useEffect(() => {
+    console.log('[ForecastingGrid] editHistory changed, total entries:', editHistory.length);
+  }, [editHistory]);
+
+  // Wrapper for onDataChange that tracks edit history
+  // Removed unused handleDataChangeWithHistory - using onEditHistory callback in grid components instead
+  
   // Update data when measure subgroup changes
   useEffect(() => {
     if (selectedMeasureSubgroup === 'Adjustment Measures') {
@@ -33,6 +99,8 @@ const ForecastingGrid: React.FC = () => {
     }
   }, [selectedMeasureSubgroup]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isFiltersOpen, setIsFiltersOpen] = useState(false);
+  const [isCellDetailsHistoryOpen, setIsCellDetailsHistoryOpen] = useState(false);
   const [selectedDimensionLevels, setSelectedDimensionLevels] = useState<Set<string>>(
     new Set(['account', 'category', 'product'])
   );
@@ -40,14 +108,24 @@ const ForecastingGrid: React.FC = () => {
     new Set(['month'])
   );
   
-  // Default column width based on layout
-  // For "Dimensions / Time x Measures": 100px (measure columns)
-  // For "Measures / Dimensions x Time": 125px (time period columns)
+  // Default column width based on layout - 50% of slider range
+  // "Measures / Dimensions x Time": 50px - 200px range, default = 50 + (200-50)*0.5 = 125px
+  // "Dimensions / Time x Measures": 50px - 300px range, default = 50 + (300-50)*0.5 = 175px
+  // "Time / Dimensions x Measures": 50px - 300px range, default = 50 + (300-50)*0.5 = 175px
   const getDefaultColumnWidth = (layout: string): number => {
-    return layout === 'Dimensions / Time x Measures' ? 100 : 125;
+    if (layout === 'Measures / Dimensions x Time') {
+      // Set to 100px to fill available space for 12 months
+      return 100;
+    } else {
+      // Range: 50px - 300px, default to smaller value
+      return 120;
+    }
   };
   
   const [columnWidth, setColumnWidth] = useState<number>(getDefaultColumnWidth(selectedLayoutState));
+  
+  // Search state
+  const [gridSearch, setGridSearch] = useState<string>('');
   
   // Refs to store expand/collapse handlers from HierarchicalGrid
   const expandAllRef = useRef<(() => void) | null>(null);
@@ -194,7 +272,26 @@ const ForecastingGrid: React.FC = () => {
             </svg>
           </div>
           <GridToolbar 
-            onSettingsClick={() => setIsSettingsOpen(true)} 
+            onSettingsClick={() => {
+              setIsSettingsOpen(true);
+              setIsFiltersOpen(false); // Close filters if settings opens
+              setIsCellDetailsHistoryOpen(false); // Close cell details if settings opens
+            }}
+            onFilterClick={() => {
+              setIsFiltersOpen(true);
+              setIsSettingsOpen(false); // Close settings if filters opens
+              setIsCellDetailsHistoryOpen(false); // Close cell details if filters opens
+            }}
+            onNotesClick={() => {
+              setIsCellDetailsHistoryOpen(true);
+              setIsSettingsOpen(false); // Close settings if cell details opens
+              setIsFiltersOpen(false); // Close filters if cell details opens
+            }}
+            searchValue={gridSearch}
+            onSearchChange={setGridSearch}
+            isSettingsActive={isSettingsOpen}
+            isFilterActive={isFiltersOpen}
+            isNotesActive={isCellDetailsHistoryOpen}
           />
         </div>
       </div>
@@ -210,7 +307,12 @@ const ForecastingGrid: React.FC = () => {
             onCollapseAllRows={(handler) => { collapseAllRef.current = handler; }}
             onSettingsClick={() => setIsSettingsOpen(true)}
             initialFocusedCell={mapToDimensionsTimeFocus(hierarchicalGridFocusRef.current)}
-            onFocusedCellChange={(focus) => { dimensionsTimeGridFocusRef.current = focus; }}
+            onFocusedCellChange={(focus) => { 
+              dimensionsTimeGridFocusRef.current = focus;
+              setCurrentFocusedCell(focus);
+            }}
+            searchTerm={gridSearch}
+            onEditHistory={addEditHistory}
           />
         ) : selectedLayoutState === 'Time / Dimensions x Measures' ? (
           <TimeDimensionsGrid 
@@ -223,7 +325,12 @@ const ForecastingGrid: React.FC = () => {
             onCollapseAllRows={(handler) => { collapseAllRef.current = handler; }}
             onSettingsClick={() => setIsSettingsOpen(true)}
             initialFocusedCell={timeDimensionsGridFocusRef.current}
-            onFocusedCellChange={(focus) => { timeDimensionsGridFocusRef.current = focus; }}
+            onFocusedCellChange={(focus) => { 
+              timeDimensionsGridFocusRef.current = focus;
+              setCurrentFocusedCell(focus);
+            }}
+            searchTerm={gridSearch}
+            onEditHistory={addEditHistory}
           />
         ) : (
           <HierarchicalGrid 
@@ -236,8 +343,15 @@ const ForecastingGrid: React.FC = () => {
             onCollapseAllRows={(handler) => { collapseAllRef.current = handler; }}
             onSettingsClick={() => setIsSettingsOpen(true)}
             initialFocusedCell={mapToHierarchicalFocus(dimensionsTimeGridFocusRef.current)}
-            onFocusedCellChange={(focus) => { hierarchicalGridFocusRef.current = focus; }}
-          />
+            onFocusedCellChange={(focus) => { 
+              hierarchicalGridFocusRef.current = focus;
+              setCurrentFocusedCell(focus);
+            }}
+            searchTerm={gridSearch}
+            onEditHistory={addEditHistory}
+            onAddAdjustmentNote={addAdjustmentNote}
+            cellEditHistory={editHistory}
+        />
         )}
         <SettingsPanel 
           isOpen={isSettingsOpen} 
@@ -254,6 +368,24 @@ const ForecastingGrid: React.FC = () => {
           onMeasureSubgroupChange={setSelectedMeasureSubgroup}
           selectedLayout={selectedLayoutState}
           onLayoutChange={handleLayoutChange}
+        />
+        <FiltersPanel 
+          isOpen={isFiltersOpen} 
+          onClose={() => setIsFiltersOpen(false)}
+          selectedMeasureSubgroup={selectedMeasureSubgroup}
+          onMeasureSubgroupChange={setSelectedMeasureSubgroup}
+          selectedDimensionLevels={selectedDimensionLevels}
+          onDimensionLevelsChange={handleDimensionLevelsChange}
+          data={data}
+        />
+        <CellDetailsHistoryPanel 
+          isOpen={isCellDetailsHistoryOpen} 
+          onClose={() => setIsCellDetailsHistoryOpen(false)}
+          focusedCell={currentFocusedCell}
+          data={data}
+          layout={selectedLayoutState}
+          editHistory={editHistory}
+          onAddNote={handlePanelAddNote}
         />
       </div>
     </div>

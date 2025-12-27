@@ -3,7 +3,7 @@
   display: flex;
   flex-direction: column;
   padding: var(--spacing-4);
-  background-color: var(--color-surface-white);
+  background-color: #F3F3F3;
 }
 
 .page-header {
@@ -14,7 +14,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: var(--spacing-4);
+  margin-bottom: var(--spacing-1);
 }
 
 .breadcrumbs {
@@ -33,7 +33,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--spacing-4);
-  margin-bottom: var(--spacing-3);
+  margin-bottom: var(--spacing-2);
 }
 
 .page-title {
@@ -110,33 +110,83 @@
   width: 16px;
   height: 16px;
   color: var(--color-neutral-text);
+  pointer-events: none;
 }
 
-.grid-actions {
+.grid-search-clear {
+  position: absolute;
+  right: var(--spacing-3);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--color-neutral-text);
   display: flex;
   align-items: center;
-  gap: var(--spacing-2);
+  justify-content: center;
+  padding: 0;
+  transition: color 0.2s;
 }
 
-.grid-action-icon {
+.grid-search-clear:hover {
+  color: var(--color-dark-text);
+}
+
+.grid-search-clear svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Button Group */
+.grid-button-group {
+  display: flex;
+  align-items: center;
+  border: 1px solid #5c5c5c;
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.grid-button-group-item {
   width: 32px;
   height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--border-radius-circle);
+  background-color: white !important;
+  border: none !important;
+  border-right: 1px solid #5c5c5c !important;
   cursor: pointer;
-  color: var(--color-neutral-text);
-  transition: background-color 0.2s;
+  color: #0250D9 !important;
+  transition: background-color 0.15s;
+  padding: 0 !important;
+  margin: 0 !important;
 }
 
-.grid-action-icon:hover {
-  background-color: var(--color-surface-gray);
+.grid-button-group-item:last-child {
+  border-right: none !important;
 }
 
-.grid-action-icon svg {
-  width: 18px;
-  height: 18px;
+.grid-button-group-item:hover {
+  background-color: #f3f2f2 !important;
+}
+
+.grid-button-group-item svg {
+  width: 16px;
+  height: 16px;
+  color: #0250D9;
+  fill: #0250D9;
+}
+
+.grid-button-group-item.active {
+  background-color: #0250D9 !important;
+}
+
+.grid-button-group-item.active svg {
+  color: white;
+  fill: white;
 }
 
 .grid-wrapper {
@@ -157,28 +207,35 @@
   min-width: 0; /* Allow flex item to shrink below content size */
   position: relative;
   overflow: hidden; /* Prevent overflow, let grid-container handle scrolling */
-  padding-bottom: 64px; /* Add padding at bottom to account for fixed footer (48px + padding) */
+  padding-bottom: 50px; /* Add padding at bottom to account for fixed footer */
 }
 
 .grid-container {
   border: var(--border-width-1) solid var(--color-border) !important;
   border-radius: var(--border-radius-1);
-  overflow: auto;
   background-color: var(--color-surface-white) !important;
   flex: 1;
   min-width: 0;
-  overflow-x: auto;
-  overflow-y: auto;
+  min-height: 0;
+  overflow: auto; /* Single overflow property for both directions */
   margin-bottom: 0;
+  display: block;
+  max-height: calc(100vh - 210px); /* Extend grid height closer to footer */
 }
 
 .grid-table {
   width: 100%;
-  min-width: fit-content;
   border-collapse: collapse;
   font-size: var(--font-size-base);
   table-layout: auto;
 }
+
+/* When searching/filtering, don't force full width */
+.grid-table.filtered {
+  width: auto;
+  min-width: auto;
+}
+
 
 .grid-table.dimensions-time-table {
   table-layout: fixed;
@@ -205,6 +262,10 @@
   border-right: var(--border-width-1) solid var(--color-border) !important;
   white-space: nowrap;
   background-color: var(--color-surface-gray) !important;
+  /* Sticky header for vertical scroll */
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .grid-header th:last-child {
@@ -215,7 +276,8 @@
   min-width: 300px;
   position: sticky;
   left: 0;
-  z-index: 15;
+  top: 0;
+  z-index: 20; /* Higher z-index for corner cell - sticky both ways */
   background-color: var(--color-surface-gray) !important;
   box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
 }
@@ -617,5 +679,41 @@
 .cell-input:focus {
   border-color: var(--color-primary-blue);
   box-shadow: 0 0 0 2px rgba(6, 106, 254, 0.1);
+}
+
+/* Search highlighting */
+.search-highlight {
+  background-color: #FFE066;
+  color: inherit;
+  padding: 2px 1px;
+  font-weight: 500;
+}
+
+.search-highlight-mark {
+  background-color: #FFE066;
+  color: inherit;
+  padding: 2px 1px;
+  font-weight: 500;
+}
+
+/* No results message */
+.grid-no-results {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--color-neutral-text);
+  font-size: var(--font-size-base);
+}
+
+/* Dog ear triangle indicator for cells with notes */
+.cell-note-indicator {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-top: 10px solid #6b7280;
+  border-left: 10px solid transparent;
+  z-index: 1000;
+  pointer-events: none;
 }
 

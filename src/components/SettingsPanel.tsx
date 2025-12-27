@@ -125,21 +125,21 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   
   const sliderRange = getSliderRange();
   
-  // Convert pixel width to slider value (0-100) based on current layout's range
+  // Convert pixel width to slider value (1-100) based on current layout's range
   const pixelToSliderValue = (pixels: number): number => {
     const { min, max } = sliderRange;
-    // Map min to 0, max to 100
-    return ((pixels - min) / (max - min)) * 100;
+    // Map min to 1, max to 100
+    return 1 + ((pixels - min) / (max - min)) * 99;
   };
   
-  // Convert slider value (0-100) to pixel width based on current layout's range
+  // Convert slider value (1-100) to pixel width based on current layout's range
   const sliderValueToPixel = (value: number): number => {
     const { min, max } = sliderRange;
-    // Map 0 to min, 100 to max
-    return min + (value / 100) * (max - min);
+    // Map 1 to min, 100 to max
+    return min + ((value - 1) / 99) * (max - min);
   };
   
-  const sliderValue = pixelToSliderValue(columnWidth);
+  const sliderValue = Math.round(pixelToSliderValue(columnWidth));
   
   const handleSliderMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -152,8 +152,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       
       const rect = sliderRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
-      const percentage = Math.max(0, Math.min(100, (x / rect.width) * 100));
-      const newWidth = sliderValueToPixel(percentage);
+      // Map to 1-100 scale
+      const sliderVal = Math.max(1, Math.min(100, Math.round(1 + (x / rect.width) * 99)));
+      const newWidth = sliderValueToPixel(sliderVal);
       onColumnWidthChange(Math.round(newWidth));
     };
     
@@ -176,14 +177,16 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     if (!sliderRef.current) return;
     const rect = sliderRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
-    const percentage = Math.max(0, Math.min(100, (x / rect.width) * 100));
-    const newWidth = sliderValueToPixel(percentage);
+    // Map to 1-100 scale
+    const sliderVal = Math.max(1, Math.min(100, Math.round(1 + (x / rect.width) * 99)));
+    const newWidth = sliderValueToPixel(sliderVal);
     onColumnWidthChange(Math.round(newWidth));
   };
 
-  // Reset column width to minimum for current layout
+  // Reset column width to 50% of slider range for current layout
   const handleResetColumnWidth = () => {
-    onColumnWidthChange(sliderRange.min);
+    const defaultWidth = sliderRange.min + (sliderRange.max - sliderRange.min) * 0.5;
+    onColumnWidthChange(defaultWidth);
   };
 
   useEffect(() => {
@@ -497,18 +500,18 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             <div className="settings-field">
               <label className="settings-field-label">Column Width</label>
               <div className="settings-slider-wrapper">
-                <span className="settings-slider-label">{sliderRange.min}-{sliderRange.max}px</span>
+                <span className="settings-slider-label">1-100</span>
                 <div className="settings-slider-container" ref={sliderRef} onClick={handleSliderClick}>
                   <div className="settings-slider-track">
-                    <div className="settings-slider-fill" style={{ width: `${sliderValue}%` }}></div>
+                    <div className="settings-slider-fill" style={{ width: `${((sliderValue - 1) / 99) * 100}%` }}></div>
                     <div 
                       className="settings-slider-thumb" 
-                      style={{ left: `${sliderValue}%` }}
+                      style={{ left: `${((sliderValue - 1) / 99) * 100}%` }}
                       onMouseDown={handleSliderMouseDown}
                     ></div>
                   </div>
                 </div>
-                <span className="settings-slider-value">{columnWidth}px</span>
+                <span className="settings-slider-value">{sliderValue}</span>
               </div>
             </div>
           </div>
