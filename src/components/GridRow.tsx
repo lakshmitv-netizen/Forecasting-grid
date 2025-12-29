@@ -26,7 +26,7 @@ interface GridRowProps {
   searchTerm?: string; // Search term for highlighting
   onCellEditStateChange?: (isEditing: boolean, rowId: string, monthKey: keyof GridRowType['values']) => void; // Callback when cell edit state changes
   editHistory?: CellEditHistoryEntry[]; // Edit history to check for notes
-  onCellFocusWithHistory?: (cellKey: string, cellRect: DOMRect | null, cellValue?: number) => void; // Callback when a cell is focused
+  onCellFocusWithHistory?: (cellKey: string, cellRect: DOMRect | null, cellValue?: number, isLocked?: boolean) => void; // Callback when a cell is focused
   lockedCells?: Set<string>; // Set of locked cell keys that cannot be edited
   onCellContextMenu?: (e: React.MouseEvent, cellKey: string, cellValue: number, isLocked: boolean, isEditable: boolean) => void; // Callback for right-click context menu
 }
@@ -672,6 +672,19 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     // Check if cell is locked
     const isCellLocked = lockedCells.has(cellKey);
     
+    // Check if this cell has a note - check editHistory for any entry with a note for this cell
+    const hasNote = editHistory && editHistory.length > 0 && editHistory.some(entry => {
+      // Match by cellKey exactly
+      if (entry.cellKey === cellKey) {
+        return !!(entry.note && entry.note.trim() !== '');
+      }
+      // Also check if rowId and timeKey match (for compatibility)
+      if (entry.rowId === row.id && entry.timeKey === monthKey) {
+        return !!(entry.note && entry.note.trim() !== '');
+      }
+      return false;
+    });
+    
     // Check if this is a readonly measure (Last Year data)
     const isReadonlyMeasure = row.id.includes('measure-ly-order') || 
                               row.id.includes('-measure-ly-order') ||
@@ -715,29 +728,42 @@ const GridRowComponent: React.FC<GridRowProps> = ({
       const deltaColor = isIncrement ? '#ff5d2d' : '#2E76E1';
       
       return (
-        <div className="cell-value-wrapper-edited-container">
-          <div className="cell-value-left-icon">
-            <div style={{ width: '18px', height: '18px' }}></div>
-          </div>
-          <div className="cell-value-left-section">
-            {deltaPercent !== null && Math.abs(deltaPercent) > 0.001 && (
-              <div className="cell-delta-badge" style={{ color: deltaColor }}>
-                {deltaPercent > 0 ? '+' : ''} {deltaPercent.toFixed(2)}%
-              </div>
-            )}
-            <span 
-              className={`cell-value cell-value-edited ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
-              style={{ cursor: isEditable ? 'pointer' : 'default', color: deltaColor }}
-              onClick={isEditable ? (e) => handleCellValueClick(monthKey, e) : undefined}
-            >
-              {valueMatchesSearch ? (
-                <SearchHighlight text={formatValue(currentValue)} searchTerms={otherTerms} />
+        <>
+          <div className="cell-value-wrapper-edited-container">
+            <div className="cell-value-left-icon">
+              {isCellLocked ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
+                  <rect x="5" y="11" width="14" height="9" rx="1" fill="#6b7280"/>
+                  <path d="M9 11V7c0-1.66 1.34-3 3-3s3 1.34 3 3v4" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" fill="none"/>
+                </svg>
               ) : (
-                formatValue(currentValue)
+                <div style={{ width: '18px', height: '18px' }}></div>
               )}
-            </span>
+            </div>
+            <div className="cell-value-left-section">
+              {deltaPercent !== null && Math.abs(deltaPercent) > 0.001 && (
+                <div className="cell-delta-badge" style={{ color: deltaColor }}>
+                  {deltaPercent > 0 ? '+' : ''} {deltaPercent.toFixed(2)}%
+                </div>
+              )}
+              <span 
+                className={`cell-value cell-value-edited ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
+                style={{ cursor: isEditable ? 'pointer' : 'default', color: deltaColor }}
+                onClick={isEditable ? (e) => handleCellValueClick(monthKey, e) : undefined}
+              >
+                {valueMatchesSearch ? (
+                  <SearchHighlight text={formatValue(currentValue)} searchTerms={otherTerms} />
+                ) : (
+                  formatValue(currentValue)
+                )}
+              </span>
+            </div>
           </div>
-        </div>
+          {/* Dog ear triangle indicator for cells with notes */}
+          {hasNote && (
+            <div className="cell-note-indicator"></div>
+          )}
+        </>
       );
     }
     
@@ -748,57 +774,27 @@ const GridRowComponent: React.FC<GridRowProps> = ({
       const isIncrease = iconColor === '#ff5d2d' || iconColor === '#FF5D2D';
       
       return (
-        <div className="cell-value-wrapper-saved-container">
-          <div className="cell-value-left-icon">
-            {isCellLocked ? (
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
-                <rect x="7" y="11" width="10" height="9" rx="1" fill="#6b7280"/>
-                <path d="M9 11V7c0-1.66 1.34-3 3-3s3 1.34 3 3v4" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" fill="none"/>
-              </svg>
-            ) : isIncrease ? (
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 6v10M12 6l4 4M12 6l-4 4" stroke="#ff5d2d" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-              </svg>
-            ) : (
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 18V8M12 18l4-4M12 18l-4-4" stroke="#2E76E1" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-              </svg>
-            )}
-          </div>
-          <span 
-            className={`cell-value cell-value-saved ${!isCellLocked && (isIncrease ? 'cell-value-increase' : 'cell-value-decrease')} ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
-            style={{ cursor: isEditable ? 'pointer' : 'default' }}
-            onClick={isEditable ? (e) => handleCellValueClick(monthKey, e) : undefined}
-          >
-            {valueMatchesSearch ? (
-              <SearchHighlight text={formatValue(currentValue)} searchTerms={otherTerms} />
-            ) : (
-              formatValue(currentValue)
-            )}
-          </span>
-        </div>
-      );
-    }
-    
-    if (isImpacted) {
-      // Impacted cell: lighter yellow background, delta badge, no icon
-      const isIncrement = deltaPercent !== null && deltaPercent > 0;
-      const deltaColor = isIncrement ? '#ff5d2d' : '#2E76E1';
-      
-      return (
-        <div className="cell-value-wrapper-impacted-container">
-          <div className="cell-value-left-icon">
-            <div style={{ width: '18px', height: '18px' }}></div>
-          </div>
-          <div className="cell-value-left-section">
-            {deltaPercent !== null && Math.abs(deltaPercent) > 0.001 && (
-              <div className="cell-delta-badge" style={{ color: deltaColor }}>
-                {deltaPercent > 0 ? '+' : ''} {deltaPercent.toFixed(2)}%
-              </div>
-            )}
+        <>
+          <div className="cell-value-wrapper-saved-container">
+            <div className="cell-value-left-icon">
+              {isCellLocked ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
+                  <rect x="5" y="11" width="14" height="9" rx="1" fill="#6b7280"/>
+                  <path d="M9 11V7c0-1.66 1.34-3 3-3s3 1.34 3 3v4" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" fill="none"/>
+                </svg>
+              ) : isIncrease ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 6v10M12 6l4 4M12 6l-4 4" stroke="#ff5d2d" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                </svg>
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 18V8M12 18l4-4M12 18l-4-4" stroke="#2E76E1" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                </svg>
+              )}
+            </div>
             <span 
-              className={`cell-value cell-value-impacted ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
-              style={{ cursor: isEditable ? 'pointer' : 'default', color: deltaColor }}
+              className={`cell-value cell-value-saved ${!isCellLocked && (isIncrease ? 'cell-value-increase' : 'cell-value-decrease')} ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
+              style={{ cursor: isEditable ? 'pointer' : 'default' }}
               onClick={isEditable ? (e) => handleCellValueClick(monthKey, e) : undefined}
             >
               {valueMatchesSearch ? (
@@ -808,7 +804,56 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               )}
             </span>
           </div>
-        </div>
+          {/* Dog ear triangle indicator for cells with notes */}
+          {hasNote && (
+            <div className="cell-note-indicator"></div>
+          )}
+        </>
+      );
+    }
+    
+    if (isImpacted) {
+      // Impacted cell: lighter yellow background, delta badge, no icon
+      const isIncrement = deltaPercent !== null && deltaPercent > 0;
+      const deltaColor = isIncrement ? '#ff5d2d' : '#2E76E1';
+      
+      return (
+        <>
+          <div className="cell-value-wrapper-impacted-container">
+            <div className="cell-value-left-icon">
+              {isCellLocked ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
+                  <rect x="5" y="11" width="14" height="9" rx="1" fill="#6b7280"/>
+                  <path d="M9 11V7c0-1.66 1.34-3 3-3s3 1.34 3 3v4" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" fill="none"/>
+                </svg>
+              ) : (
+                <div style={{ width: '18px', height: '18px' }}></div>
+              )}
+            </div>
+            <div className="cell-value-left-section">
+              {deltaPercent !== null && Math.abs(deltaPercent) > 0.001 && (
+                <div className="cell-delta-badge" style={{ color: deltaColor }}>
+                  {deltaPercent > 0 ? '+' : ''} {deltaPercent.toFixed(2)}%
+                </div>
+              )}
+              <span 
+                className={`cell-value cell-value-impacted ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
+                style={{ cursor: isEditable ? 'pointer' : 'default', color: deltaColor }}
+                onClick={isEditable ? (e) => handleCellValueClick(monthKey, e) : undefined}
+              >
+                {valueMatchesSearch ? (
+                  <SearchHighlight text={formatValue(currentValue)} searchTerms={otherTerms} />
+                ) : (
+                  formatValue(currentValue)
+                )}
+              </span>
+            </div>
+          </div>
+          {/* Dog ear triangle indicator for cells with notes */}
+          {hasNote && (
+            <div className="cell-note-indicator"></div>
+          )}
+        </>
       );
     }
     
@@ -820,7 +865,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
         <div className="cell-value-left-icon">
           {isCellLocked ? (
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
-              <rect x="7" y="11" width="10" height="9" rx="1" fill="#6b7280"/>
+              <rect x="5" y="11" width="14" height="9" rx="1" fill="#6b7280"/>
               <path d="M9 11V7c0-1.66 1.34-3 3-3s3 1.34 3 3v4" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" fill="none"/>
             </svg>
           ) : (
@@ -921,19 +966,22 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 const impactedOriginalValue = impactedCells?.get(cellKeyForCheck);
                 const savedIconColorCheck = savedEditedCells?.get(cellKeyForCheck);
                 const isSavedEditedCheck = savedIconColorCheck !== undefined;
-                // Check if saved edited (show icon only, no special styling)
-                if (isSavedEditedCheck) {
-                  return ''; // No special class for saved edited cells
-                }
-                // Check if edited (directly edited by user)
+                
+                // Priority order: edited > impacted > saved edited
+                // Check if edited (directly edited by user) - highest priority
                 if (editedOriginalValue !== undefined) {
                   // Always show as edited if it's in the editedCells map, even if value matches (to handle rounding)
                   return 'edited-cell';
                 }
-                // Check if impacted (changed due to editing another cell)
+                // Check if impacted (changed due to editing another cell) - second priority
                 if (impactedOriginalValue !== undefined) {
                   // Always show as impacted if it's in the impactedCells map, even if value matches (to handle rounding)
                   return 'impacted-cell';
+                }
+                // Check if saved edited (show icon only, no special styling) - lowest priority
+                // Only apply this if cell is NOT currently edited or impacted
+                if (isSavedEditedCheck) {
+                  return ''; // No special class for saved edited cells
                 }
                 return '';
               })()}`}
@@ -942,18 +990,18 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 if (onCellFocus && isEditable) {
                   onCellFocus({ rowId: row.id, monthKey: key });
                 }
-                // Call onCellFocusWithHistory for any editable cell
+                // Call onCellFocusWithHistory for any editable cell OR locked cell
                 // But NOT if we're currently editing (adjustment note dropdown is shown)
                 // And NOT if cell is in dirty state (edited but not saved)
-                if (onCellFocusWithHistory && isEditable && !editingCell) {
+                if (onCellFocusWithHistory && (isEditable || isCellLocked) && !editingCell) {
                   const focusCellKey = `${row.id}-${key}`;
                   const isDirty = editedCells?.has(focusCellKey) && !savedEditedCells?.has(focusCellKey);
-                  // Don't show popover for dirty/unsaved cells
-                  if (!isDirty) {
+                  // Don't show popover for dirty/unsaved cells (unless locked)
+                  if (!isDirty || isCellLocked) {
                     const cellElement = e.currentTarget;
                     const cellRect = cellElement.getBoundingClientRect();
                     const cellValue = row.values[key];
-                    onCellFocusWithHistory(focusCellKey, cellRect, cellValue);
+                    onCellFocusWithHistory(focusCellKey, cellRect, cellValue, isCellLocked);
                   }
                 }
               }}

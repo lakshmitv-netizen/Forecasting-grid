@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { MeasureData } from '../types';
 import { CellEditHistoryEntry } from '../types/editHistory';
 import { AdjustmentNote } from '../types/adjustmentNote';
@@ -129,7 +129,7 @@ const ForecastingGrid: React.FC = () => {
 
   // Handler for showing edit info popover when a cell is focused
   // Check both draft and saved edit history
-  const handleCellFocusWithHistory = useCallback((cellKey: string, cellRect: DOMRect | null, cellValue?: number) => {
+  const handleCellFocusWithHistory = useCallback((cellKey: string, cellRect: DOMRect | null, cellValue?: number, isLocked?: boolean) => {
     if (!cellRect) {
       setEditInfoPopover(null);
       return;
@@ -140,8 +140,26 @@ const ForecastingGrid: React.FC = () => {
     const savedEntry = editHistory.find(entry => entry.cellKey === cellKey);
     const latestEntry = draftEntry || savedEntry;
     
-    // Only show popover if there's edit history (draft or saved)
-    if (!latestEntry) {
+    // Show popover if there's edit history OR if cell is locked
+    if (!latestEntry && !isLocked) {
+      setEditInfoPopover(null);
+      return;
+    }
+    
+    // For locked cells without edit history, create a minimal entry
+    const entryToShow = latestEntry || (isLocked ? {
+      id: `locked-${cellKey}`,
+      cellKey,
+      rowId: cellKey.split('-')[0] || '',
+      timestamp: new Date(),
+      userId: 'current-user',
+      userName: 'John Carter',
+      oldValue: undefined,
+      newValue: cellValue,
+      note: undefined
+    } as CellEditHistoryEntry : null);
+    
+    if (!entryToShow) {
       setEditInfoPopover(null);
       return;
     }
@@ -156,9 +174,10 @@ const ForecastingGrid: React.FC = () => {
     }
     
     setEditInfoPopover({
-      entry: latestEntry,
+      entry: entryToShow,
       cellKey,
       cellValue: cellValue ?? 0,
+      isLocked: isLocked || false,
       position: {
         top: cellRect.bottom + window.scrollY + 8,
         left: leftPos
@@ -204,6 +223,7 @@ const ForecastingGrid: React.FC = () => {
     entry: CellEditHistoryEntry | null;
     cellKey: string;
     cellValue: number;
+    isLocked?: boolean;
     position: { top: number; left: number };
   } | null>(null);
 
@@ -219,6 +239,14 @@ const ForecastingGrid: React.FC = () => {
 
   // Clipboard state for context menu
   const [clipboardValue, setClipboardValue] = useState<number | null>(null);
+
+  // Merge draft and saved edit history for display in grid (so notes show up immediately)
+  const mergedEditHistory = useMemo(() => {
+    const drafts = Array.from(draftEditHistory.values());
+    const merged = [...drafts, ...editHistory];
+    // Sort by timestamp descending (most recent first)
+    return merged.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+  }, [draftEditHistory, editHistory]);
 
   // Context menu handlers
   const handleContextMenu = useCallback((e: React.MouseEvent, cellKey: string, cellValue: number, isLocked: boolean, isEditable: boolean) => {
@@ -331,6 +359,60 @@ const ForecastingGrid: React.FC = () => {
     return `${time}, ${date}`;
   });
 
+  // Format dimension levels for display
+  const formatDimensionLevels = (levels: Set<string>): string => {
+    const hasCategory = levels.has('category');
+    const hasProduct = levels.has('product');
+    const hasAccount = levels.has('account');
+    
+    const parts: string[] = [];
+    
+    // Add Account if selected
+    if (hasAccount) {
+      parts.push('Account');
+    }
+    
+    // If both category and product are selected, treat as Product Dimensions
+    if (hasCategory && hasProduct) {
+      parts.push('Product Dimensions');
+    } else {
+      // Otherwise, add them individually if selected
+      if (hasCategory) {
+        parts.push('Category');
+      }
+      if (hasProduct) {
+        parts.push('Product');
+      }
+    }
+    
+    if (parts.length === 0) return '';
+    if (parts.length === 1) return parts[0];
+    if (parts.length === 2) return parts.join(' & ');
+    return parts.slice(0, -1).join(', ') + ' & ' + parts[parts.length - 1];
+  };
+
+  // Format status text based on layout
+  const formatStatusText = (layout: string, measureSubgroup: string, dimensions: string): string => {
+    const dimensionsText = dimensions.includes('Dimensions') ? dimensions : `${dimensions} Dimensions`;
+    
+    switch (layout) {
+      case 'Measures / Dimensions x Time':
+        // Header: Measures, Inner: Dimensions, Columns: Time
+        return `${measureSubgroup} over ${dimensionsText} across Time`;
+      
+      case 'Dimensions / Time x Measures':
+        // Header: Dimensions, Inner: Time, Columns: Measures
+        return `${dimensionsText} over Time across ${measureSubgroup}`;
+      
+      case 'Time / Dimensions x Measures':
+        // Header: Time, Inner: Dimensions, Columns: Measures
+        return `Time over ${dimensionsText} across ${measureSubgroup}`;
+      
+      default:
+        return `${measureSubgroup} over ${dimensionsText} across Time`;
+    }
+  };
+
   const handleDimensionLevelsChange = (levels: Set<string>) => {
     setSelectedDimensionLevels(levels);
   };
@@ -433,31 +515,46 @@ const ForecastingGrid: React.FC = () => {
   return (
     <div className="forecasting-container">
       <div className="page-header">
-        <div className="breadcrumbs-row">
-          <div className="breadcrumbs">
-            Planning & Forecasting FY26
-            <span className="breadcrumbs-separator">&gt;</span>
-            Grid
+        <div className="page-header-left">
+          <div className="breadcrumbs-row">
+            <div className="breadcrumbs">
+              Planning & Forecasting FY26
+              <span className="breadcrumbs-separator">&gt;</span>
+              Grid
+            </div>
           </div>
-          <div className="last-refreshed">
-            Last Refreshed {lastRefreshed}
-            <button className="refresh-button" type="button" title="Refresh">
-              <svg className="refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 2v6h-6"/>
-                <path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
-                <path d="M3 22v-6h6"/>
-                <path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
-              </svg>
-            </button>
+          <div className="last-refreshed-row">
+            <div className="last-refreshed">
+              {(() => {
+                const statusText = formatStatusText(selectedLayoutState, selectedMeasureSubgroup, formatDimensionLevels(selectedDimensionLevels));
+                const parts = statusText.split(' over ');
+                const secondPart = parts[1]?.split(' across ') || [];
+                
+                return (
+                  <>
+                    Showing{' '}
+                    <span className="last-refreshed-semibold">{parts[0]}</span>
+                    {' over '}
+                    <span className="last-refreshed-semibold">{secondPart[0]}</span>
+                    {' across '}
+                    <span className="last-refreshed-semibold">{secondPart[1]}</span>
+                    {' • Last refreshed '}
+                    <span className="last-refreshed-semibold">{lastRefreshed}</span>
+                  </>
+                );
+              })()}
+            </div>
           </div>
         </div>
-        <div className="page-title-section">
-          <div className="page-title">
-            Planning & Forecasting FY26
-            <svg className="title-dropdown" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        <div className="page-header-right">
+          <button className="refresh-button" type="button" title="Refresh">
+            <svg className="refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 2v6h-6"/>
+              <path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+              <path d="M3 22v-6h6"/>
+              <path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
             </svg>
-          </div>
+          </button>
           <GridToolbar 
             onSettingsClick={() => {
               setIsSettingsOpen(true);
@@ -539,7 +636,7 @@ const ForecastingGrid: React.FC = () => {
             onCommitDrafts={commitDraftsToHistory}
             onClearDrafts={clearDrafts}
             onAddAdjustmentNote={addAdjustmentNote}
-            cellEditHistory={editHistory}
+            cellEditHistory={mergedEditHistory}
             onCellFocusWithHistory={handleCellFocusWithHistory}
             lockedCells={lockedCells}
             onUndoHandler={(handler) => { undoHandlerRef.current = handler; }}
@@ -590,6 +687,8 @@ const ForecastingGrid: React.FC = () => {
           <CellEditInfoPopover
             entry={editInfoPopover.entry}
             position={editInfoPopover.position}
+            isLocked={editInfoPopover.isLocked || false}
+            lockedValue={editInfoPopover.isLocked ? editInfoPopover.cellValue : undefined}
             onViewHistory={handleViewEditHistory}
             onClose={handleCloseEditInfoPopover}
           />

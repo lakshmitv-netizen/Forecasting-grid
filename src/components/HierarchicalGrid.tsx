@@ -34,7 +34,7 @@ interface HierarchicalGridProps {
   onEditHistory?: (entry: { cellKey: string; rowId: string; timeKey?: string; oldValue: number; newValue: number; note?: string }) => void; // Callback to track edit history
   onAddAdjustmentNote?: (note: Omit<import('../types/adjustmentNote').AdjustmentNote, 'id' | 'timestamp' | 'userId' | 'userName'>) => void; // Callback to add adjustment note
   cellEditHistory?: import('../types/editHistory').CellEditHistoryEntry[]; // Edit history to check for notes
-  onCellFocusWithHistory?: (cellKey: string, cellRect: DOMRect | null, cellValue?: number) => void; // Callback when a cell is focused
+  onCellFocusWithHistory?: (cellKey: string, cellRect: DOMRect | null, cellValue?: number, isLocked?: boolean) => void; // Callback when a cell is focused
   lockedCells?: Set<string>; // Set of locked cell keys that cannot be edited or impacted
   onCellContextMenu?: (e: React.MouseEvent, cellKey: string, cellValue: number, isLocked: boolean, isEditable: boolean) => void; // Callback for right-click context menu
   onUndoHandler?: (handler: () => void) => void; // Callback to register undo handler
@@ -120,6 +120,29 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   const [editingCell, setEditingCell] = useState<{ rowId: string; monthKey: keyof GridRowType['values'] } | null>(null);
   const editingInputRef = useRef<HTMLInputElement | null>(null);
   
+  // Track column widths per column for auto-expansion
+  const [columnWidths, setColumnWidths] = useState<Map<string, number>>(new Map());
+  const columnWidthsRef = useRef<Map<string, number>>(new Map());
+  const previousColumnWidthRef = useRef<number>(columnWidth);
+  const isSliderAdjustingRef = useRef<boolean>(false);
+  const previousExpandedRowsRef = useRef<Set<string>>(new Set());
+  
+  // Reset auto-expanded widths when user manually changes column width via slider
+  useEffect(() => {
+    if (previousColumnWidthRef.current !== columnWidth) {
+      // User changed slider - reset auto-expanded widths and mark as adjusting
+      isSliderAdjustingRef.current = true;
+      columnWidthsRef.current.clear();
+      setColumnWidths(new Map());
+      previousColumnWidthRef.current = columnWidth;
+      
+      // Clear the flag after a delay to allow slider to settle
+      setTimeout(() => {
+        isSliderAdjustingRef.current = false;
+      }, 300);
+    }
+  }, [columnWidth]);
+  
   // Listen for input focus events globally
   useEffect(() => {
     const handleInputFocus = (e: FocusEvent) => {
@@ -200,29 +223,73 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   // Track unsaved notes for dirty cells (cells that are edited but not saved)
   // Map key: `${rowId}-${monthKey}`, value: note text
   const [unsavedNotes, setUnsavedNotes] = useState<Map<string, string>>(new Map());
-  // Edit history for undo/redo
-  const [editHistory, setEditHistory] = useState<MeasureData[][]>([]);
+  // Operation-based undo/redo history
+  interface UndoRedoOperation {
+    id: string;
+    cellKey: string;
+    rowId: string;
+    monthKey: keyof GridRowType['values'];
+    operationType: 'value' | 'note' | 'both'; // What was changed
+    oldValue?: number; // Value before this operation
+    newValue?: number; // Value after this operation
+    oldNote?: string; // Note before this operation
+    newNote?: string; // Note after this operation
+    timestamp: Date;
+    // Store the state of impacted cells before this operation
+    impactedCellsBefore: Map<string, number>;
+    // Store the state of edited cells before this operation
+    editedCellsBefore: Map<string, number>;
+  }
+  
+  const [undoRedoHistory, setUndoRedoHistory] = useState<UndoRedoOperation[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number>(-1);
+  const historyIndexRef = useRef<number>(-1); // Keep ref in sync for use in callbacks
   const [showOnlyImpactedKPI, setShowOnlyImpactedKPI] = useState<boolean>(false);
   const originalDataRef = useRef<MeasureData[]>(JSON.parse(JSON.stringify(data)));
+  
+  // Keep ref in sync with state
+  useEffect(() => {
+    historyIndexRef.current = historyIndex;
+  }, [historyIndex]);
 
   // Calculate measure values from children and aggregate time periods
-  const calculateMeasureValues = useCallback((dataToCalculate: MeasureData[], skipTimeAggregationForRows?: Set<string>): MeasureData[] => {
+  // Excludes locked cells from sums and aggregations
+  const calculateMeasureValues = useCallback((dataToCalculate: MeasureData[], skipTimeAggregationForRows?: Set<string>, lockedCellsSet?: Set<string>): MeasureData[] => {
     const updated = JSON.parse(JSON.stringify(dataToCalculate));
     const skipSet = skipTimeAggregationForRows || new Set<string>();
+    const lockedSet = lockedCellsSet || new Set<string>();
+    
+    // Helper to check if a cell is locked
+    const isCellLocked = (rowId: string, monthKey: keyof GridRowType['values']) => {
+      return lockedSet.has(`${rowId}-${monthKey}`);
+    };
     
     // Helper to calculate time aggregations for a row
+    // Locked cells contribute their current value to aggregations, but locked aggregations themselves are not recalculated
     const calculateTimeAggregations = (row: GridRowType | MeasureData) => {
       // Only recalculate if this row is not in the skip set
       if (!skipSet.has(row.id)) {
-        // Calculate quarters from months
-        row.values.q1 = row.values.jan2026 + row.values.feb2026 + row.values.mar2026;
-        row.values.q2 = row.values.apr2026 + row.values.may2026 + row.values.jun2026;
-        row.values.q3 = row.values.jul2026 + row.values.aug2026 + row.values.sep2026;
-        row.values.q4 = row.values.oct2026 + row.values.nov2026 + row.values.dec2026;
+        const rowId = row.id;
+        // Calculate quarters from months - include locked months (they contribute their current value)
+        // But don't recalculate if the quarter itself is locked
+        if (!isCellLocked(rowId, 'q1')) {
+          row.values.q1 = row.values.jan2026 + row.values.feb2026 + row.values.mar2026;
+        }
+        if (!isCellLocked(rowId, 'q2')) {
+          row.values.q2 = row.values.apr2026 + row.values.may2026 + row.values.jun2026;
+        }
+        if (!isCellLocked(rowId, 'q3')) {
+          row.values.q3 = row.values.jul2026 + row.values.aug2026 + row.values.sep2026;
+        }
+        if (!isCellLocked(rowId, 'q4')) {
+          row.values.q4 = row.values.oct2026 + row.values.nov2026 + row.values.dec2026;
+        }
         
-        // Calculate year from quarters (or sum of all months)
-        row.values.year = row.values.q1 + row.values.q2 + row.values.q3 + row.values.q4;
+        // Calculate year from quarters - include locked quarters (they contribute their current value)
+        // But don't recalculate if the year itself is locked
+        if (!isCellLocked(rowId, 'year')) {
+          row.values.year = row.values.q1 + row.values.q2 + row.values.q3 + row.values.q4;
+        }
       }
     };
     
@@ -241,10 +308,19 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
         
         // Sum months from children ONLY if this row is not in the skip set
         // (If year/quarter was edited, we've already distributed to months, so don't recalculate)
+        // Locked children contribute their current value to parent sums, but don't receive propagation
         if (!skipSet.has(row.id)) {
           for (const monthKey of monthKeys) {
+            const rowId = row.id;
+            // Skip if this parent cell itself is locked (don't recalculate locked parent cells)
+            if (isCellLocked(rowId, monthKey)) {
+              continue;
+            }
+            // Sum all children (including locked ones - they contribute their current value)
             row.values[monthKey] = row.children.reduce(
-              (sum: number, child: GridRowType) => sum + child.values[monthKey],
+              (sum: number, child: GridRowType) => {
+                return sum + child.values[monthKey];
+              },
               0
             );
           }
@@ -274,7 +350,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     }
     
     return updated;
-  }, []);
+  }, [lockedCells]);
 
   // Update local state when prop changes and recalculate measure values
   React.useEffect(() => {
@@ -284,7 +360,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       skipSet.add(rowId);
     });
     
-    const calculatedData = calculateMeasureValues(data, skipSet);
+    const calculatedData = calculateMeasureValues(data, skipSet, lockedCells);
     
     // After recalculation, restore preserved values ONLY for the currently edited cell
     // This ensures that when data prop changes (e.g., from external source),
@@ -467,6 +543,127 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       label: tk.label,
     }));
   }, [selectedTimeGranularities, searchTerm]);
+
+  // Track previous visible headers to detect structural changes
+  const previousVisibleHeadersRef = useRef<string>('');
+  
+  // Measure cell content and auto-expand columns when content overflows
+  useEffect(() => {
+    // Don't auto-expand while user is adjusting slider
+    if (isSliderAdjustingRef.current) {
+      return;
+    }
+    
+    // Only run auto-expansion on structural changes (header changes, expanded rows), not on value changes
+    const currentHeadersKey = visibleTimeHeaders.map(h => h.key).join(',');
+    const headersChanged = previousVisibleHeadersRef.current !== currentHeadersKey;
+    const expandedRowsChanged = expandedRows.size !== previousExpandedRowsRef.current?.size;
+    
+    // Update refs
+    previousVisibleHeadersRef.current = currentHeadersKey;
+    previousExpandedRowsRef.current = expandedRows;
+    
+    // Skip auto-expansion if only values changed (not structure)
+    if (!headersChanged && !expandedRowsChanged) {
+      return;
+    }
+    
+    const measureAndExpandColumns = () => {
+      const newColumnWidths = new Map<string, number>();
+      const padding = 20; // Account for cell padding (left + right)
+      const minColumnWidth = columnWidth;
+      
+      // Measure all visible cells for each column
+      visibleTimeHeaders.forEach((header) => {
+        let maxWidth = minColumnWidth;
+        
+        // Check header width
+        const headerElement = document.querySelector(`th[data-column-key="${header.key}"]`) as HTMLElement;
+        if (headerElement) {
+          // Temporarily set width to auto to measure natural width
+          const originalWidth = headerElement.style.width;
+          headerElement.style.width = 'auto';
+          const headerWidth = headerElement.scrollWidth;
+          headerElement.style.width = originalWidth;
+          maxWidth = Math.max(maxWidth, headerWidth + padding);
+        }
+        
+        // Check all cells in this column
+        cellRefs.current.forEach((cellElement, cellKey) => {
+          const [_rowId, monthKey] = cellKey.split('-');
+          if (monthKey === header.key) {
+            // Temporarily set width to auto to measure natural content width
+            const originalWidth = cellElement.style.width;
+            const originalMinWidth = cellElement.style.minWidth;
+            cellElement.style.width = 'auto';
+            cellElement.style.minWidth = 'auto';
+            
+            // Measure the actual content width
+            const contentWidth = cellElement.scrollWidth;
+            
+            // Restore original styles
+            cellElement.style.width = originalWidth;
+            cellElement.style.minWidth = originalMinWidth;
+            
+            const requiredWidth = contentWidth + padding;
+            maxWidth = Math.max(maxWidth, requiredWidth);
+          }
+        });
+        
+        // Set column width - use slider value as base, only expand if content needs more
+        // Only set custom width if content requires more than slider value
+        if (maxWidth > minColumnWidth) {
+          newColumnWidths.set(header.key, Math.ceil(maxWidth) + 12);
+        } else {
+          // Content fits in slider width - don't override slider value
+          // Don't add to map, will use columnWidth as fallback
+        }
+      });
+      
+      // Only update if widths changed significantly (avoid infinite loops)
+      const currentWidths = columnWidthsRef.current;
+      let hasChanges = false;
+      
+      // Check if any column widths changed
+      if (currentWidths.size !== newColumnWidths.size) {
+        hasChanges = true;
+      } else {
+        // Check existing columns
+        currentWidths.forEach((width, key) => {
+          const newWidth = newColumnWidths.get(key);
+          if (newWidth === undefined) {
+            // Column no longer needs expansion - remove it
+            hasChanges = true;
+          } else if (Math.abs(width - newWidth) > 2) {
+            // Width changed significantly
+            hasChanges = true;
+          }
+        });
+        // Check for new columns that need expansion
+        newColumnWidths.forEach((_width, key) => {
+          if (!currentWidths.has(key)) {
+            hasChanges = true;
+          }
+        });
+      }
+      
+      if (hasChanges) {
+        columnWidthsRef.current = newColumnWidths;
+        setColumnWidths(newColumnWidths);
+      }
+    };
+    
+    // Measure after a short delay to ensure DOM is updated
+    const timeoutId = setTimeout(measureAndExpandColumns, 150);
+    
+    // Also measure on window resize
+    window.addEventListener('resize', measureAndExpandColumns);
+    
+    return () => {
+      clearTimeout(timeoutId);
+      window.removeEventListener('resize', measureAndExpandColumns);
+    };
+  }, [visibleTimeHeaders, columnWidth, expandedRows]);
 
   // Get visible time keys based on selected granularities and search - use visibleTimeHeaders
   const getVisibleTimeKeys = useCallback((): (keyof GridRowType['values'])[] => {
@@ -732,12 +929,16 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     return updates;
   }, []);
 
+  // Flag to prevent creating undo operations when undoing/redoing
+  const isUndoRedoOperationRef = useRef<boolean>(false);
+  
   // Handle cell value change
   const handleCellChange = useCallback((
     rowId: string,
     monthKey: keyof GridRowType['values'],
     newValue: number,
-    note?: string
+    note?: string,
+    skipUndoOperation?: boolean // Skip creating undo operation (for undo/redo)
   ) => {
     // CRITICAL: Clear all preserved values from previous edits
     preservedValuesRef.current.clear();
@@ -807,14 +1008,25 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       console.error('[HierarchicalGrid] Error calling onEditHistory:', error);
     }
     
-    setEditedCells(prev => {
-      const newMap = new Map(prev);
-      if (!newMap.has(cellKey)) {
-        // Only store original value on first edit
-        newMap.set(cellKey, oldValue);
-      }
-      return newMap;
-    });
+    // Add to editedCells if there's a value change OR if there's a note (to show orange background)
+    // Note-only entries (delta === 0 && hasNote) should show edited background
+    if (delta !== 0 || hasNote) {
+      setEditedCells(prev => {
+        const newMap = new Map(prev);
+        if (!newMap.has(cellKey)) {
+          // Only store original value on first edit
+          newMap.set(cellKey, oldValue);
+        }
+        return newMap;
+      });
+    } else {
+      // If delta is 0 and no note, ensure cell is not in editedCells
+      setEditedCells(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(cellKey);
+        return newMap;
+      });
+    }
     
     // Store unsaved note if provided (for dirty cells)
     if (hasNote) {
@@ -869,6 +1081,19 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
 
     // 1. Update the edited cell
     allUpdates.push({ rowId, monthKey, newValue });
+
+    // Only propagate value changes if delta !== 0 (skip propagation for note-only edits)
+    // When delta === 0, there's no value change to propagate, so no cells should be marked as impacted
+    if (delta === 0) {
+      // No value change - just apply the cell update (value is same, but triggers re-render for note)
+      // No propagation needed since there's no value change
+      let updatedData = JSON.parse(JSON.stringify(gridData));
+      updatedData = updateValue(rowId, monthKey, newValue, updatedData);
+      setGridData(updatedData);
+      // Note is already saved to editHistory via callback above
+      // Don't mark any cells as impacted since there's no value change
+      return;
+    }
 
     // 2. Handle time aggregation based on what was edited
     // Track distributed time periods for downward propagation
@@ -947,7 +1172,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     
     if (!isAccountOrCategoryYearQuarterEditForPropagation) {
       // Normal case: propagate upward (sum children to parent)
-      const upwardUpdates = propagateUpward(rowId, monthKey, delta, gridData);
+      const upwardUpdates = propagateUpward(rowId, monthKey, delta, gridData, lockedCells);
       upwardUpdates.forEach(u => storeOriginalValueIfImpacted(u.rowId, u.monthKey));
       allUpdates.push(...upwardUpdates);
     } else {
@@ -976,7 +1201,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
             allUpdates.push({ rowId: parentRow.id, monthKey, newValue: childrenSum });
             
             // Propagate upward from parent
-            const upwardUpdates = propagateUpward(parentRow.id, monthKey, parentDelta, gridData);
+            const upwardUpdates = propagateUpward(parentRow.id, monthKey, parentDelta, gridData, lockedCells);
             upwardUpdates.forEach(u => storeOriginalValueIfImpacted(u.rowId, u.monthKey));
             allUpdates.push(...upwardUpdates);
           }
@@ -989,14 +1214,14 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     if (isMeasureRow) {
       const measureData = gridData.find(m => m.id === rowId);
       if (measureData && measureData.children.length > 0) {
-        const accountDistribution = distributeProportionally(delta, measureData.children, monthKey);
+        const accountDistribution = distributeProportionally(delta, measureData.children, monthKey, lockedCells);
         for (const [accountId, accountDelta] of accountDistribution.entries()) {
           const account = measureData.children.find(c => c.id === accountId);
           if (account) {
             const accountNewValue = account.values[monthKey] + accountDelta;
             storeOriginalValueIfImpacted(accountId, monthKey);
             allUpdates.push({ rowId: accountId, monthKey, newValue: accountNewValue });
-            const accountUpdates = propagateDownward(accountId, monthKey, accountDelta, gridData);
+            const accountUpdates = propagateDownward(accountId, monthKey, accountDelta, gridData, lockedCells);
             accountUpdates.forEach(u => storeOriginalValueIfImpacted(u.rowId, u.monthKey));
             allUpdates.push(...accountUpdates);
           }
@@ -1004,7 +1229,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       }
     } else {
       // Propagate downward for the edited cell
-      const downwardUpdates = propagateDownward(rowId, monthKey, delta, gridData);
+      const downwardUpdates = propagateDownward(rowId, monthKey, delta, gridData, lockedCells);
       downwardUpdates.forEach(u => storeOriginalValueIfImpacted(u.rowId, u.monthKey));
       allUpdates.push(...downwardUpdates);
       
@@ -1012,7 +1237,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       for (const timeUpdate of timeDistributionUpdates) {
         const timeDelta = timeUpdate.newValue - timeUpdate.oldValue;
         if (timeDelta !== 0) {
-          const timeDownwardUpdates = propagateDownward(rowId, timeUpdate.monthKey, timeDelta, gridData);
+          const timeDownwardUpdates = propagateDownward(rowId, timeUpdate.monthKey, timeDelta, gridData, lockedCells);
           timeDownwardUpdates.forEach(u => storeOriginalValueIfImpacted(u.rowId, u.monthKey));
           allUpdates.push(...timeDownwardUpdates);
         }
@@ -1032,25 +1257,25 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
           const aggUpdate = allUpdates.find(u => u.rowId === rowId && u.monthKey === aggKey);
           if (aggUpdate && aggUpdate.newValue !== currentValue) {
             const aggDelta = aggUpdate.newValue - currentValue;
-            const aggUpwardUpdates = propagateUpward(rowId, aggKey, aggDelta, gridData);
+            const aggUpwardUpdates = propagateUpward(rowId, aggKey, aggDelta, gridData, lockedCells);
             allUpdates.push(...aggUpwardUpdates);
             
             if (isMeasureRow) {
               const measureData = gridData.find(m => m.id === rowId);
               if (measureData && measureData.children.length > 0) {
-                const accountDistribution = distributeProportionally(aggDelta, measureData.children, aggKey);
+                const accountDistribution = distributeProportionally(aggDelta, measureData.children, aggKey, lockedCells);
                 for (const [accountId, accountDelta] of accountDistribution.entries()) {
                   const account = measureData.children.find(c => c.id === accountId);
                   if (account) {
                     const accountNewValue = account.values[aggKey] + accountDelta;
                     allUpdates.push({ rowId: accountId, monthKey: aggKey, newValue: accountNewValue });
-                    const accountUpdates = propagateDownward(accountId, aggKey, accountDelta, gridData);
+                    const accountUpdates = propagateDownward(accountId, aggKey, accountDelta, gridData, lockedCells);
                     allUpdates.push(...accountUpdates);
                   }
                 }
               }
             } else {
-              const aggDownwardUpdates = propagateDownward(rowId, aggKey, aggDelta, gridData);
+              const aggDownwardUpdates = propagateDownward(rowId, aggKey, aggDelta, gridData, lockedCells);
               allUpdates.push(...aggDownwardUpdates);
             }
           }
@@ -1085,7 +1310,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     
     if (isYearQuarterEdit) {
       // First, calculate cross-measure dependencies for the quarter/year level
-      const quarterYearCrossMeasureUpdates = updateCrossMeasureDependencies(rowId, monthKey, newValue, tempData, gridData);
+      const quarterYearCrossMeasureUpdates = updateCrossMeasureDependencies(rowId, monthKey, newValue, tempData, gridData, lockedCells);
       console.log('[GRID] Quarter/Year cross-measure updates returned:', quarterYearCrossMeasureUpdates.length, 'updates');
       crossMeasureUpdates.push(...quarterYearCrossMeasureUpdates);
       
@@ -1123,7 +1348,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
           if (updatedRow) {
             const monthNewValue = updatedRow.values[monthKeyToProcess];
             console.log('[GRID] Triggering cross-measure for distributed month:', { rowId, monthKey: monthKeyToProcess, newValue: monthNewValue });
-            const monthCrossMeasureUpdates = updateCrossMeasureDependencies(rowId, monthKeyToProcess, monthNewValue, tempData, gridData);
+            const monthCrossMeasureUpdates = updateCrossMeasureDependencies(rowId, monthKeyToProcess, monthNewValue, tempData, gridData, lockedCells);
             console.log('[GRID] Month cross-measure updates returned:', monthCrossMeasureUpdates.length, 'updates');
             
             // Add month cross-measure updates
@@ -1138,7 +1363,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       }
     } else {
       // For month edits, just calculate cross-measure dependencies normally
-      crossMeasureUpdates = updateCrossMeasureDependencies(rowId, monthKey, newValue, tempData, gridData);
+      crossMeasureUpdates = updateCrossMeasureDependencies(rowId, monthKey, newValue, tempData, gridData, lockedCells);
       console.log('[GRID] Cross-measure updates returned:', crossMeasureUpdates.length, 'updates');
     }
     
@@ -1212,7 +1437,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       console.log('[GRID] Skipping recalculation for currently edited measure row:', rowId);
     }
     
-    updatedData = calculateMeasureValues(updatedData, skipTimeAggregation);
+    updatedData = calculateMeasureValues(updatedData, skipTimeAggregation, lockedCells);
     
     // Track measure row cells as impacted if their values changed due to children being impacted
     for (const measure of updatedData) {
@@ -1227,6 +1452,10 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
           // If value changed, track as impacted
           if (Math.abs(newValue - originalValue) > 0.01) { // Use small epsilon for floating point comparison
             const measureCellKey = `${measure.id}-${key}`;
+            // Skip locked cells - they shouldn't be tracked as impacted
+            if (lockedCells.has(measureCellKey)) {
+              continue;
+            }
             // Only add if not already tracked as edited
             if (!editedCells.has(measureCellKey)) {
               if (!originalValuesForImpacted.has(measureCellKey)) {
@@ -1257,6 +1486,10 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       const newMap = new Map(prev);
       // Add new impacted cells to existing ones (don't clear)
       originalValuesForImpacted.forEach((value, key) => {
+        // Skip locked cells - they shouldn't be tracked as impacted
+        if (lockedCells.has(key)) {
+          return;
+        }
         // Only add if not already tracked as edited (edited cells take precedence)
         if (!editedCells.has(key)) {
           // If already exists, keep the original value (first edit's original)
@@ -1272,25 +1505,49 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       return newMap;
     });
 
-    // Add to edit history for undo/redo
-    setEditHistory(prev => {
-      const newHistory = prev.slice(0, historyIndex + 1);
-      newHistory.push(JSON.parse(JSON.stringify(updatedData)));
-      return newHistory;
-    });
-    setHistoryIndex(prev => prev + 1);
-
     // Ensure we have a fresh deep copy to trigger React re-render
     const finalData = JSON.parse(JSON.stringify(updatedData));
     setGridData(finalData);
     
-    // Add to edit history for undo/redo (only once, remove duplicate)
-    setEditHistory(prev => {
-      const newHistory = prev.slice(0, historyIndex);
-      newHistory.push(JSON.parse(JSON.stringify(finalData)));
-      return newHistory;
-    });
-    setHistoryIndex(prev => prev + 1);
+    // Create undo/redo operation BEFORE updating state (unless this is an undo/redo operation)
+    if (!skipUndoOperation && !isUndoRedoOperationRef.current) {
+      // Determine operation type: 'value', 'note', or 'both'
+      const previousNote = unsavedNotes.get(cellKey) || undefined;
+      const operationType: 'value' | 'note' | 'both' = 
+        delta !== 0 && hasNote ? 'both' :
+        delta !== 0 ? 'value' :
+        hasNote ? 'note' : 'value'; // Default to value if somehow both are 0
+      
+      // Store state before this operation for undo
+      const operation: UndoRedoOperation = {
+        id: `op-${Date.now()}-${Math.random()}`,
+        cellKey,
+        rowId,
+        monthKey,
+        operationType,
+        oldValue: delta !== 0 ? oldValue : undefined,
+        newValue: delta !== 0 ? newValue : undefined,
+        oldNote: hasNote ? previousNote : undefined,
+        newNote: hasNote ? note.trim() : undefined,
+        timestamp: new Date(),
+        impactedCellsBefore: new Map(impactedCells),
+        editedCellsBefore: new Map(editedCells),
+      };
+      
+      // Add operation to undo/redo history
+      setUndoRedoHistory(prev => {
+        const currentIndex = historyIndexRef.current;
+        const newHistory = prev.slice(0, currentIndex + 1);
+        newHistory.push(operation);
+        console.log('[UNDO/REDO] Adding operation:', operation.id, 'type:', operationType, 'index:', currentIndex + 1);
+        return newHistory;
+      });
+      setHistoryIndex(prev => {
+        const newIndex = prev + 1;
+        console.log('[UNDO/REDO] Incrementing historyIndex from', prev, 'to', newIndex);
+        return newIndex;
+      });
+    }
     
     if (onDataChange) {
       onDataChange(finalData);
@@ -1777,33 +2034,134 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     return impactedMeasureIds.size;
   }, [editedCells, impactedCells, gridData]);
 
-  // Undo handler
+  // Undo handler - undo the most recent operation
   const handleUndo = useCallback(() => {
-    if (historyIndex > 0) {
-      const newIndex = historyIndex - 1;
-      const previousData = editHistory[newIndex];
-      setGridData(JSON.parse(JSON.stringify(previousData)));
-      setHistoryIndex(newIndex);
-      // Clear edited/impacted cells when undoing
-      setEditedCells(new Map());
-      setImpactedCells(new Map());
+    const currentIndex = historyIndexRef.current;
+    const currentHistory = undoRedoHistory;
+    
+    console.log('[UNDO] handleUndo called. historyIndex:', currentIndex, 'operations.length:', currentHistory.length);
+    
+    // Can only undo if we have at least one operation
+    if (currentIndex >= 0 && currentHistory.length > currentIndex) {
+      const operation = currentHistory[currentIndex];
+      console.log('[UNDO] Undoing operation:', operation.id, 'type:', operation.operationType, 'cell:', operation.cellKey);
+      
+      // Reverse the operation based on its type
+      let valueToRestore: number | undefined = undefined;
+      let noteToRestore: string | undefined = undefined;
+      
+      // Determine what to restore based on operation type
+      // If operation type is 'both', undo the latest change (value or note)
+      // For now, prioritize value if both exist
+      if (operation.operationType === 'value' || operation.operationType === 'both') {
+        valueToRestore = operation.oldValue;
+      }
+      if (operation.operationType === 'note' || operation.operationType === 'both') {
+        noteToRestore = operation.oldNote;
+      }
+      
+      // Set flag to prevent creating new undo operation
+      isUndoRedoOperationRef.current = true;
+      
+      try {
+        // Restore the cell value/note by calling handleCellChange with the old values
+        // This will trigger all propagation logic automatically
+        if (valueToRestore !== undefined) {
+          // Call handleCellChange to restore value and trigger propagation
+          handleCellChange(operation.rowId, operation.monthKey, valueToRestore, noteToRestore, true);
+          
+          // CRITICAL: Restore editedCells and impactedCells to their state BEFORE this operation
+          // This ensures formatting (backgrounds, arrows) matches the previous state
+          // We do this AFTER handleCellChange because it recalculates these maps
+          // Use setTimeout to ensure handleCellChange completes first
+          setTimeout(() => {
+            setEditedCells(new Map(operation.editedCellsBefore));
+            setImpactedCells(new Map(operation.impactedCellsBefore));
+            console.log('[UNDO] Restored editedCells and impactedCells to previous state');
+          }, 0);
+          
+          console.log('[UNDO] Undo completed. Restored value:', valueToRestore, 'note:', noteToRestore);
+        } else if (noteToRestore !== undefined) {
+          // Note-only undo - just restore the note
+          setUnsavedNotes(prev => {
+            const newMap = new Map(prev);
+            if (noteToRestore) {
+              newMap.set(operation.cellKey, noteToRestore);
+            } else {
+              newMap.delete(operation.cellKey);
+            }
+            return newMap;
+          });
+          
+          // For note-only undo, also restore editedCells state
+          // If the cell was edited before, keep it; if not, remove it
+          setEditedCells(() => {
+            const newMap = new Map(operation.editedCellsBefore);
+            // If the note was the only edit, remove from editedCells
+            if (!operation.editedCellsBefore.has(operation.cellKey)) {
+              newMap.delete(operation.cellKey);
+            }
+            return newMap;
+          });
+          
+          console.log('[UNDO] Undo completed (note only). Restored note:', noteToRestore);
+        }
+        
+        // Update history index
+        setHistoryIndex(currentIndex - 1);
+      } finally {
+        // Reset flag
+        isUndoRedoOperationRef.current = false;
+      }
+    } else {
+      console.log('[UNDO] Cannot undo - historyIndex:', currentIndex, 'operations.length:', currentHistory.length);
     }
-  }, [historyIndex, editHistory]);
+  }, [undoRedoHistory, gridData, updateValue, calculateMeasureValues, lockedCells, onDataChange]);
 
-  // Redo handler
+  // Redo handler - reapply the next operation
   const handleRedo = useCallback(() => {
-    if (historyIndex < editHistory.length - 1) {
-      const newIndex = historyIndex + 1;
-      const nextData = editHistory[newIndex];
-      setGridData(JSON.parse(JSON.stringify(nextData)));
-      setHistoryIndex(newIndex);
-      // Clear edited/impacted cells when redoing
-      setEditedCells(new Map());
-      setImpactedCells(new Map());
-      // Also clear saved edited cells
-      setSavedEditedCells(new Map());
+    const currentIndex = historyIndexRef.current;
+    const currentHistory = undoRedoHistory;
+    
+    console.log('[REDO] handleRedo called. historyIndex:', currentIndex, 'operations.length:', currentHistory.length);
+    
+    if (currentIndex < currentHistory.length - 1 && currentHistory.length > 0) {
+      const newIndex = currentIndex + 1;
+      const operation = currentHistory[newIndex];
+      console.log('[REDO] Redoing operation:', operation.id, 'type:', operation.operationType, 'cell:', operation.cellKey);
+      
+      // Reapply the operation by calling handleCellChange with the new values
+      // Set flag to prevent creating new undo operation
+      isUndoRedoOperationRef.current = true;
+      
+      try {
+        if (operation.newValue !== undefined) {
+          // Call handleCellChange to restore value and trigger propagation
+          handleCellChange(operation.rowId, operation.monthKey, operation.newValue, operation.newNote, true);
+          console.log('[REDO] Redo completed. Restored value:', operation.newValue, 'note:', operation.newNote);
+        } else if (operation.newNote !== undefined) {
+          // Note-only redo
+          setUnsavedNotes(prev => {
+            const newMap = new Map(prev);
+            if (operation.newNote) {
+              newMap.set(operation.cellKey, operation.newNote);
+            } else {
+              newMap.delete(operation.cellKey);
+            }
+            return newMap;
+          });
+          console.log('[REDO] Redo completed (note only). Restored note:', operation.newNote);
+        }
+        
+        setHistoryIndex(newIndex);
+      } finally {
+        // Reset flag
+        isUndoRedoOperationRef.current = false;
+      }
+    } else {
+      console.log('[REDO] Cannot redo - historyIndex:', currentIndex, 'operations.length:', currentHistory.length);
     }
-  }, [historyIndex, editHistory]);
+  }, [undoRedoHistory, gridData, updateValue, calculateMeasureValues, lockedCells, onDataChange]);
 
   // Register undo/redo handlers with parent
   useEffect(() => {
@@ -1821,15 +2179,15 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   // Report undo/redo availability to parent
   useEffect(() => {
     if (onCanUndoChange) {
-      onCanUndoChange(historyIndex >= 0);
+      onCanUndoChange(historyIndex > 0);
     }
   }, [onCanUndoChange, historyIndex]);
 
   useEffect(() => {
     if (onCanRedoChange) {
-      onCanRedoChange(historyIndex < editHistory.length - 1);
+      onCanRedoChange(historyIndex < undoRedoHistory.length - 1);
     }
-  }, [onCanRedoChange, historyIndex, editHistory.length]);
+  }, [onCanRedoChange, historyIndex, undoRedoHistory.length]);
 
   // Cancel handler
   const handleCancel = useCallback(() => {
@@ -1840,7 +2198,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     
     // Restore to original data
     setGridData(JSON.parse(JSON.stringify(originalDataRef.current)));
-    setEditHistory([]);
+    setUndoRedoHistory([]);
     setHistoryIndex(-1);
     setEditedCells(new Map());
     setImpactedCells(new Map());
@@ -1860,7 +2218,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     // Update original data reference
     originalDataRef.current = JSON.parse(JSON.stringify(gridData));
     // Clear history and reset
-    setEditHistory([]);
+    setUndoRedoHistory([]);
     setHistoryIndex(-1);
     // Mark all currently edited cells as saved (they keep the icon but lose the badge)
     // Store the icon color based on whether it was an increment or decrement
@@ -1884,19 +2242,28 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
           }
         }
         
-        // Calculate if it was an increment or decrement
-        const isIncrement = originalValue !== 0 && currentValue > originalValue;
-        const iconColor = isIncrement ? '#ff5d2d' : '#2E76E1';
-        
-        newMap.set(cellKey, iconColor);
-        console.log('[SAVE] Adding cell to savedEditedCells:', cellKey, 'iconColor:', iconColor, 'originalValue:', originalValue, 'currentValue:', currentValue);
+        // Only add to savedEditedCells if there was an actual value change
+        if (originalValue !== currentValue) {
+          // Calculate if it was an increment or decrement
+          const isIncrement = originalValue !== 0 && currentValue > originalValue;
+          const iconColor = isIncrement ? '#ff5d2d' : '#2E76E1';
+          
+          newMap.set(cellKey, iconColor);
+          console.log('[SAVE] Adding cell to savedEditedCells:', cellKey, 'iconColor:', iconColor, 'originalValue:', originalValue, 'currentValue:', currentValue);
+        } else {
+          // No value change - remove from savedEditedCells if present
+          newMap.delete(cellKey);
+          console.log('[SAVE] Removing cell from savedEditedCells (no value change):', cellKey);
+        }
       });
       console.log('[SAVE] Total saved edited cells:', newMap.size);
       return newMap;
     });
     // Clear impacted cells (they're now saved)
     setImpactedCells(new Map());
-    // Clear editedCells (they're now saved, but savedEditedCells will track them for icon display)
+    // Clear editedCells - remove all cells
+    // Note-only cells (no value change) are removed (no background after save)
+    // Value-change cells are moved to savedEditedCells (for arrow display)
     setEditedCells(new Map());
     // Clear unsaved notes (they're now saved)
     setUnsavedNotes(new Map());
@@ -1968,10 +2335,12 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
               </th>
               {visibleTimeHeaders.map((header) => {
                 const searchTerms = searchTerm && searchTerm.trim() ? extractSearchTerms(searchTerm) : [];
+                const dynamicWidth = columnWidths.get(header.key) || columnWidth;
                 return (
                   <th 
-                    key={header.key} 
-                    style={{ minWidth: `${columnWidth}px`, width: `${columnWidth}px` }}
+                    key={header.key}
+                    data-column-key={header.key}
+                    style={{ minWidth: `${dynamicWidth}px`, width: `${dynamicWidth}px` }}
                   >
                     {searchTerms.length > 0 ? (
                       <SearchHighlight text={header.label} searchTerms={searchTerms} />
@@ -2092,7 +2461,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
         onCancel={handleCancel}
         onSave={handleSave}
         canUndo={historyIndex > 0}
-        canRedo={historyIndex < editHistory.length - 1}
+        canRedo={historyIndex < undoRedoHistory.length - 1}
         showOnlyImpactedKPI={showOnlyImpactedKPI}
         onToggleShowOnlyImpactedKPI={handleToggleShowOnlyImpactedKPI}
       />

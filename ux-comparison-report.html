@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UX Comparison Report - Manufacturing Cloud vs Competitors</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 40px;
+            background: #fff;
+        }
+        
+        .cover-page {
+            text-align: center;
+            padding: 80px 40px;
+            page-break-after: always;
+            min-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            background: linear-gradient(135deg, #0250D9 0%, #0366d6 50%, #2188ff 100%);
+            color: white;
+            margin: -40px -40px 40px -40px;
+            border-radius: 0 0 20px 20px;
+        }
+        
+        .cover-page h1 {
+            font-size: 42px;
+            margin-bottom: 20px;
+            font-weight: 700;
+        }
+        
+        .cover-page .subtitle {
+            font-size: 24px;
+            opacity: 0.9;
+            margin-bottom: 40px;
+        }
+        
+        .cover-page .meta {
+            font-size: 14px;
+            opacity: 0.8;
+            margin-top: 60px;
+        }
+        
+        h1 {
+            font-size: 28px;
+            color: #0250D9;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid #0250D9;
+        }
+        
+        h2 {
+            font-size: 22px;
+            color: #333;
+            margin: 30px 0 15px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        
+        h3 {
+            font-size: 18px;
+            color: #0250D9;
+            margin: 20px 0 10px;
+        }
+        
+        p {
+            margin-bottom: 12px;
+        }
+        
+        .screenshot-section {
+            margin: 30px 0;
+            page-break-inside: avoid;
+        }
+        
+        .screenshot-container {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 15px 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        
+        .screenshot-container img {
+            width: 100%;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        
+        .screenshot-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 10px;
+            text-align: center;
+            font-style: italic;
+        }
+        
+        .comparison-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin: 20px 0;
+        }
+        
+        .comparison-card {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+        }
+        
+        .comparison-card.ours {
+            border-color: #0250D9;
+            border-width: 2px;
+        }
+        
+        .comparison-card h4 {
+            font-size: 16px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .comparison-card.ours h4 {
+            color: #0250D9;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+        }
+        
+        .badge-ours { background: #0250D9; color: white; }
+        .badge-competitor { background: #666; color: white; }
+        
+        .rating-bar {
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        
+        .rating-fill {
+            height: 100%;
+            border-radius: 4px;
+        }
+        
+        .rating-fill.excellent { background: linear-gradient(90deg, #22c55e, #16a34a); }
+        .rating-fill.good { background: linear-gradient(90deg, #3b82f6, #2563eb); }
+        .rating-fill.average { background: linear-gradient(90deg, #f59e0b, #d97706); }
+        .rating-fill.poor { background: linear-gradient(90deg, #ef4444, #dc2626); }
+        
+        .feature-list {
+            margin: 15px 0;
+        }
+        
+        .feature-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .feature-item:last-child {
+            border-bottom: none;
+        }
+        
+        .feature-icon {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            flex-shrink: 0;
+        }
+        
+        .feature-icon.yes { background: #dcfce7; color: #16a34a; }
+        .feature-icon.partial { background: #fef3c7; color: #d97706; }
+        .feature-icon.no { background: #fee2e2; color: #dc2626; }
+        
+        .highlight-box {
+            background: linear-gradient(135deg, #eff6ff, #dbeafe);
+            border-left: 4px solid #0250D9;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 0 12px 12px 0;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 13px;
+        }
+        
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px 10px;
+            text-align: left;
+        }
+        
+        th {
+            background: #0250D9;
+            color: white;
+            font-weight: 600;
+        }
+        
+        th:first-child {
+            border-radius: 8px 0 0 0;
+        }
+        
+        th:last-child {
+            border-radius: 0 8px 0 0;
+        }
+        
+        tr:nth-child(even) {
+            background: #f9f9f9;
+        }
+        
+        .score-cell {
+            font-weight: 600;
+            text-align: center;
+        }
+        
+        .score-high { color: #16a34a; }
+        .score-medium { color: #d97706; }
+        .score-low { color: #dc2626; }
+        
+        .page-break {
+            page-break-after: always;
+        }
+        
+        .verdict-box {
+            background: #f0fdf4;
+            border: 2px solid #22c55e;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .verdict-box.warning {
+            background: #fffbeb;
+            border-color: #f59e0b;
+        }
+        
+        .competitor-desc {
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 10px 0;
+        }
+        
+        .competitor-desc h5 {
+            color: #333;
+            margin-bottom: 8px;
+        }
+        
+        .pros-cons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 10px;
+        }
+        
+        .pros h6 { color: #16a34a; }
+        .cons h6 { color: #dc2626; }
+        
+        .pros ul, .cons ul {
+            font-size: 12px;
+            margin-left: 15px;
+        }
+        
+        @media print {
+            body { padding: 20px; }
+            .cover-page { min-height: auto; padding: 60px 20px; }
+            .screenshot-container img { max-height: 400px; object-fit: contain; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Cover Page -->
+    <div class="cover-page">
+        <h1>📊 UX Comparison Report</h1>
+        <div class="subtitle">Manufacturing Cloud Forecasting & Planning<br>vs. Market Competitors</div>
+        <p style="font-size: 16px; max-width: 600px; margin: 0 auto; opacity: 0.9;">
+            A visual comparison of user experience across our solution and leading 
+            enterprise planning tools including Pigment, Anaplan, SAP, Oracle, and Workday.
+        </p>
+        <div class="meta">
+            <p><strong>Prepared:</strong> December 27, 2025</p>
+            <p><strong>Type:</strong> UX-Focused Analysis with Screenshots</p>
+        </div>
+    </div>
+    
+    <!-- Executive Summary -->
+    <h1>Executive Summary</h1>
+    
+    <div class="highlight-box">
+        <h3 style="margin-top: 0;">Key UX Findings</h3>
+        <p>Our solution demonstrates <strong>strong UX fundamentals</strong> with modern design patterns, but faces stiff competition from Pigment in the "modern UX" category. We excel in Salesforce ecosystem integration but have opportunities to improve in advanced interactions and polish.</p>
+    </div>
+    
+    <table>
+        <tr>
+            <th>UX Dimension</th>
+            <th>Our Solution</th>
+            <th>Pigment</th>
+            <th>Anaplan</th>
+            <th>SAP</th>
+            <th>Oracle</th>
+        </tr>
+        <tr>
+            <td><strong>Visual Design</strong></td>
+            <td class="score-cell score-high">8.0</td>
+            <td class="score-cell score-high">9.5</td>
+            <td class="score-cell score-medium">7.0</td>
+            <td class="score-cell score-low">5.0</td>
+            <td class="score-cell score-low">5.5</td>
+        </tr>
+        <tr>
+            <td><strong>Grid Interaction</strong></td>
+            <td class="score-cell score-high">8.5</td>
+            <td class="score-cell score-high">9.0</td>
+            <td class="score-cell score-high">8.0</td>
+            <td class="score-cell score-medium">6.0</td>
+            <td class="score-cell score-medium">6.5</td>
+        </tr>
+        <tr>
+            <td><strong>Navigation</strong></td>
+            <td class="score-cell score-high">8.0</td>
+            <td class="score-cell score-high">8.5</td>
+            <td class="score-cell score-medium">7.0</td>
+            <td class="score-cell score-low">5.0</td>
+            <td class="score-cell score-low">5.0</td>
+        </tr>
+        <tr>
+            <td><strong>Collaboration UX</strong></td>
+            <td class="score-cell score-high">8.5</td>
+            <td class="score-cell score-high">9.0</td>
+            <td class="score-cell score-medium">6.5</td>
+            <td class="score-cell score-low">4.5</td>
+            <td class="score-cell score-low">5.0</td>
+        </tr>
+        <tr>
+            <td><strong>Learning Curve</strong></td>
+            <td class="score-cell score-high">8.5</td>
+            <td class="score-cell score-high">9.0</td>
+            <td class="score-cell score-medium">6.0</td>
+            <td class="score-cell score-low">4.0</td>
+            <td class="score-cell score-low">4.0</td>
+        </tr>
+        <tr style="background: #e8f4fd; font-weight: 600;">
+            <td><strong>OVERALL UX SCORE</strong></td>
+            <td class="score-cell score-high">8.3</td>
+            <td class="score-cell score-high">9.0</td>
+            <td class="score-cell score-medium">6.9</td>
+            <td class="score-cell score-low">4.9</td>
+            <td class="score-cell score-low">5.2</td>
+        </tr>
+    </table>
+    
+    <div class="page-break"></div>
+    
+    <!-- Our Solution Screenshots -->
+    <h1>Our Solution: Visual Showcase</h1>
+    
+    <div class="screenshot-section">
+        <h2>1. Full Grid View</h2>
+        <p>Clean, modern grid layout with Salesforce Lightning Design System integration. Features hierarchical row expansion, time-based columns, and clear visual hierarchy.</p>
+        <div class="screenshot-container">
+            <img src="screenshots/01-full-grid-view.png" alt="Full Grid View">
+            <div class="screenshot-label">Manufacturing Cloud - Main Grid Interface</div>
+        </div>
+        
+        <div class="feature-list">
+            <div class="feature-item">
+                <span class="feature-icon yes">✓</span>
+                <div><strong>Clean Layout:</strong> Uncluttered interface with clear visual hierarchy</div>
+            </div>
+            <div class="feature-item">
+                <span class="feature-icon yes">✓</span>
+                <div><strong>Modern Typography:</strong> SF Pro font family, consistent sizing</div>
+            </div>
+            <div class="feature-item">
+                <span class="feature-icon yes">✓</span>
+                <div><strong>Light Background:</strong> Easy on the eyes for long working sessions</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="screenshot-section">
+        <h2>2. Modern Button Group Toolbar</h2>
+        <p>Pill-shaped button group with clear iconography and active state indicators. Blue icons on white background, reversing when active.</p>
+        <div class="screenshot-container">
+            <img src="screenshots/02-button-group-toolbar.png" alt="Button Group Toolbar">
+            <div class="screenshot-label">Toolbar with Salesforce-style Button Group</div>
+        </div>
+        
+        <div class="comparison-grid">
+            <div class="comparison-card ours">
+                <h4><span class="badge badge-ours">OUR SOLUTION</span></h4>
+                <ul style="font-size: 13px; margin-left: 20px;">
+                    <li>Pill-shaped container with rounded ends</li>
+                    <li>Blue icons (#0250D9) on white</li>
+                    <li>Active state reverses colors</li>
+                    <li>Consistent 32px button size</li>
+                    <li>Dividers between buttons</li>
+                </ul>
+            </div>
+            <div class="comparison-card">
+                <h4><span class="badge badge-competitor">COMPETITORS</span></h4>
+                <ul style="font-size: 13px; margin-left: 20px;">
+                    <li><strong>Pigment:</strong> Similar modern approach, custom icons</li>
+                    <li><strong>Anaplan:</strong> Individual buttons, less cohesive</li>
+                    <li><strong>SAP:</strong> Fiori icon bar, dated look</li>
+                    <li><strong>Oracle:</strong> Ribbon-style toolbar, complex</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    
+    <div class="page-break"></div>
+    
+    <div class="screenshot-section">
+        <h2>3. Settings Panel (Slide-out)</h2>
+        <p>Contextual slide-out panel that doesn't interrupt workflow. Clean form controls with proper spacing and grouping.</p>
+        <div class="screenshot-container">
+            <img src="screenshots/03-settings-panel.png" alt="Settings Panel">
+            <div class="screenshot-label">Settings Panel - Slide-out Design</div>
+        </div>
+        
+        <div class="verdict-box">
+            <h4 style="margin-top: 0;">✓ UX Advantage: Non-Modal Panels</h4>
+            <p style="margin-bottom: 0;">Unlike SAP and Oracle which use modal dialogs that block the main interface, our slide-out panels allow users to see context while making changes. This is consistent with modern SaaS patterns used by Pigment and Notion.</p>
+        </div>
+    </div>
+    
+    <div class="screenshot-section">
+        <h2>4. Filters Panel</h2>
+        <p>Dedicated filtering panel with product and time filter blocks. Each filter shows a summary and opens a multi-select popover on edit.</p>
+        <div class="screenshot-container">
+            <img src="screenshots/04-filters-panel.png" alt="Filters Panel">
+            <div class="screenshot-label">Filters Panel with Product and Time Filters</div>
+        </div>
+    </div>
+    
+    <div class="page-break"></div>
+    
+    <div class="screenshot-section">
+        <h2>5. Cell Details & History Panel</h2>
+        <p>Salesforce-inspired activity timeline showing edit history with threaded discussions. Each edit shows user, timestamp, value change, and adjustment notes.</p>
+        <div class="screenshot-container">
+            <img src="screenshots/05-cell-details-panel.png" alt="Cell Details Panel">
+            <div class="screenshot-label">Cell Details and History - Salesforce Timeline Style</div>
+        </div>
+        
+        <div class="feature-list">
+            <div class="feature-item">
+                <span class="feature-icon yes">✓</span>
+                <div><strong>Activity Timeline:</strong> Vertical connector line between events, like Salesforce</div>
+            </div>
+            <div class="feature-item">
+                <span class="feature-icon yes">✓</span>
+                <div><strong>User Avatars:</strong> Initials-based avatars with consistent styling</div>
+            </div>
+            <div class="feature-item">
+                <span class="feature-icon yes">✓</span>
+                <div><strong>Threaded Discussions:</strong> Reply directly to specific edits</div>
+            </div>
+            <div class="feature-item">
+                <span class="feature-icon yes">✓</span>
+                <div><strong>Expand/Collapse:</strong> Detailed info hidden until needed</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="screenshot-section">
+        <h2>6. Search with Real-time Highlighting</h2>
+        <p>Instant search filtering across hierarchies with visual highlighting of matched text. Columns automatically filter to show only relevant time periods.</p>
+        <div class="screenshot-container">
+            <img src="screenshots/07-search-highlighting.png" alt="Search Highlighting">
+            <div class="screenshot-label">Search for "may" - Instant Filtering & Highlighting</div>
+        </div>
+        
+        <div class="comparison-grid">
+            <div class="comparison-card ours">
+                <h4><span class="badge badge-ours">OUR SOLUTION</span></h4>
+                <p style="font-size: 13px;">Real-time filtering as you type, yellow highlighting on matched text, hierarchical awareness (shows parents of matching children)</p>
+                <div class="rating-bar"><div class="rating-fill excellent" style="width: 85%;"></div></div>
+            </div>
+            <div class="comparison-card">
+                <h4><span class="badge badge-competitor">ANAPLAN / SAP / ORACLE</span></h4>
+                <p style="font-size: 13px;">Basic search with filter buttons, no real-time highlighting, often requires clicking "Apply" button</p>
+                <div class="rating-bar"><div class="rating-fill average" style="width: 50%;"></div></div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="page-break"></div>
+    
+    <div class="screenshot-section">
+        <h2>7. Header Design</h2>
+        <p>Two-row header matching Salesforce Lightning template with cloud logo, search bar, navigation tabs, and user icons.</p>
+        <div class="screenshot-container">
+            <img src="screenshots/09-header-design.png" alt="Header Design">
+            <div class="screenshot-label">Salesforce-style Two-Row Header</div>
+        </div>
+    </div>
+    
+    <div class="page-break"></div>
+    
+    <!-- Competitor Analysis -->
+    <h1>Competitor UX Analysis</h1>
+    
+    <h2>Pigment - The UX Benchmark</h2>
+    <div class="competitor-desc">
+        <h5>Why Pigment Leads in UX</h5>
+        <p>Pigment was founded in 2019 with a UX-first philosophy, specifically designed to disrupt legacy planning tools. Their interface takes inspiration from modern tools like Notion and Figma.</p>
+        
+        <div class="pros-cons">
+            <div class="pros">
+                <h6>UX Strengths</h6>
+                <ul>
+                    <li>Pixel-perfect modern design</li>
+                    <li>Smooth animations and transitions</li>
+                    <li>Real-time collaboration (like Google Docs)</li>
+                    <li>Intuitive drag-and-drop modeling</li>
+                    <li>Dark mode support</li>
+                    <li>Keyboard shortcuts for power users</li>
+                </ul>
+            </div>
+            <div class="cons">
+                <h6>Where We Can Compete</h6>
+                <ul>
+                    <li>Salesforce-native integration (we win)</li>
+                    <li>Manufacturing-specific workflows</li>
+                    <li>Familiar UI for SF users</li>
+                    <li>Lower learning curve for SF ecosystem</li>
+                </ul>
+            </div>
+        </div>
+        
+        <p style="margin-top: 15px;"><strong>UX Score: 9.0/10</strong> - Sets the standard for modern planning UX</p>
+    </div>
+    
+    <h2>Anaplan - Enterprise Standard</h2>
+    <div class="competitor-desc">
+        <h5>Mature but Aging Interface</h5>
+        <p>Anaplan has been around since 2006 and their interface shows its age. While functional, it prioritizes power over polish.</p>
+        
+        <div class="pros-cons">
+            <div class="pros">
+                <h6>UX Strengths</h6>
+                <ul>
+                    <li>Powerful modeling interface</li>
+                    <li>Comprehensive dashboards</li>
+                    <li>Good keyboard navigation</li>
+                    <li>Robust export options</li>
+                </ul>
+            </div>
+            <div class="cons">
+                <h6>UX Weaknesses</h6>
+                <ul>
+                    <li>Cluttered interface</li>
+                    <li>Steep learning curve</li>
+                    <li>Modal-heavy interactions</li>
+                    <li>Dated visual design</li>
+                    <li>Complex navigation structure</li>
+                </ul>
+            </div>
+        </div>
+        
+        <p style="margin-top: 15px;"><strong>UX Score: 6.9/10</strong> - Functional but dated, prioritizes power over usability</p>
+    </div>
+    
+    <h2>SAP IBP / Analytics Cloud</h2>
+    <div class="competitor-desc">
+        <h5>Enterprise Complexity</h5>
+        <p>SAP's planning tools inherit the complexity of the broader SAP ecosystem. While powerful, the UX is designed for trained administrators rather than business users.</p>
+        
+        <div class="pros-cons">
+            <div class="pros">
+                <h6>UX Strengths</h6>
+                <ul>
+                    <li>Fiori design system (improving)</li>
+                    <li>Deep ERP integration</li>
+                    <li>Comprehensive functionality</li>
+                </ul>
+            </div>
+            <div class="cons">
+                <h6>UX Weaknesses</h6>
+                <ul>
+                    <li>Very steep learning curve</li>
+                    <li>Complex multi-screen workflows</li>
+                    <li>Overwhelming for new users</li>
+                    <li>Inconsistent UI patterns</li>
+                    <li>Heavy, slow-loading interfaces</li>
+                </ul>
+            </div>
+        </div>
+        
+        <p style="margin-top: 15px;"><strong>UX Score: 4.9/10</strong> - Power at the cost of usability</p>
+    </div>
+    
+    <h2>Oracle EPM Cloud</h2>
+    <div class="competitor-desc">
+        <h5>Legacy Meets Cloud</h5>
+        <p>Oracle's EPM Cloud modernizes their Hyperion legacy but still carries enterprise complexity. The Redwood design system is improving things gradually.</p>
+        
+        <div class="pros-cons">
+            <div class="pros">
+                <h6>UX Strengths</h6>
+                <ul>
+                    <li>Redwood design (newer, cleaner)</li>
+                    <li>Strong financial close UX</li>
+                    <li>Good reporting interfaces</li>
+                </ul>
+            </div>
+            <div class="cons">
+                <h6>UX Weaknesses</h6>
+                <ul>
+                    <li>Complex setup screens</li>
+                    <li>Multiple products, inconsistent UX</li>
+                    <li>Heavy admin interfaces</li>
+                    <li>Slow cloud performance</li>
+                </ul>
+            </div>
+        </div>
+        
+        <p style="margin-top: 15px;"><strong>UX Score: 5.2/10</strong> - Improving but still carries legacy weight</p>
+    </div>
+    
+    <div class="page-break"></div>
+    
+    <!-- Feature-by-Feature Comparison -->
+    <h1>Feature-by-Feature UX Comparison</h1>
+    
+    <h2>Grid Editing Experience</h2>
+    <table>
+        <tr>
+            <th>Capability</th>
+            <th>Our Solution</th>
+            <th>Pigment</th>
+            <th>Anaplan</th>
+            <th>SAP</th>
+            <th>Oracle</th>
+        </tr>
+        <tr>
+            <td>Inline cell editing</td>
+            <td class="score-cell score-high">✓ Yes</td>
+            <td class="score-cell score-high">✓ Yes</td>
+            <td class="score-cell score-high">✓ Yes</td>
+            <td class="score-cell score-medium">Partial</td>
+            <td class="score-cell score-medium">Partial</td>
+        </tr>
+        <tr>
+            <td>Tab/Arrow navigation</td>
+            <td class="score-cell score-high">✓ Yes</td>
+            <td class="score-cell score-high">✓ Yes</td>
+            <td class="score-cell score-high">✓ Yes</td>
+            <td class="score-cell score-medium">Limited</td>
+            <td class="score-cell score-medium">Limited</td>
+        </tr>
+        <tr>
+            <td>Undo/Redo</td>
+            <td class="score-cell score-high">✓ Yes</td>
+            <td class="score-cell score-high">✓ Yes</td>
+            <td class="score-cell score-high">✓ Yes</td>
+            <td class="score-cell score-low">No</td>
+            <td class="score-cell score-medium">Limited</td>
+        </tr>
+        <tr>
+            <td>Copy/Paste multiple cells</td>
+            <td class="score-cell score-medium">Roadmap</td>
+            <td class="score-cell score-high">✓ Yes</td>
+            <td class="score-cell score-high">✓ Yes</td>
+            <td class="score-cell score-high">✓ Yes</td>
+            <td class="score-cell score-high">✓ Yes</td>
+        </tr>
+        <tr>
+            <td>Cell-level comments</td>
+            <td class="score-cell score-high">✓ Threaded</td>
+            <td class="score-cell score-high">✓ Threaded</td>
+            <td class="score-cell score-medium">Basic</td>
+            <td class="score-cell score-low">Attachments</td>
+            <td class="score-cell score-medium">Notes</td>
+        </tr>
+        <tr>
+            <td>Visual change indicator</td>
+            <td class="score-cell score-high">✓ Dog-ear</td>
+            <td class="score-cell score-high">✓ Dot</td>
+            <td class="score-cell score-medium">Color</td>
+            <td class="score-cell score-low">None</td>
+            <td class="score-cell score-medium">Color</td>
+        </tr>
+    </table>
+    
+    <h2>Navigation & Layout</h2>
+    <table>
+        <tr>
+            <th>Capability</th>
+            <th>Our Solution</th>
+            <th>Pigment</th>
+            <th>Anaplan</th>
+            <th>SAP</th>
+            <th>Oracle</th>
+        </tr>
+        <tr>
+            <td>Multiple grid layouts</td>
+            <td class="score-cell score-high">3 Options</td>
+            <td class="score-cell score-high">Flexible</td>
+            <td class="score-cell score-high">Custom</td>
+            <td class="score-cell score-medium">Limited</td>
+            <td class="score-cell score-medium">Limited</td>
+        </tr>
+        <tr>
+            <td>Breadcrumb navigation</td>
+            <td class="score-cell score-high">✓ Yes</td>
+            <td class="score-cell score-high">✓ Yes</td>
+            <td class="score-cell score-medium">Partial</td>
+            <td class="score-cell score-high">✓ Yes</td>
+            <td class="score-cell score-high">✓ Yes</td>
+        </tr>
+        <tr>
+            <td>Slide-out panels</td>
+            <td class="score-cell score-high">✓ Yes</td>
+            <td class="score-cell score-high">✓ Yes</td>
+            <td class="score-cell score-low">Modals</td>
+            <td class="score-cell score-low">Pages</td>
+            <td class="score-cell score-low">Pages</td>
+        </tr>
+        <tr>
+            <td>Real-time search</td>
+            <td class="score-cell score-high">✓ Yes</td>
+            <td class="score-cell score-high">✓ Yes</td>
+            <td class="score-cell score-medium">Basic</td>
+            <td class="score-cell score-low">No</td>
+            <td class="score-cell score-low">No</td>
+        </tr>
+        <tr>
+            <td>Search highlighting</td>
+            <td class="score-cell score-high">✓ Yes</td>
+            <td class="score-cell score-high">✓ Yes</td>
+            <td class="score-cell score-low">No</td>
+            <td class="score-cell score-low">No</td>
+            <td class="score-cell score-low">No</td>
+        </tr>
+        <tr>
+            <td>Frozen headers</td>
+            <td class="score-cell score-high">✓ Yes</td>
+            <td class="score-cell score-high">✓ Yes</td>
+            <td class="score-cell score-high">✓ Yes</td>
+            <td class="score-cell score-high">✓ Yes</td>
+            <td class="score-cell score-high">✓ Yes</td>
+        </tr>
+    </table>
+    
+    <div class="page-break"></div>
+    
+    <h2>Visual Design Quality</h2>
+    <table>
+        <tr>
+            <th>Aspect</th>
+            <th>Our Solution</th>
+            <th>Pigment</th>
+            <th>Anaplan</th>
+            <th>SAP</th>
+            <th>Oracle</th>
+        </tr>
+        <tr>
+            <td>Design system</td>
+            <td>Salesforce Lightning</td>
+            <td>Custom Modern</td>
+            <td>Proprietary</td>
+            <td>SAP Fiori</td>
+            <td>Oracle Redwood</td>
+        </tr>
+        <tr>
+            <td>Typography</td>
+            <td class="score-cell score-high">Excellent</td>
+            <td class="score-cell score-high">Excellent</td>
+            <td class="score-cell score-medium">Good</td>
+            <td class="score-cell score-medium">Average</td>
+            <td class="score-cell score-medium">Average</td>
+        </tr>
+        <tr>
+            <td>Color palette</td>
+            <td class="score-cell score-high">Modern Blue</td>
+            <td class="score-cell score-high">Vibrant</td>
+            <td class="score-cell score-medium">Muted</td>
+            <td class="score-cell score-low">Corporate</td>
+            <td class="score-cell score-low">Corporate</td>
+        </tr>
+        <tr>
+            <td>Iconography</td>
+            <td class="score-cell score-high">Consistent</td>
+            <td class="score-cell score-high">Custom</td>
+            <td class="score-cell score-medium">Mixed</td>
+            <td class="score-cell score-medium">Fiori Icons</td>
+            <td class="score-cell score-medium">Mixed</td>
+        </tr>
+        <tr>
+            <td>Spacing/Layout</td>
+            <td class="score-cell score-high">Well-spaced</td>
+            <td class="score-cell score-high">Generous</td>
+            <td class="score-cell score-medium">Dense</td>
+            <td class="score-cell score-low">Cramped</td>
+            <td class="score-cell score-low">Dense</td>
+        </tr>
+        <tr>
+            <td>Animations</td>
+            <td class="score-cell score-medium">Basic</td>
+            <td class="score-cell score-high">Smooth</td>
+            <td class="score-cell score-low">Minimal</td>
+            <td class="score-cell score-low">None</td>
+            <td class="score-cell score-low">Minimal</td>
+        </tr>
+    </table>
+    
+    <div class="page-break"></div>
+    
+    <!-- Conclusions -->
+    <h1>Conclusions & Recommendations</h1>
+    
+    <h2>Where We Excel</h2>
+    <div class="verdict-box">
+        <ul style="margin-left: 20px;">
+            <li><strong>Salesforce Integration:</strong> Native Lightning Design System - familiar to millions of SF users</li>
+            <li><strong>Search Experience:</strong> Real-time filtering with highlighting - better than Anaplan, SAP, Oracle</li>
+            <li><strong>Collaboration UX:</strong> Salesforce-style timeline with threaded discussions</li>
+            <li><strong>Panel Design:</strong> Modern slide-out panels vs. legacy modal dialogs</li>
+            <li><strong>Button Group Toolbar:</strong> Clean, modern interaction pattern</li>
+            <li><strong>Learning Curve:</strong> Much faster adoption than enterprise alternatives</li>
+        </ul>
+    </div>
+    
+    <h2>Where We Can Improve</h2>
+    <div class="verdict-box warning">
+        <ul style="margin-left: 20px;">
+            <li><strong>Animations:</strong> Add smooth transitions like Pigment (expand/collapse, panel slides)</li>
+            <li><strong>Dark Mode:</strong> Pigment offers this, we don't yet</li>
+            <li><strong>Keyboard Shortcuts:</strong> Power user features for faster navigation</li>
+            <li><strong>Multi-cell Operations:</strong> Copy/paste across cell ranges</li>
+            <li><strong>Visual Polish:</strong> Micro-interactions, hover states, loading skeletons</li>
+            <li><strong>Mobile/Responsive:</strong> Better tablet and mobile experience</li>
+        </ul>
+    </div>
+    
+    <h2>Final UX Ranking</h2>
+    <table>
+        <tr>
+            <th>Rank</th>
+            <th>Solution</th>
+            <th>Score</th>
+            <th>Best For</th>
+        </tr>
+        <tr>
+            <td>1</td>
+            <td><strong>Pigment</strong></td>
+            <td class="score-cell score-high">9.0/10</td>
+            <td>Modern companies prioritizing UX</td>
+        </tr>
+        <tr style="background: #e8f4fd;">
+            <td>2</td>
+            <td><strong>Our Solution</strong></td>
+            <td class="score-cell score-high">8.3/10</td>
+            <td>Salesforce ecosystem users</td>
+        </tr>
+        <tr>
+            <td>3</td>
+            <td>Workday Adaptive</td>
+            <td class="score-cell score-medium">7.5/10</td>
+            <td>Workday customers</td>
+        </tr>
+        <tr>
+            <td>4</td>
+            <td>Anaplan</td>
+            <td class="score-cell score-medium">6.9/10</td>
+            <td>Power users needing flexibility</td>
+        </tr>
+        <tr>
+            <td>5</td>
+            <td>Oracle EPM</td>
+            <td class="score-cell score-low">5.2/10</td>
+            <td>Oracle ecosystem enterprises</td>
+        </tr>
+        <tr>
+            <td>6</td>
+            <td>SAP IBP</td>
+            <td class="score-cell score-low">4.9/10</td>
+            <td>SAP-centric organizations</td>
+        </tr>
+    </table>
+    
+    <div class="highlight-box" style="margin-top: 30px;">
+        <h3 style="margin-top: 0;">Bottom Line</h3>
+        <p style="margin-bottom: 0;">Our solution delivers <strong>strong UX that significantly outperforms legacy enterprise tools</strong> (SAP, Oracle, Anaplan) while approaching—but not yet matching—the UX excellence of Pigment. Our key differentiator is native Salesforce integration, which provides a familiar experience for the millions of users already in the Salesforce ecosystem. With focused improvements in animations, keyboard shortcuts, and mobile responsiveness, we can further close the gap with Pigment.</p>
+    </div>
+    
+    <hr style="margin: 40px 0; border: none; border-top: 2px solid #e0e0e0;">
+    
+    <p style="text-align: center; color: #888; font-size: 12px;">
+        <em>UX Comparison Report - Manufacturing Cloud Forecasting & Planning</em><br>
+        <em>Screenshots captured December 2025 | Competitor analysis based on public demos and documentation</em>
+    </p>
+    
+</body>
+</html>
+

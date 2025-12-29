@@ -73,25 +73,36 @@ export const getAllAncestors = (rowId: string, data: MeasureData[]): GridRow[] =
 };
 
 // Calculate proportional distribution of delta among children
+// Excludes locked cells and redistributes their share proportionally among unlockable cells
 export const distributeProportionally = (
   delta: number,
   children: GridRow[],
-  monthKey: MonthKey
+  monthKey: MonthKey,
+  lockedCells?: Set<string>
 ): Map<string, number> => {
   const distribution = new Map<string, number>();
   
   if (children.length === 0) return distribution;
   
-  // Calculate current total
-  const currentTotal = children.reduce((sum, child) => sum + child.values[monthKey], 0);
+  // Filter out locked children
+  const unlockableChildren = children.filter(child => {
+    const cellKey = `${child.id}-${monthKey}`;
+    return !lockedCells?.has(cellKey);
+  });
+  
+  // If all children are locked, return empty distribution
+  if (unlockableChildren.length === 0) return distribution;
+  
+  // Calculate current total from unlockable children only
+  const currentTotal = unlockableChildren.reduce((sum, child) => sum + child.values[monthKey], 0);
   
   if (currentTotal === 0) {
     // Equal distribution if all zeros
-    const equalDelta = delta / children.length;
-    children.forEach(child => distribution.set(child.id, equalDelta));
+    const equalDelta = delta / unlockableChildren.length;
+    unlockableChildren.forEach(child => distribution.set(child.id, equalDelta));
   } else {
-    // Proportional distribution
-    children.forEach(child => {
+    // Proportional distribution among unlockable children only
+    unlockableChildren.forEach(child => {
       const proportion = child.values[monthKey] / currentTotal;
       const childDelta = delta * proportion;
       distribution.set(child.id, childDelta);
@@ -116,16 +127,24 @@ export const calculateMeasureValue = (
 };
 
 // Propagate upward: child → parent → grandparent
+// Skips locked ancestors
 export const propagateUpward = (
   rowId: string,
   monthKey: MonthKey,
   delta: number,
-  data: MeasureData[]
+  data: MeasureData[],
+  lockedCells?: Set<string>
 ): { rowId: string; monthKey: MonthKey; newValue: number }[] => {
   const updates: { rowId: string; monthKey: MonthKey; newValue: number }[] = [];
   const ancestors = getAllAncestors(rowId, data);
   
   for (const ancestor of ancestors) {
+    const cellKey = `${ancestor.id}-${monthKey}`;
+    // Skip locked ancestors
+    if (lockedCells?.has(cellKey)) {
+      continue;
+    }
+    
     const currentValue = ancestor.values[monthKey];
     const newValue = currentValue + delta;
     updates.push({ rowId: ancestor.id, monthKey, newValue });
@@ -135,29 +154,37 @@ export const propagateUpward = (
 };
 
 // Propagate downward: parent → children → grandchildren
+// Excludes locked cells and redistributes their share proportionally
 export const propagateDownward = (
   rowId: string,
   monthKey: MonthKey,
   delta: number,
-  data: MeasureData[]
+  data: MeasureData[],
+  lockedCells?: Set<string>
 ): { rowId: string; monthKey: MonthKey; newValue: number }[] => {
   const updates: { rowId: string; monthKey: MonthKey; newValue: number }[] = [];
   const children = getChildren(rowId, data);
   
   if (children.length === 0) return updates;
   
-  const distribution = distributeProportionally(delta, children, monthKey);
+  const distribution = distributeProportionally(delta, children, monthKey, lockedCells);
   
   for (const [childId, childDelta] of distribution.entries()) {
     const child = findRowById(childId, data);
     if (!child) continue;
     
+    // Double-check: skip if this child is locked (shouldn't happen due to filter, but safety check)
+    const cellKey = `${childId}-${monthKey}`;
+    if (lockedCells?.has(cellKey)) {
+      continue;
+    }
+    
     const currentValue = child.values[monthKey];
     const newValue = currentValue + childDelta;
     updates.push({ rowId: childId, monthKey, newValue });
     
-    // Recursively propagate to grandchildren
-    const grandchildUpdates = propagateDownward(childId, monthKey, childDelta, data);
+    // Recursively propagate to grandchildren (pass lockedCells down)
+    const grandchildUpdates = propagateDownward(childId, monthKey, childDelta, data, lockedCells);
     updates.push(...grandchildUpdates);
   }
   
@@ -306,7 +333,8 @@ export const updateCrossMeasureDependencies = (
   monthKey: MonthKey,
   newValue: number,
   data: MeasureData[],
-  originalData?: MeasureData[]
+  originalData?: MeasureData[],
+  lockedCells?: Set<string>
 ): { rowId: string; monthKey: MonthKey; newValue: number }[] => {
   const updates: { rowId: string; monthKey: MonthKey; newValue: number }[] = [];
   
@@ -409,13 +437,13 @@ export const updateCrossMeasureDependencies = (
           updates.push({ rowId: quantityMeasureId, monthKey, newValue: newQuantity });
           const qtyDelta = newQuantity - quantityMeasure.values[monthKey];
           if (qtyDelta !== 0 && quantityMeasure.children.length > 0) {
-            const accountDistribution = distributeProportionally(qtyDelta, quantityMeasure.children, monthKey);
+            const accountDistribution = distributeProportionally(qtyDelta, quantityMeasure.children, monthKey, lockedCells);
             for (const [accountId, accountDelta] of accountDistribution.entries()) {
               const account = quantityMeasure.children.find(c => c.id === accountId);
               if (account) {
                 const accountNewValue = account.values[monthKey] + accountDelta;
                 updates.push({ rowId: accountId, monthKey, newValue: accountNewValue });
-                const accountUpdates = propagateDownward(accountId, monthKey, accountDelta, data);
+                const accountUpdates = propagateDownward(accountId, monthKey, accountDelta, data, lockedCells);
                 updates.push(...accountUpdates);
               }
             }
@@ -432,7 +460,7 @@ export const updateCrossMeasureDependencies = (
         const orderRevDelta = newValue - orderRevenueMeasure.values[monthKey];
         if (orderRevDelta !== 0 && orderRevenueMeasure.children.length > 0) {
           // Distribute to account rows proportionally
-          const accountDistribution = distributeProportionally(orderRevDelta, orderRevenueMeasure.children, monthKey);
+          const accountDistribution = distributeProportionally(orderRevDelta, orderRevenueMeasure.children, monthKey, lockedCells);
           for (const [accountId, accountDelta] of accountDistribution.entries()) {
             const account = orderRevenueMeasure.children.find(c => c.id === accountId);
             if (account) {
@@ -458,13 +486,13 @@ export const updateCrossMeasureDependencies = (
             updates.push({ rowId: orderQuantityMeasureId, monthKey, newValue: newOrderQuantity });
             const orderQtyDelta = newOrderQuantity - orderQuantityMeasure.values[monthKey];
             if (orderQtyDelta !== 0 && orderQuantityMeasure.children.length > 0) {
-              const accountDistribution = distributeProportionally(orderQtyDelta, orderQuantityMeasure.children, monthKey);
+              const accountDistribution = distributeProportionally(orderQtyDelta, orderQuantityMeasure.children, monthKey, lockedCells);
               for (const [accountId, accountDelta] of accountDistribution.entries()) {
                 const account = orderQuantityMeasure.children.find(c => c.id === accountId);
                 if (account) {
                   const accountNewValue = account.values[monthKey] + accountDelta;
                   updates.push({ rowId: accountId, monthKey, newValue: accountNewValue });
-                  const accountUpdates = propagateDownward(accountId, monthKey, accountDelta, data);
+                  const accountUpdates = propagateDownward(accountId, monthKey, accountDelta, data, lockedCells);
                   updates.push(...accountUpdates);
                 }
               }
@@ -482,7 +510,7 @@ export const updateCrossMeasureDependencies = (
         const forecastRevDelta = newValue - forecastRevenueMeasure.values[monthKey];
         if (forecastRevDelta !== 0 && forecastRevenueMeasure.children.length > 0) {
           // Distribute to account rows proportionally
-          const accountDistribution = distributeProportionally(forecastRevDelta, forecastRevenueMeasure.children, monthKey);
+          const accountDistribution = distributeProportionally(forecastRevDelta, forecastRevenueMeasure.children, monthKey, lockedCells);
           for (const [accountId, accountDelta] of accountDistribution.entries()) {
             const account = forecastRevenueMeasure.children.find(c => c.id === accountId);
             if (account) {
@@ -508,13 +536,13 @@ export const updateCrossMeasureDependencies = (
             updates.push({ rowId: forecastQuantityMeasureId, monthKey, newValue: newForecastQuantity });
             const forecastQtyDelta = newForecastQuantity - forecastQuantityMeasure.values[monthKey];
             if (forecastQtyDelta !== 0 && forecastQuantityMeasure.children.length > 0) {
-              const accountDistribution = distributeProportionally(forecastQtyDelta, forecastQuantityMeasure.children, monthKey);
+              const accountDistribution = distributeProportionally(forecastQtyDelta, forecastQuantityMeasure.children, monthKey, lockedCells);
               for (const [accountId, accountDelta] of accountDistribution.entries()) {
                 const account = forecastQuantityMeasure.children.find(c => c.id === accountId);
                 if (account) {
                   const accountNewValue = account.values[monthKey] + accountDelta;
                   updates.push({ rowId: accountId, monthKey, newValue: accountNewValue });
-                  const accountUpdates = propagateDownward(accountId, monthKey, accountDelta, data);
+                  const accountUpdates = propagateDownward(accountId, monthKey, accountDelta, data, lockedCells);
                   updates.push(...accountUpdates);
                 }
               }
@@ -540,13 +568,13 @@ export const updateCrossMeasureDependencies = (
           // Distribute to account rows proportionally
           const revenueDelta = newRevenue - currentRev;
           if (revenueDelta !== 0 && revenueMeasure.children.length > 0) {
-            const accountDistribution = distributeProportionally(revenueDelta, revenueMeasure.children, monthKey);
+            const accountDistribution = distributeProportionally(revenueDelta, revenueMeasure.children, monthKey, lockedCells);
             for (const [accountId, accountDelta] of accountDistribution.entries()) {
               const account = revenueMeasure.children.find(c => c.id === accountId);
               if (account) {
                 const accountNewValue = account.values[monthKey] + accountDelta;
                 updates.push({ rowId: accountId, monthKey, newValue: accountNewValue });
-                const accountUpdates = propagateDownward(accountId, monthKey, accountDelta, data);
+                const accountUpdates = propagateDownward(accountId, monthKey, accountDelta, data, lockedCells);
                 updates.push(...accountUpdates);
               }
             }
@@ -563,7 +591,7 @@ export const updateCrossMeasureDependencies = (
         const orderDelta = newValue - orderMeasure.values[monthKey];
         if (orderDelta !== 0 && orderMeasure.children.length > 0) {
           // Distribute to account rows proportionally
-          const accountDistribution = distributeProportionally(orderDelta, orderMeasure.children, monthKey);
+          const accountDistribution = distributeProportionally(orderDelta, orderMeasure.children, monthKey, lockedCells);
           for (const [accountId, accountDelta] of accountDistribution.entries()) {
             const account = orderMeasure.children.find(c => c.id === accountId);
             if (account) {
@@ -588,13 +616,13 @@ export const updateCrossMeasureDependencies = (
             updates.push({ rowId: orderRevenueMeasureId, monthKey, newValue: newOrderRevenue });
             const orderRevDelta = newOrderRevenue - orderRevenueMeasure.values[monthKey];
             if (orderRevDelta !== 0 && orderRevenueMeasure.children.length > 0) {
-              const accountDistribution = distributeProportionally(orderRevDelta, orderRevenueMeasure.children, monthKey);
+              const accountDistribution = distributeProportionally(orderRevDelta, orderRevenueMeasure.children, monthKey, lockedCells);
               for (const [accountId, accountDelta] of accountDistribution.entries()) {
                 const account = orderRevenueMeasure.children.find(c => c.id === accountId);
                 if (account) {
                   const accountNewValue = account.values[monthKey] + accountDelta;
                   updates.push({ rowId: accountId, monthKey, newValue: accountNewValue });
-                  const accountUpdates = propagateDownward(accountId, monthKey, accountDelta, data);
+                  const accountUpdates = propagateDownward(accountId, monthKey, accountDelta, data, lockedCells);
                   updates.push(...accountUpdates);
                 }
               }
@@ -612,7 +640,7 @@ export const updateCrossMeasureDependencies = (
         const forecastDelta = newValue - forecastMeasure.values[monthKey];
         if (forecastDelta !== 0 && forecastMeasure.children.length > 0) {
           // Distribute to account rows proportionally
-          const accountDistribution = distributeProportionally(forecastDelta, forecastMeasure.children, monthKey);
+          const accountDistribution = distributeProportionally(forecastDelta, forecastMeasure.children, monthKey, lockedCells);
           for (const [accountId, accountDelta] of accountDistribution.entries()) {
             const account = forecastMeasure.children.find(c => c.id === accountId);
             if (account) {
@@ -637,13 +665,13 @@ export const updateCrossMeasureDependencies = (
             updates.push({ rowId: forecastRevenueMeasureId, monthKey, newValue: newForecastRevenue });
             const forecastRevDelta = newForecastRevenue - forecastRevenueMeasure.values[monthKey];
             if (forecastRevDelta !== 0 && forecastRevenueMeasure.children.length > 0) {
-              const accountDistribution = distributeProportionally(forecastRevDelta, forecastRevenueMeasure.children, monthKey);
+              const accountDistribution = distributeProportionally(forecastRevDelta, forecastRevenueMeasure.children, monthKey, lockedCells);
               for (const [accountId, accountDelta] of accountDistribution.entries()) {
                 const account = forecastRevenueMeasure.children.find(c => c.id === accountId);
                 if (account) {
                   const accountNewValue = account.values[monthKey] + accountDelta;
                   updates.push({ rowId: accountId, monthKey, newValue: accountNewValue });
-                  const accountUpdates = propagateDownward(accountId, monthKey, accountDelta, data);
+                  const accountUpdates = propagateDownward(accountId, monthKey, accountDelta, data, lockedCells);
                   updates.push(...accountUpdates);
                 }
               }
@@ -673,8 +701,8 @@ export const updateCrossMeasureDependencies = (
           updates.push({ rowId: quantityRow.id, monthKey, newValue: newQuantity });
           const qtyDelta = newQuantity - quantityRow.values[monthKey];
           if (qtyDelta !== 0) {
-            updates.push(...propagateUpward(quantityRow.id, monthKey, qtyDelta, data));
-            updates.push(...propagateDownward(quantityRow.id, monthKey, qtyDelta, data));
+            updates.push(...propagateUpward(quantityRow.id, monthKey, qtyDelta, data, lockedCells));
+            updates.push(...propagateDownward(quantityRow.id, monthKey, qtyDelta, data, lockedCells));
           }
         }
       }
@@ -690,8 +718,8 @@ export const updateCrossMeasureDependencies = (
         updates.push({ rowId: orderRevenueRow.id, monthKey, newValue });
         const orderRevDelta = newValue - orderRevenueRow.values[monthKey];
         if (orderRevDelta !== 0) {
-          updates.push(...propagateUpward(orderRevenueRow.id, monthKey, orderRevDelta, data));
-          updates.push(...propagateDownward(orderRevenueRow.id, monthKey, orderRevDelta, data));
+          updates.push(...propagateUpward(orderRevenueRow.id, monthKey, orderRevDelta, data, lockedCells));
+          updates.push(...propagateDownward(orderRevenueRow.id, monthKey, orderRevDelta, data, lockedCells));
         }
         
         // 2b. Order Revenue → Order Quantity (reverse: Qty = Rev / Unit Price)
@@ -706,8 +734,8 @@ export const updateCrossMeasureDependencies = (
               updates.push({ rowId: orderQuantityRow.id, monthKey, newValue: newOrderQuantity });
               const orderQtyDelta = newOrderQuantity - orderQuantityRow.values[monthKey];
               if (orderQtyDelta !== 0) {
-                updates.push(...propagateUpward(orderQuantityRow.id, monthKey, orderQtyDelta, data));
-                updates.push(...propagateDownward(orderQuantityRow.id, monthKey, orderQtyDelta, data));
+                updates.push(...propagateUpward(orderQuantityRow.id, monthKey, orderQtyDelta, data, lockedCells));
+                updates.push(...propagateDownward(orderQuantityRow.id, monthKey, orderQtyDelta, data, lockedCells));
               }
             }
           }
@@ -725,8 +753,8 @@ export const updateCrossMeasureDependencies = (
         updates.push({ rowId: forecastRevenueRow.id, monthKey, newValue });
         const forecastRevDelta = newValue - forecastRevenueRow.values[monthKey];
         if (forecastRevDelta !== 0) {
-          updates.push(...propagateUpward(forecastRevenueRow.id, monthKey, forecastRevDelta, data));
-          updates.push(...propagateDownward(forecastRevenueRow.id, monthKey, forecastRevDelta, data));
+          updates.push(...propagateUpward(forecastRevenueRow.id, monthKey, forecastRevDelta, data, lockedCells));
+          updates.push(...propagateDownward(forecastRevenueRow.id, monthKey, forecastRevDelta, data, lockedCells));
         }
         
         // 3b. Forecasted Revenue → Forecasted Quantity (reverse: Qty = Rev / Unit Price)
@@ -741,8 +769,8 @@ export const updateCrossMeasureDependencies = (
               updates.push({ rowId: forecastQuantityRow.id, monthKey, newValue: newForecastQuantity });
               const forecastQtyDelta = newForecastQuantity - forecastQuantityRow.values[monthKey];
               if (forecastQtyDelta !== 0) {
-                updates.push(...propagateUpward(forecastQuantityRow.id, monthKey, forecastQtyDelta, data));
-                updates.push(...propagateDownward(forecastQuantityRow.id, monthKey, forecastQtyDelta, data));
+                updates.push(...propagateUpward(forecastQuantityRow.id, monthKey, forecastQtyDelta, data, lockedCells));
+                updates.push(...propagateDownward(forecastQuantityRow.id, monthKey, forecastQtyDelta, data, lockedCells));
               }
             }
           }
@@ -841,8 +869,8 @@ export const updateCrossMeasureDependencies = (
         updates.push({ rowId: revenueRow.id, monthKey, newValue: newRevenue });
         const revenueDelta = newRevenue - revenueRow.values[monthKey];
         if (revenueDelta !== 0) {
-          updates.push(...propagateUpward(revenueRow.id, monthKey, revenueDelta, data));
-          updates.push(...propagateDownward(revenueRow.id, monthKey, revenueDelta, data));
+          updates.push(...propagateUpward(revenueRow.id, monthKey, revenueDelta, data, lockedCells));
+          updates.push(...propagateDownward(revenueRow.id, monthKey, revenueDelta, data, lockedCells));
         }
       } else {
         console.log('[CROSS-MEASURE] SA Revenue row not found for path:', path);
@@ -888,8 +916,8 @@ export const updateCrossMeasureDependencies = (
           updates.push({ rowId: accountRow.id, monthKey, newValue: newRevenue });
           const revenueDelta = newRevenue - accountRow.values[monthKey];
           if (revenueDelta !== 0) {
-            updates.push(...propagateUpward(accountRow.id, monthKey, revenueDelta, data));
-            updates.push(...propagateDownward(accountRow.id, monthKey, revenueDelta, data));
+            updates.push(...propagateUpward(accountRow.id, monthKey, revenueDelta, data, lockedCells));
+            updates.push(...propagateDownward(accountRow.id, monthKey, revenueDelta, data, lockedCells));
           }
         }
       }
@@ -930,13 +958,13 @@ export const updateCrossMeasureDependencies = (
         if (revenueMeasure.children && revenueMeasure.children.length > 0) {
           const revenueDelta = newRevenue - revenueMeasure.values[monthKey];
           if (revenueDelta !== 0) {
-            const accountDistribution = distributeProportionally(revenueDelta, revenueMeasure.children, monthKey);
+            const accountDistribution = distributeProportionally(revenueDelta, revenueMeasure.children, monthKey, lockedCells);
             for (const [accountId, accountDelta] of accountDistribution.entries()) {
               const account = revenueMeasure.children.find(c => c.id === accountId);
               if (account) {
                 const accountNewValue = account.values[monthKey] + accountDelta;
                 updates.push({ rowId: accountId, monthKey, newValue: accountNewValue });
-                updates.push(...propagateDownward(accountId, monthKey, accountDelta, data));
+                updates.push(...propagateDownward(accountId, monthKey, accountDelta, data, lockedCells));
               }
             }
           }
@@ -959,8 +987,8 @@ export const updateCrossMeasureDependencies = (
         updates.push({ rowId: orderRow.id, monthKey, newValue });
         const orderDelta = newValue - orderRow.values[monthKey];
         if (orderDelta !== 0) {
-          updates.push(...propagateUpward(orderRow.id, monthKey, orderDelta, data));
-          updates.push(...propagateDownward(orderRow.id, monthKey, orderDelta, data));
+          updates.push(...propagateUpward(orderRow.id, monthKey, orderDelta, data, lockedCells));
+          updates.push(...propagateDownward(orderRow.id, monthKey, orderDelta, data, lockedCells));
         }
         
         // 2b. Order Quantity → Order Revenue (via unit price) - triggered by SA Qty change
@@ -1027,8 +1055,8 @@ export const updateCrossMeasureDependencies = (
             updates.push({ rowId: orderRevenueRow.id, monthKey, newValue: newOrderRevenue });
             const orderRevDelta = newOrderRevenue - orderRevenueRow.values[monthKey];
             if (orderRevDelta !== 0) {
-              updates.push(...propagateUpward(orderRevenueRow.id, monthKey, orderRevDelta, data));
-              updates.push(...propagateDownward(orderRevenueRow.id, monthKey, orderRevDelta, data));
+              updates.push(...propagateUpward(orderRevenueRow.id, monthKey, orderRevDelta, data, lockedCells));
+              updates.push(...propagateDownward(orderRevenueRow.id, monthKey, orderRevDelta, data, lockedCells));
             }
           }
         }
@@ -1075,8 +1103,8 @@ export const updateCrossMeasureDependencies = (
         updates.push({ rowId: revenueRow.id, monthKey, newValue: newRevenue });
         const revenueDelta = newRevenue - revenueRow.values[monthKey];
         if (revenueDelta !== 0) {
-          updates.push(...propagateUpward(revenueRow.id, monthKey, revenueDelta, data));
-          updates.push(...propagateDownward(revenueRow.id, monthKey, revenueDelta, data));
+          updates.push(...propagateUpward(revenueRow.id, monthKey, revenueDelta, data, lockedCells));
+          updates.push(...propagateDownward(revenueRow.id, monthKey, revenueDelta, data, lockedCells));
         }
       }
     }
@@ -1096,8 +1124,8 @@ export const updateCrossMeasureDependencies = (
           updates.push({ rowId: quantityRow.id, monthKey, newValue: newQuantity });
           const qtyDelta = newQuantity - quantityRow.values[monthKey];
           if (qtyDelta !== 0) {
-            updates.push(...propagateUpward(quantityRow.id, monthKey, qtyDelta, data));
-            updates.push(...propagateDownward(quantityRow.id, monthKey, qtyDelta, data));
+            updates.push(...propagateUpward(quantityRow.id, monthKey, qtyDelta, data, lockedCells));
+            updates.push(...propagateDownward(quantityRow.id, monthKey, qtyDelta, data, lockedCells));
           }
         }
       }
@@ -1118,8 +1146,8 @@ export const updateCrossMeasureDependencies = (
         updates.push({ rowId: forecastRow.id, monthKey, newValue });
         const forecastDelta = newValue - forecastRow.values[monthKey];
         if (forecastDelta !== 0) {
-          updates.push(...propagateUpward(forecastRow.id, monthKey, forecastDelta, data));
-          updates.push(...propagateDownward(forecastRow.id, monthKey, forecastDelta, data));
+          updates.push(...propagateUpward(forecastRow.id, monthKey, forecastDelta, data, lockedCells));
+          updates.push(...propagateDownward(forecastRow.id, monthKey, forecastDelta, data, lockedCells));
         }
         
         // 4b. Forecasted Quantity → Forecasted Revenue (via unit price) - triggered by SA Qty change
@@ -1186,8 +1214,8 @@ export const updateCrossMeasureDependencies = (
             updates.push({ rowId: forecastRevenueRow.id, monthKey, newValue: newForecastRevenue });
             const forecastRevDelta = newForecastRevenue - forecastRevenueRow.values[monthKey];
             if (forecastRevDelta !== 0) {
-              updates.push(...propagateUpward(forecastRevenueRow.id, monthKey, forecastRevDelta, data));
-              updates.push(...propagateDownward(forecastRevenueRow.id, monthKey, forecastRevDelta, data));
+              updates.push(...propagateUpward(forecastRevenueRow.id, monthKey, forecastRevDelta, data, lockedCells));
+              updates.push(...propagateDownward(forecastRevenueRow.id, monthKey, forecastRevDelta, data, lockedCells));
             }
           }
         }
@@ -1234,8 +1262,8 @@ export const updateCrossMeasureDependencies = (
         updates.push({ rowId: revenueRow.id, monthKey, newValue: newRevenue });
         const revenueDelta = newRevenue - revenueRow.values[monthKey];
         if (revenueDelta !== 0) {
-          updates.push(...propagateUpward(revenueRow.id, monthKey, revenueDelta, data));
-          updates.push(...propagateDownward(revenueRow.id, monthKey, revenueDelta, data));
+          updates.push(...propagateUpward(revenueRow.id, monthKey, revenueDelta, data, lockedCells));
+          updates.push(...propagateDownward(revenueRow.id, monthKey, revenueDelta, data, lockedCells));
         }
       }
     }
@@ -1255,8 +1283,8 @@ export const updateCrossMeasureDependencies = (
           updates.push({ rowId: quantityRow.id, monthKey, newValue: newQuantity });
           const qtyDelta = newQuantity - quantityRow.values[monthKey];
           if (qtyDelta !== 0) {
-            updates.push(...propagateUpward(quantityRow.id, monthKey, qtyDelta, data));
-            updates.push(...propagateDownward(quantityRow.id, monthKey, qtyDelta, data));
+            updates.push(...propagateUpward(quantityRow.id, monthKey, qtyDelta, data, lockedCells));
+            updates.push(...propagateDownward(quantityRow.id, monthKey, qtyDelta, data, lockedCells));
           }
         }
       }
@@ -1300,8 +1328,8 @@ export const updateCrossMeasureDependencies = (
             updates.push({ rowId: finalForecastMeasureId, monthKey, newValue: averageValue });
             const delta = averageValue - finalForecastValue;
             if (Math.abs(delta) > 0.01) {
-              updates.push(...propagateUpward(finalForecastMeasureId, monthKey, delta, data));
-              updates.push(...propagateDownward(finalForecastMeasureId, monthKey, delta, data));
+              updates.push(...propagateUpward(finalForecastMeasureId, monthKey, delta, data, lockedCells));
+              updates.push(...propagateDownward(finalForecastMeasureId, monthKey, delta, data, lockedCells));
             }
             console.log('[CROSS-MEASURE] Updated Final Forecast measure-level:', averageValue);
           }
@@ -1337,8 +1365,8 @@ export const updateCrossMeasureDependencies = (
                 updates.push({ rowId: finalRow.id, monthKey, newValue: averageValue });
                 const delta = averageValue - finalForecastCurrentValue;
                 if (Math.abs(delta) > 0.01) {
-                  updates.push(...propagateUpward(finalRow.id, monthKey, delta, data));
-                  updates.push(...propagateDownward(finalRow.id, monthKey, delta, data));
+                  updates.push(...propagateUpward(finalRow.id, monthKey, delta, data, lockedCells));
+                  updates.push(...propagateDownward(finalRow.id, monthKey, delta, data, lockedCells));
                 }
                 console.log('[CROSS-MEASURE] Updated Final Forecast at row:', finalRow.name, 'value:', averageValue);
               }

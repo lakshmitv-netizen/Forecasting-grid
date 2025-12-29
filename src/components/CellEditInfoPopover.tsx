@@ -5,6 +5,8 @@ import '../styles/components/CellEditInfoPopover.css';
 interface CellEditInfoPopoverProps {
   entry: CellEditHistoryEntry;
   position: { top: number; left: number };
+  isLocked?: boolean;
+  lockedValue?: number;
   onViewHistory: () => void;
   onClose: () => void;
 }
@@ -12,6 +14,8 @@ interface CellEditInfoPopoverProps {
 const CellEditInfoPopover: React.FC<CellEditInfoPopoverProps> = ({
   entry,
   position,
+  isLocked = false,
+  lockedValue,
   onViewHistory,
   onClose
 }) => {
@@ -43,9 +47,16 @@ const CellEditInfoPopover: React.FC<CellEditInfoPopoverProps> = ({
 
   // Build the change description like the side panel
   const getChangeDescription = () => {
-    if (!hasEdit) {
-      return 'Added a note';
+    // For locked cells, show "Locked at {value}"
+    if (isLocked && lockedValue !== undefined) {
+      return (
+        <>
+          Locked at <strong>{formatNumber(lockedValue)}</strong>
+        </>
+      );
     }
+    
+    // Only show change description if there's an actual edit
     const action = isIncrease ? 'Increased' : 'Decreased';
     return (
       <>
@@ -77,12 +88,14 @@ const CellEditInfoPopover: React.FC<CellEditInfoPopoverProps> = ({
         </div>
       </div>
       
-      {/* Change description */}
-      <div className="cell-edit-info-change-text">
-        {getChangeDescription()}
-      </div>
+      {/* Change description - only show if there's an actual edit */}
+      {hasEdit && (
+        <div className="cell-edit-info-change-text">
+          {getChangeDescription()}
+        </div>
+      )}
       
-      {/* Note section */}
+      {/* Note section - show directly, no "Added a note" text */}
       {hasNote && (
         <div className="cell-edit-info-note">
           <span className="cell-edit-info-note-text">

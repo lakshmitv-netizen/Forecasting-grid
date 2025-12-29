@@ -320,7 +320,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             </div>
 
             <div className="settings-field">
-              <label className="settings-field-label">Measure Subgroup</label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                <label className="settings-field-label" style={{ marginBottom: 0 }}>Measure Subgroup</label>
+                <a href="#" className="settings-link" style={{ marginBottom: 0 }}>Reorder Measures</a>
+              </div>
               <div className="settings-dropdown-wrapper" ref={measureSubgroupDropdownRef}>
                 <div 
                   className={`settings-dropdown-trigger ${isMeasureSubgroupDropdownOpen ? 'open' : ''}`}
@@ -353,7 +356,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   </div>
                 )}
               </div>
-              <a href="#" className="settings-link">Reorder Measures</a>
             </div>
 
             <div className="settings-field settings-field-spaced">
@@ -401,7 +403,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               </div>
             </div>
 
-            <div className="settings-field">
+            <div className="settings-field" style={{ marginTop: '16px' }}>
               <label className="settings-field-label">Time Granularity</label>
               <div className="settings-dropdown-wrapper" ref={timeGranularityDropdownRef}>
                 <div 

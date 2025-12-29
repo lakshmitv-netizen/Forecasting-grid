@@ -393,16 +393,19 @@ const TimeDimensionsRowComponent: React.FC<TimeDimensionsRowProps> = ({
           const isImpacted = !isDirectlyEdited && impactedOriginalValue !== undefined;
           
           // Determine cell class
+          // Priority order: edited > impacted > saved edited
           let cellClassName = 'grid-cell cell-value-cell';
           if (isFocused) {
             cellClassName += ' cell-focused';
           }
-          if (isSavedEdited) {
-            // No special class for saved edited cells
-          } else if (isDirectlyEdited) {
+          if (isDirectlyEdited) {
+            // Highest priority: show edited background
             cellClassName += ' edited-cell';
           } else if (isImpacted) {
+            // Second priority: show impacted background
             cellClassName += ' impacted-cell';
+          } else if (isSavedEdited) {
+            // Lowest priority: no special class for saved edited cells (icon only)
           }
 
           return (

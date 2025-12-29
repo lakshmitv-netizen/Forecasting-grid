@@ -131,24 +131,9 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
             <path d="M4.25 5.61C6.27 8.2 10 13 10 13v6c0 .55.45 1 1 1h2c.55 0 1-.45 1-1v-6s3.72-4.8 5.74-7.39c.51-.66.04-1.61-.79-1.61H5.04c-.83 0-1.3.95-.79 1.61z"/>
           </svg>
         </button>
-        <button className="grid-button-group-item" title="Sort">
-          <svg fill="currentColor" viewBox="0 0 24 24" width="16" height="16">
-            <path d="M8 16V4H6v12H3l4.5 5L12 16H8zm8-12l-4.5 5H16v12h2V9h3L16 4z"/>
-          </svg>
-        </button>
-        <button className="grid-button-group-item" title="Chart">
-          <svg fill="currentColor" viewBox="0 0 24 24" width="16" height="16">
-            <path d="M5 9.2h3V19H5V9.2zM10.6 5h2.8v14h-2.8V5zm5.6 8H19v6h-2.8v-6z"/>
-          </svg>
-        </button>
         <button className={`grid-button-group-item ${isNotesActive ? 'active' : ''}`} title="Cell Details & Updates" onClick={onNotesClick}>
           <svg fill="currentColor" viewBox="0 0 24 24" width="16" height="16">
             <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
-          </svg>
-        </button>
-        <button className="grid-button-group-item" title="Alerts">
-          <svg fill="currentColor" viewBox="0 0 24 24" width="16" height="16">
-            <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
           </svg>
         </button>
       </div>
