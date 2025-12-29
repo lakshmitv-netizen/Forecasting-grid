@@ -15,10 +15,11 @@ interface CellEditHistoryCardProps {
   replies?: CardReply[];
   onAddReply?: (entryId: string, message: string) => void;
   isLast?: boolean;
+  isFirst?: boolean;
 }
 
-const CellEditHistoryCard: React.FC<CellEditHistoryCardProps> = ({ entry, replies = [], onAddReply, isLast = false }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
+const CellEditHistoryCard: React.FC<CellEditHistoryCardProps> = ({ entry, replies = [], onAddReply, isLast = false, isFirst = false }) => {
+  const [isExpanded, setIsExpanded] = useState(isFirst);
   const [replyText, setReplyText] = useState('');
   
   // Only consider it an "edit" if values are defined AND actually different
@@ -103,6 +104,9 @@ const CellEditHistoryCard: React.FC<CellEditHistoryCardProps> = ({ entry, replie
   // Use "John Carter" as the user name, initials "JC"
   const userName = entry.userName || 'John Carter';
   const userInitials = getUserInitials(userName);
+  
+  // Check if this is a draft (unsaved) entry
+  const isDraft = entry.id.startsWith('draft-');
 
   // For note-only entries, show a truncated preview
   const isNoteOnly = !hasEdit && hasNote;
@@ -144,22 +148,31 @@ const CellEditHistoryCard: React.FC<CellEditHistoryCardProps> = ({ entry, replie
         <div className="sf-timeline-header">
           <div className="sf-timeline-title-row">
             <span className="sf-timeline-username">{userName}</span>
+            {isDraft && <span className="sf-timeline-draft-badge">Unsaved</span>}
             <span className="sf-timeline-timestamp">{formatFullTimestamp(entry.timestamp)}</span>
           </div>
           <div className="sf-timeline-subtitle">
             {hasEdit ? (
               // Edit with or without note - show edit info
-              <span className="sf-timeline-edit-info">
-                {isIncrease ? 'Increased' : 'Decreased'} from <strong>{formattedOldValue}</strong> to <strong>{formattedNewValue}</strong> <span className={`sf-timeline-delta ${isIncrease ? 'increase' : 'decrease'}`}>({isIncrease ? '+' : '-'}{formattedDelta})</span>
-                {hasNote && (
-                  <button 
-                    className="sf-timeline-see-note-btn"
-                    onClick={() => setIsExpanded(!isExpanded)}
-                  >
-                    {isExpanded ? 'Hide note' : 'See note'}
-                  </button>
+              <div>
+                <span className="sf-timeline-edit-info">
+                  {isIncrease ? 'Increased' : 'Decreased'} from <strong>{formattedOldValue}</strong> to <strong>{formattedNewValue}</strong> <span className={`sf-timeline-delta ${isIncrease ? 'increase' : 'decrease'}`}>({isIncrease ? '+' : '-'}{formattedDelta})</span>
+                  {hasNote && (
+                    <button 
+                      className="sf-timeline-see-note-btn"
+                      onClick={() => setIsExpanded(!isExpanded)}
+                    >
+                      {isExpanded ? 'Hide note' : 'See note'}
+                    </button>
+                  )}
+                </span>
+                {/* Show note inline in white region when expanded */}
+                {hasNote && isExpanded && (
+                  <div className="sf-timeline-note-preview" style={{ marginTop: '4px' }}>
+                    <span className="sf-timeline-note-text">{entry.note}</span>
+                  </div>
                 )}
-              </span>
+              </div>
             ) : isNoteOnly ? (
               // Note only - show truncated preview or full note when expanded
               <div className="sf-timeline-note-preview">
@@ -184,16 +197,8 @@ const CellEditHistoryCard: React.FC<CellEditHistoryCardProps> = ({ entry, replie
         {/* Expanded Details */}
         {isExpanded && (
           <div className="sf-timeline-details">
-            {/* Show note in grey box only for edit entries that have notes (not for note-only since it's shown inline) */}
-            {hasEdit && hasNote && (
-              <div className="sf-timeline-info-item">
-                <span className="sf-timeline-info-label">Note</span>
-                <span className="sf-timeline-info-value">{entry.note}</span>
-              </div>
-            )}
-            
             {/* Discussion - always show for threaded comments */}
-            <div className={`sf-timeline-discussion ${hasEdit && hasNote ? 'has-note' : ''}`}>
+            <div className="sf-timeline-discussion">
               {hasReplies && (
                 <div className="sf-timeline-replies">
                   {replies.map((reply) => (

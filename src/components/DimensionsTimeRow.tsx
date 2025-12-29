@@ -10,7 +10,7 @@ interface DimensionsTimeRowProps {
   isExpanded: boolean;
   expandedRows: Set<string>;
   onToggleExpand: (id: string) => void;
-  formatValue: (value: number) => string;
+  formatValue: (value: number, isQuantity?: boolean) => string;
   measures: Array<{ id: string; name: string }>;
   onCellChange?: (dimensionId: string, timeKey: string | null, measureId: string, newValue: number) => void;
   focusedCell?: { rowId: string; measureId: string } | null;
@@ -184,7 +184,6 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
 
     if (isDirectlyEdited) {
       const isIncrement = deltaPercent !== null && deltaPercent > 0;
-      const iconColor = isIncrement ? '#ff5d2d' : '#2E76E1';
       const deltaColor = isIncrement ? '#ff5d2d' : '#2E76E1';
       
       return (
@@ -193,10 +192,13 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
           onClick={isEditable ? (e) => handleCellValueClick(measureId, e) : undefined}
           style={{ cursor: isEditable ? 'pointer' : 'default' }}
         >
+          <div className="cell-value-left-icon">
+            <div style={{ width: '18px', height: '18px' }}></div>
+          </div>
           <div className="cell-value-left-section">
-            {deltaPercent !== null && (
+            {deltaPercent !== null && Math.abs(deltaPercent) > 0.001 && (
               <div className="cell-delta-badge" style={{ color: deltaColor }}>
-                {deltaPercent > 0 ? '+' : ''} {deltaPercent.toFixed(0)}%
+                {deltaPercent > 0 ? '+' : ''} {deltaPercent.toFixed(2)}%
               </div>
             )}
             <span 
@@ -212,17 +214,10 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
                 ) : (
                   valueStr
                 );
-              })() : formatValue(currentValue)}
+              })() : (() => {
+                return formatValue(currentValue);
+              })()}
             </span>
-          </div>
-          <div className="cell-edit-icon">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="12" cy="12" r="12" fill={iconColor}/>
-              {/* User head - connected directly to body */}
-              <circle cx="12" cy="9.5" r="3.2" fill="white"/>
-              {/* User body/shoulders - wider and better proportioned, connected to head */}
-              <path d="M4.5 18.5C4.5 15.2 7.7 12.5 12 12.5C16.3 12.5 19.5 15.2 19.5 18.5V20H4.5V18.5Z" fill="white"/>
-            </svg>
           </div>
         </div>
       );
@@ -231,6 +226,8 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
     // Saved edited cell: show only icon, no badge, normal value positioning
     if (isSavedEdited) {
       const iconColor = savedIconColor || '#2E76E1'; // Use stored color or default blue
+      // Use saved icon color to determine arrow direction (orange = increase, blue = decrease)
+      const isIncrease = iconColor === '#ff5d2d' || iconColor === '#FF5D2D';
       
       return (
         <div 
@@ -238,8 +235,19 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
           onClick={isEditable ? (e) => handleCellValueClick(measureId, e) : undefined}
           style={{ cursor: isEditable ? 'pointer' : 'default' }}
         >
+          <div className="cell-value-left-icon">
+            {isIncrease ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 6v10M12 6l4 4M12 6l-4 4" stroke="#ff5d2d" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+              </svg>
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 18V8M12 18l4-4M12 18l-4-4" stroke="#2E76E1" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+              </svg>
+            )}
+          </div>
           <span 
-            className={`cell-value ${!isEditable ? 'cell-value-readonly' : ''}`}
+            className={`cell-value cell-value-saved ${isIncrease ? 'cell-value-increase' : 'cell-value-decrease'} ${!isEditable ? 'cell-value-readonly' : ''}`}
           >
             {searchTerm && searchTerm.trim() ? (() => {
               const searchTerms = extractSearchTerms(searchTerm);
@@ -252,15 +260,6 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
               );
             })() : formatValue(currentValue)}
           </span>
-          <div className="cell-edit-icon cell-edit-icon-saved">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="12" cy="12" r="12" fill={iconColor}/>
-              {/* User head */}
-              <circle cx="12" cy="9.5" r="3.2" fill="white"/>
-              {/* User body/shoulders */}
-              <path d="M4.5 18.5C4.5 15.2 7.7 12.5 12 12.5C16.3 12.5 19.5 15.2 19.5 18.5V20H4.5V18.5Z" fill="white"/>
-            </svg>
-          </div>
         </div>
       );
     }
@@ -276,10 +275,13 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
           onClick={isEditable ? (e) => handleCellValueClick(measureId, e) : undefined}
           style={{ cursor: isEditable ? 'pointer' : 'default' }}
         >
+          <div className="cell-value-left-icon">
+            <div style={{ width: '18px', height: '18px' }}></div>
+          </div>
           <div className="cell-value-left-section">
-            {deltaPercent !== null && (
+            {deltaPercent !== null && Math.abs(deltaPercent) > 0.001 && (
               <div className="cell-delta-badge" style={{ color: deltaColor }}>
-                {deltaPercent > 0 ? '+' : ''} {deltaPercent.toFixed(0)}%
+                {deltaPercent > 0 ? '+' : ''} {deltaPercent.toFixed(2)}%
               </div>
             )}
             <span 
@@ -295,7 +297,9 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
                 ) : (
                   valueStr
                 );
-              })() : formatValue(currentValue)}
+              })() : (() => {
+                return formatValue(currentValue);
+              })()}
             </span>
           </div>
         </div>
@@ -303,8 +307,12 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
     }
     
     return (
-      <span 
-        className={`cell-value ${!isEditable ? 'cell-value-readonly' : ''}`}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+        <div className="cell-value-left-icon">
+          <div style={{ width: '16px', height: '16px' }}></div>
+        </div>
+        <span 
+          className={`cell-value ${!isEditable ? 'cell-value-readonly' : ''}`}
         style={{ cursor: isEditable ? 'pointer' : 'default' }}
         onClick={isEditable ? (e) => handleCellValueClick(measureId, e) : undefined}
       >
@@ -317,8 +325,13 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
           ) : (
             valueStr
           );
-        })() : formatValue(currentValue)}
+        })() : (() => {
+          const measure = measures.find(m => m.id === measureId);
+          const isQuantity = measure?.name?.toLowerCase().includes('quantity') || false;
+          return formatValue(currentValue, isQuantity);
+        })()}
       </span>
+      </div>
     );
   };
 

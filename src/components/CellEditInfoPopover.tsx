@@ -1,0 +1,110 @@
+import React from 'react';
+import { CellEditHistoryEntry } from '../types/editHistory';
+import '../styles/components/CellEditInfoPopover.css';
+
+interface CellEditInfoPopoverProps {
+  entry: CellEditHistoryEntry;
+  position: { top: number; left: number };
+  onViewHistory: () => void;
+  onClose: () => void;
+}
+
+const CellEditInfoPopover: React.FC<CellEditInfoPopoverProps> = ({
+  entry,
+  position,
+  onViewHistory,
+  onClose
+}) => {
+  const formatTimestamp = (date: Date) => {
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    }).format(new Date(date));
+  };
+
+  const formatNumber = (num: number | undefined) => {
+    if (num === undefined) return '-';
+    return num.toLocaleString();
+  };
+
+  // Get user initials
+  const getInitials = (name: string) => {
+    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  };
+
+  const hasEdit = entry.oldValue !== undefined && entry.newValue !== undefined && entry.oldValue !== entry.newValue;
+  const delta = hasEdit ? (entry.newValue! - entry.oldValue!) : 0;
+  const isIncrease = delta > 0;
+  const hasNote = entry.note && entry.note.trim() !== '';
+
+  // Build the change description like the side panel
+  const getChangeDescription = () => {
+    if (!hasEdit) {
+      return 'Added a note';
+    }
+    const action = isIncrease ? 'Increased' : 'Decreased';
+    return (
+      <>
+        {action} from <strong>{formatNumber(entry.oldValue)}</strong> to <strong>{formatNumber(entry.newValue)}</strong>{' '}
+        <span className={`cell-edit-info-delta ${isIncrease ? 'increase' : 'decrease'}`}>
+          ({isIncrease ? '+' : ''}{formatNumber(delta)})
+        </span>
+      </>
+    );
+  };
+
+  return (
+    <div 
+      className="cell-edit-info-popover"
+      style={{ top: position.top, left: position.left }}
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      <div className="cell-edit-info-popover-nubbin"></div>
+      
+      {/* Header row with avatar */}
+      <div className="cell-edit-info-header">
+        <div className="cell-edit-info-avatar">
+          {getInitials(entry.userName)}
+        </div>
+        <div className="cell-edit-info-header-content">
+          <span className="cell-edit-info-username">{entry.userName}</span>
+          <span className="cell-edit-info-timestamp">{formatTimestamp(entry.timestamp)}</span>
+        </div>
+      </div>
+      
+      {/* Change description */}
+      <div className="cell-edit-info-change-text">
+        {getChangeDescription()}
+      </div>
+      
+      {/* Note section */}
+      {hasNote && (
+        <div className="cell-edit-info-note">
+          <span className="cell-edit-info-note-text">
+            "{entry.note!.length > 100 ? entry.note!.slice(0, 100) + '...' : entry.note}"
+          </span>
+        </div>
+      )}
+      
+      {/* View history link */}
+      <div className="cell-edit-info-separator"></div>
+      <button className="cell-edit-info-history-btn" onClick={onViewHistory}>
+        View Edit History
+      </button>
+      
+      {/* Close button */}
+      <button className="cell-edit-info-close" onClick={onClose} title="Close">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"/>
+        </svg>
+      </button>
+    </div>
+  );
+};
+
+export default CellEditInfoPopover;

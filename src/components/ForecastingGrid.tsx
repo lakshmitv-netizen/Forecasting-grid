@@ -11,6 +11,8 @@ import GridToolbar from './GridToolbar';
 import SettingsPanel from './SettingsPanel';
 import FiltersPanel from './FiltersPanel';
 import CellDetailsHistoryPanel from './CellDetailsHistoryPanel';
+import CellEditInfoPopover from './CellEditInfoPopover';
+import CellContextMenu from './CellContextMenu';
 import '../styles/components/Grid.css';
 
 // Cell focus types for different layouts
@@ -31,44 +33,87 @@ const ForecastingGrid: React.FC = () => {
   // State to track current focused cell for CellDetailsHistoryPanel (triggers re-render)
   const [currentFocusedCell, setCurrentFocusedCell] = useState<{ rowId: string; monthKey?: string; measureId?: string } | null>(null);
   
-  // State to track edit history for all cells (includes both edits and notes)
+  // State to track edit history for all cells (includes both edits and notes) - SAVED edits only
   const [editHistory, setEditHistory] = useState<CellEditHistoryEntry[]>([]);
   
-  // Function to add edit history entry
-  const addEditHistory = useCallback((entry: Omit<CellEditHistoryEntry, 'id' | 'timestamp' | 'userId' | 'userName'>) => {
-    const newEntry: CellEditHistoryEntry = {
-      ...entry,
-      id: `${entry.cellKey}-${Date.now()}-${Math.random()}`,
-      timestamp: new Date(),
-      userId: 'john-carter',
-      userName: 'John Carter',
-    };
-    
-    // Ensure note is preserved
-    if (entry.note) {
-      newEntry.note = entry.note.trim();
-    }
-    
-    setEditHistory(prev => [newEntry, ...prev]);
-  }, []);
+  // State to track DRAFT edit history (unsaved edits) - Map keyed by cellKey for quick lookup/update
+  const [draftEditHistory, setDraftEditHistory] = useState<Map<string, CellEditHistoryEntry>>(new Map());
   
+  // State for locked cells - locked cells cannot be edited or impacted by propagation
+  const [lockedCells, setLockedCells] = useState<Set<string>>(new Set());
+  
+  // State for undo/redo
+  const undoHandlerRef = useRef<(() => void) | null>(null);
+  const redoHandlerRef = useRef<(() => void) | null>(null);
+  // Note: canUndo/canRedo state managed by HierarchicalGrid
+  const [_canUndo, setCanUndo] = useState(false);
+  const [_canRedo, setCanRedo] = useState(false);
+  
+  // Function to add/edit DRAFT edit history entry (unsaved edits)
+  // If a draft already exists for this cellKey, update it; otherwise create new
+  const addDraftEditHistory = useCallback((entry: Omit<CellEditHistoryEntry, 'id' | 'timestamp' | 'userId' | 'userName'>) => {
+    setDraftEditHistory(prev => {
+      const newMap = new Map(prev);
+      const existingDraft = newMap.get(entry.cellKey);
+      
+      if (existingDraft) {
+        // Update existing draft - merge value and note changes
+        // Keep the original oldValue from first edit, update newValue and note
+        newMap.set(entry.cellKey, {
+          ...existingDraft,
+          oldValue: existingDraft.oldValue ?? entry.oldValue,
+          newValue: entry.newValue ?? existingDraft.newValue,
+          note: entry.note !== undefined ? (entry.note.trim() || undefined) : existingDraft.note,
+          timestamp: new Date(), // Update timestamp to latest edit
+        });
+      } else {
+        // Create new draft entry
+        const newDraft: CellEditHistoryEntry = {
+          ...entry,
+          id: `draft-${entry.cellKey}-${Date.now()}-${Math.random()}`,
+          timestamp: new Date(),
+          userId: 'john-carter',
+          userName: 'John Carter',
+        };
+        
+        // Ensure note is preserved and trimmed
+        if (newDraft.note) {
+          newDraft.note = newDraft.note.trim();
+        }
+        
+        newMap.set(entry.cellKey, newDraft);
+      }
+      
+      return newMap;
+    });
+  }, []);
+
+  // Function to commit drafts to saved edit history (called on Save)
+  const commitDraftsToHistory = useCallback(() => {
+    const draftsArray = Array.from(draftEditHistory.values());
+    if (draftsArray.length > 0) {
+      setEditHistory(prev => [...draftsArray, ...prev]);
+      setDraftEditHistory(new Map()); // Clear drafts after committing
+    }
+  }, [draftEditHistory]);
+
+  // Function to clear draft edits (called on Cancel)
+  const clearDrafts = useCallback(() => {
+    setDraftEditHistory(new Map());
+  }, []);
+
   // Function to add adjustment note (for notes added separately, not during edit)
+  // Now adds to drafts instead of saved history
   const addAdjustmentNote = useCallback((note: Omit<AdjustmentNote, 'id' | 'timestamp' | 'userId' | 'userName'>) => {
-    // Add as note-only entry in edit history
-    const newEntry: CellEditHistoryEntry = {
+    // Add as note-only entry to draft history
+    addDraftEditHistory({
       cellKey: note.cellKey,
       rowId: note.rowId,
       timeKey: note.timeKey,
       measureId: note.measureId,
       note: note.note,
-      id: `note-${note.cellKey}-${Date.now()}-${Math.random()}`,
-      timestamp: new Date(),
-      userId: 'john-carter',
-      userName: 'John Carter',
-    };
-    
-    setEditHistory(prev => [newEntry, ...prev]);
-  }, []);
+    });
+  }, [addDraftEditHistory]);
 
   // Handler for adding note from the panel footer
   const handlePanelAddNote = useCallback((rowId: string, monthKey: string, note: string) => {
@@ -81,6 +126,58 @@ const ForecastingGrid: React.FC = () => {
       note,
     });
   }, [addAdjustmentNote]);
+
+  // Handler for showing edit info popover when a cell is focused
+  // Check both draft and saved edit history
+  const handleCellFocusWithHistory = useCallback((cellKey: string, cellRect: DOMRect | null, cellValue?: number) => {
+    if (!cellRect) {
+      setEditInfoPopover(null);
+      return;
+    }
+    
+    // Check draft first (most recent), then saved history
+    const draftEntry = draftEditHistory.get(cellKey);
+    const savedEntry = editHistory.find(entry => entry.cellKey === cellKey);
+    const latestEntry = draftEntry || savedEntry;
+    
+    // Only show popover if there's edit history (draft or saved)
+    if (!latestEntry) {
+      setEditInfoPopover(null);
+      return;
+    }
+    
+    // Position the popover below the cell
+    const popoverWidth = 280;
+    let leftPos = cellRect.left + window.scrollX;
+    
+    // Ensure popover doesn't go off the right edge
+    if (leftPos + popoverWidth > window.innerWidth - 20) {
+      leftPos = window.innerWidth - popoverWidth - 20;
+    }
+    
+    setEditInfoPopover({
+      entry: latestEntry,
+      cellKey,
+      cellValue: cellValue ?? 0,
+      position: {
+        top: cellRect.bottom + window.scrollY + 8,
+        left: leftPos
+      }
+    });
+  }, [editHistory, draftEditHistory]);
+
+  // Close edit info popover
+  const handleCloseEditInfoPopover = useCallback(() => {
+    setEditInfoPopover(null);
+  }, []);
+
+  // Open edit history panel from popover
+  const handleViewEditHistory = useCallback(() => {
+    setEditInfoPopover(null);
+    setIsCellDetailsHistoryOpen(true);
+    setIsSettingsOpen(false);
+    setIsFiltersOpen(false);
+  }, []);
   
   // Debug: Log when editHistory changes
   useEffect(() => {
@@ -101,6 +198,91 @@ const ForecastingGrid: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const [isCellDetailsHistoryOpen, setIsCellDetailsHistoryOpen] = useState(false);
+  
+  // State for cell edit info popover
+  const [editInfoPopover, setEditInfoPopover] = useState<{
+    entry: CellEditHistoryEntry | null;
+    cellKey: string;
+    cellValue: number;
+    position: { top: number; left: number };
+  } | null>(null);
+
+  // State for context menu
+  const [contextMenu, setContextMenu] = useState<{
+    isOpen: boolean;
+    position: { x: number; y: number };
+    cellKey: string;
+    cellValue: number;
+    isLocked: boolean;
+    isEditable: boolean;
+  } | null>(null);
+
+  // Clipboard state for context menu
+  const [clipboardValue, setClipboardValue] = useState<number | null>(null);
+
+  // Context menu handlers
+  const handleContextMenu = useCallback((e: React.MouseEvent, cellKey: string, cellValue: number, isLocked: boolean, isEditable: boolean) => {
+    e.preventDefault();
+    setContextMenu({
+      isOpen: true,
+      position: { x: e.clientX, y: e.clientY },
+      cellKey,
+      cellValue,
+      isLocked,
+      isEditable
+    });
+    // Close edit info popover if open
+    setEditInfoPopover(null);
+  }, []);
+
+  const handleCloseContextMenu = useCallback(() => {
+    setContextMenu(null);
+  }, []);
+
+  const handleContextCopy = useCallback(() => {
+    if (contextMenu) {
+      setClipboardValue(contextMenu.cellValue);
+      navigator.clipboard.writeText(String(contextMenu.cellValue));
+    }
+  }, [contextMenu]);
+
+  const handleContextPaste = useCallback(() => {
+    // Paste functionality - would need to trigger cell update
+    console.log('Paste:', clipboardValue);
+  }, [clipboardValue]);
+
+  const handleContextToggleLock = useCallback(() => {
+    if (contextMenu) {
+      setLockedCells((prev: Set<string>) => {
+        const newSet = new Set(prev);
+        if (newSet.has(contextMenu.cellKey)) {
+          newSet.delete(contextMenu.cellKey);
+        } else {
+          newSet.add(contextMenu.cellKey);
+        }
+        return newSet;
+      });
+    }
+  }, [contextMenu]);
+
+  // Close popover on outside click
+  useEffect(() => {
+    if (!editInfoPopover) return;
+    
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      // Don't close if clicking inside the popover
+      if (target.closest('.cell-edit-info-popover')) return;
+      // Don't close if clicking on an editable cell (will show popover for that cell)
+      if (target.closest('.editable-cell')) return;
+      setEditInfoPopover(null);
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [editInfoPopover]);
+
+  
   const [selectedDimensionLevels, setSelectedDimensionLevels] = useState<Set<string>>(
     new Set(['account', 'category', 'product'])
   );
@@ -259,9 +441,14 @@ const ForecastingGrid: React.FC = () => {
           </div>
           <div className="last-refreshed">
             Last Refreshed {lastRefreshed}
-            <svg className="refresh-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
+            <button className="refresh-button" type="button" title="Refresh">
+              <svg className="refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 2v6h-6"/>
+                <path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+                <path d="M3 22v-6h6"/>
+                <path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+              </svg>
+            </button>
           </div>
         </div>
         <div className="page-title-section">
@@ -312,7 +499,7 @@ const ForecastingGrid: React.FC = () => {
               setCurrentFocusedCell(focus);
             }}
             searchTerm={gridSearch}
-            onEditHistory={addEditHistory}
+            onEditHistory={addDraftEditHistory}
           />
         ) : selectedLayoutState === 'Time / Dimensions x Measures' ? (
           <TimeDimensionsGrid 
@@ -325,12 +512,12 @@ const ForecastingGrid: React.FC = () => {
             onCollapseAllRows={(handler) => { collapseAllRef.current = handler; }}
             onSettingsClick={() => setIsSettingsOpen(true)}
             initialFocusedCell={timeDimensionsGridFocusRef.current}
-            onFocusedCellChange={(focus) => { 
+            onFocusedCellChange={(focus) => {
               timeDimensionsGridFocusRef.current = focus;
               setCurrentFocusedCell(focus);
             }}
             searchTerm={gridSearch}
-            onEditHistory={addEditHistory}
+            onEditHistory={addDraftEditHistory}
           />
         ) : (
           <HierarchicalGrid 
@@ -348,9 +535,18 @@ const ForecastingGrid: React.FC = () => {
               setCurrentFocusedCell(focus);
             }}
             searchTerm={gridSearch}
-            onEditHistory={addEditHistory}
+            onEditHistory={addDraftEditHistory}
+            onCommitDrafts={commitDraftsToHistory}
+            onClearDrafts={clearDrafts}
             onAddAdjustmentNote={addAdjustmentNote}
             cellEditHistory={editHistory}
+            onCellFocusWithHistory={handleCellFocusWithHistory}
+            lockedCells={lockedCells}
+            onUndoHandler={(handler) => { undoHandlerRef.current = handler; }}
+            onRedoHandler={(handler) => { redoHandlerRef.current = handler; }}
+            onCanUndoChange={setCanUndo}
+            onCanRedoChange={setCanRedo}
+            onCellContextMenu={handleContextMenu}
         />
         )}
         <SettingsPanel 
@@ -385,8 +581,34 @@ const ForecastingGrid: React.FC = () => {
           data={data}
           layout={selectedLayoutState}
           editHistory={editHistory}
+          draftEditHistory={draftEditHistory}
           onAddNote={handlePanelAddNote}
         />
+        
+        {/* Cell Edit Info Popover - shown when a cell with edit history is focused */}
+        {editInfoPopover && editInfoPopover.entry && (
+          <CellEditInfoPopover
+            entry={editInfoPopover.entry}
+            position={editInfoPopover.position}
+            onViewHistory={handleViewEditHistory}
+            onClose={handleCloseEditInfoPopover}
+          />
+        )}
+
+        {/* Cell Context Menu - shown on right-click */}
+        {contextMenu && (
+          <CellContextMenu
+            isOpen={contextMenu.isOpen}
+            position={contextMenu.position}
+            onClose={handleCloseContextMenu}
+            onCopy={handleContextCopy}
+            onPaste={handleContextPaste}
+            onToggleLock={handleContextToggleLock}
+            isLocked={contextMenu.isLocked}
+            canPaste={clipboardValue !== null}
+            isEditable={contextMenu.isEditable}
+          />
+        )}
       </div>
     </div>
   );

@@ -34,6 +34,15 @@ interface HierarchicalGridProps {
   onEditHistory?: (entry: { cellKey: string; rowId: string; timeKey?: string; oldValue: number; newValue: number; note?: string }) => void; // Callback to track edit history
   onAddAdjustmentNote?: (note: Omit<import('../types/adjustmentNote').AdjustmentNote, 'id' | 'timestamp' | 'userId' | 'userName'>) => void; // Callback to add adjustment note
   cellEditHistory?: import('../types/editHistory').CellEditHistoryEntry[]; // Edit history to check for notes
+  onCellFocusWithHistory?: (cellKey: string, cellRect: DOMRect | null, cellValue?: number) => void; // Callback when a cell is focused
+  lockedCells?: Set<string>; // Set of locked cell keys that cannot be edited or impacted
+  onCellContextMenu?: (e: React.MouseEvent, cellKey: string, cellValue: number, isLocked: boolean, isEditable: boolean) => void; // Callback for right-click context menu
+  onUndoHandler?: (handler: () => void) => void; // Callback to register undo handler
+  onRedoHandler?: (handler: () => void) => void; // Callback to register redo handler
+  onCanUndoChange?: (canUndo: boolean) => void; // Callback when undo availability changes
+  onCanRedoChange?: (canRedo: boolean) => void; // Callback when redo availability changes
+  onCommitDrafts?: () => void; // Callback to commit draft edits to saved history (called on Save)
+  onClearDrafts?: () => void; // Callback to clear draft edits (called on Cancel)
 }
 
 const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({ 
@@ -44,13 +53,22 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   onAddAdjustmentNote, 
   columnWidth = 100, 
   onExpandAllRows, 
-  onCollapseAllRows, 
+  onCollapseAllRows,
+  onCellFocusWithHistory, 
   onSettingsClick,
   initialFocusedCell,
   onFocusedCellChange,
   searchTerm = '',
   onEditHistory,
-  cellEditHistory = []
+  cellEditHistory = [],
+  lockedCells = new Set<string>(),
+  onUndoHandler,
+  onRedoHandler,
+  onCanUndoChange,
+  onCanRedoChange,
+  onCellContextMenu,
+  onCommitDrafts,
+  onClearDrafts
 }) => {
   // Store onEditHistory in a ref so it's always available in callbacks
   const onEditHistoryRef = useRef(onEditHistory);
@@ -179,6 +197,9 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   // Track saved edited cells (cells that were edited and saved - these keep the icon but no badge)
   // Map key: `${rowId}-${monthKey}`, value: icon color ('#ff5d2d' for increment, '#2E76E1' for decrement)
   const [savedEditedCells, setSavedEditedCells] = useState<Map<string, string>>(new Map());
+  // Track unsaved notes for dirty cells (cells that are edited but not saved)
+  // Map key: `${rowId}-${monthKey}`, value: note text
+  const [unsavedNotes, setUnsavedNotes] = useState<Map<string, string>>(new Map());
   // Edit history for undo/redo
   const [editHistory, setEditHistory] = useState<MeasureData[][]>([]);
   const [historyIndex, setHistoryIndex] = useState<number>(-1);
@@ -390,7 +411,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   const formatValue = (value: number): string => {
     return value.toLocaleString('en-US', {
       minimumFractionDigits: 0,
-      maximumFractionDigits: 2,
+      maximumFractionDigits: 0, // No decimals in cell values
     });
   };
 
@@ -795,6 +816,22 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       return newMap;
     });
     
+    // Store unsaved note if provided (for dirty cells)
+    if (hasNote) {
+      setUnsavedNotes(prev => {
+        const newMap = new Map(prev);
+        newMap.set(cellKey, note.trim());
+        return newMap;
+      });
+    } else {
+      // Clear unsaved note if note is empty
+      setUnsavedNotes(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(cellKey);
+        return newMap;
+      });
+    }
+    
     // Remove from impactedCells if it was previously impacted (edited cells take precedence)
     setImpactedCells(prev => {
       const newMap = new Map(prev);
@@ -814,6 +851,11 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
         return; // Skip the directly edited cell
       }
       const impactedCellKey = `${updateRowId}-${updateMonthKey}`;
+      // Skip locked cells - they are protected from propagation
+      if (lockedCells.has(impactedCellKey)) {
+        console.log('[GRID] Skipping locked cell from propagation:', impactedCellKey);
+        return;
+      }
       if (!originalValuesForImpacted.has(impactedCellKey)) {
         const impactedRow = findRowById(updateRowId, gridData) || gridData.find(m => m.id === updateRowId);
         if (impactedRow) {
@@ -1020,6 +1062,12 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     // Apply all updates first to get the correct state, then calculate cross-measure dependencies
     let tempData = gridData;
     for (const update of allUpdates) {
+      // Skip locked cells - they are protected from propagation
+      const updateCellKey = `${update.rowId}-${update.monthKey}`;
+      if (lockedCells.has(updateCellKey) && !(update.rowId === rowId && update.monthKey === monthKey)) {
+        console.log('[GRID] Skipping locked cell update:', updateCellKey);
+        continue;
+      }
       tempData = updateValue(update.rowId, update.monthKey, update.newValue, tempData);
     }
     
@@ -1119,7 +1167,20 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     const preservedValue = (isAccountOrCategoryYearQuarterEdit || isMeasureYearQuarterEdit) ? newValue : null;
     
     // Apply all updates
+    console.log('[GRID] Applying', allUpdates.length, 'updates');
     for (const update of allUpdates) {
+      // Skip locked cells - they are protected from propagation
+      const updateCellKey = `${update.rowId}-${update.monthKey}`;
+      if (lockedCells.has(updateCellKey) && !(update.rowId === rowId && update.monthKey === monthKey)) {
+        console.log('[GRID] Skipping locked cell update (final):', updateCellKey);
+        continue;
+      }
+      // Check if this update is for a previously edited cell
+      const isPreviouslyEdited = editedCells.has(updateCellKey);
+      if (isPreviouslyEdited && updateCellKey !== `${rowId}-${monthKey}`) {
+        console.log('[GRID] Updating previously edited cell:', updateCellKey, 'from', 
+          editedCells.get(updateCellKey), 'to', update.newValue);
+      }
       updatedData = updateValue(update.rowId, update.monthKey, update.newValue, updatedData);
     }
 
@@ -1219,18 +1280,20 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     });
     setHistoryIndex(prev => prev + 1);
 
-    setGridData(updatedData);
+    // Ensure we have a fresh deep copy to trigger React re-render
+    const finalData = JSON.parse(JSON.stringify(updatedData));
+    setGridData(finalData);
     
-    // Add to edit history for undo/redo
+    // Add to edit history for undo/redo (only once, remove duplicate)
     setEditHistory(prev => {
-      const newHistory = prev.slice(0, historyIndex + 1);
-      newHistory.push(JSON.parse(JSON.stringify(updatedData)));
+      const newHistory = prev.slice(0, historyIndex);
+      newHistory.push(JSON.parse(JSON.stringify(finalData)));
       return newHistory;
     });
     setHistoryIndex(prev => prev + 1);
     
     if (onDataChange) {
-      onDataChange(updatedData);
+      onDataChange(finalData);
     }
   }, [gridData, updateValue, onDataChange, calculateMeasureValues, recalculateTimeAggregations, distributeQuarterToMonths, distributeYearToQuarters, historyIndex, editedCells]);
 
@@ -1742,8 +1805,39 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     }
   }, [historyIndex, editHistory]);
 
+  // Register undo/redo handlers with parent
+  useEffect(() => {
+    if (onUndoHandler) {
+      onUndoHandler(handleUndo);
+    }
+  }, [onUndoHandler, handleUndo]);
+
+  useEffect(() => {
+    if (onRedoHandler) {
+      onRedoHandler(handleRedo);
+    }
+  }, [onRedoHandler, handleRedo]);
+
+  // Report undo/redo availability to parent
+  useEffect(() => {
+    if (onCanUndoChange) {
+      onCanUndoChange(historyIndex >= 0);
+    }
+  }, [onCanUndoChange, historyIndex]);
+
+  useEffect(() => {
+    if (onCanRedoChange) {
+      onCanRedoChange(historyIndex < editHistory.length - 1);
+    }
+  }, [onCanRedoChange, historyIndex, editHistory.length]);
+
   // Cancel handler
   const handleCancel = useCallback(() => {
+    // Clear draft edits
+    if (onClearDrafts) {
+      onClearDrafts();
+    }
+    
     // Restore to original data
     setGridData(JSON.parse(JSON.stringify(originalDataRef.current)));
     setEditHistory([]);
@@ -1752,10 +1846,17 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     setImpactedCells(new Map());
     // Also clear saved edited cells
     setSavedEditedCells(new Map());
-  }, []);
+    // Clear unsaved notes
+    setUnsavedNotes(new Map());
+  }, [onClearDrafts]);
 
   // Save handler
   const handleSave = useCallback(() => {
+    // Commit draft edits to saved history before clearing undo/redo history
+    if (onCommitDrafts) {
+      onCommitDrafts();
+    }
+    
     // Update original data reference
     originalDataRef.current = JSON.parse(JSON.stringify(gridData));
     // Clear history and reset
@@ -1797,13 +1898,15 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     setImpactedCells(new Map());
     // Clear editedCells (they're now saved, but savedEditedCells will track them for icon display)
     setEditedCells(new Map());
+    // Clear unsaved notes (they're now saved)
+    setUnsavedNotes(new Map());
     // Reset "Show Only Impacted KPI" filter since there are no more unsaved edits
     setShowOnlyImpactedKPI(false);
     // Notify parent
     if (onDataChange) {
       onDataChange(gridData);
     }
-  }, [gridData, onDataChange, editedCells]);
+  }, [gridData, onDataChange, editedCells, onCommitDrafts]);
 
   // Check if footer should be visible (only if there are unsaved edits)
   const isFooterVisible = editedCells.size > 0 || impactedCells.size > 0;
@@ -1856,9 +1959,8 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                       title="Settings"
                       type="button"
                     >
-                      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <svg fill="currentColor" viewBox="0 0 24 24" width="14" height="14">
+                        <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
                       </svg>
                     </button>
                   )}
@@ -1935,10 +2037,14 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                     editedCells={editedCells}
                     impactedCells={impactedCells}
                     savedEditedCells={savedEditedCells}
+                    unsavedNotes={unsavedNotes}
                     columnWidth={columnWidth}
                     searchTerm={searchTerm}
                     onCellEditStateChange={handleCellEditStateChange}
                     editHistory={cellEditHistory}
+                    onCellFocusWithHistory={onCellFocusWithHistory}
+                    lockedCells={lockedCells}
+                    onCellContextMenu={onCellContextMenu}
                   />
               );
               }
@@ -1963,10 +2069,14 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                   editedCells={editedCells}
                   impactedCells={impactedCells}
                   savedEditedCells={savedEditedCells}
+                  unsavedNotes={unsavedNotes}
                   columnWidth={columnWidth}
                   searchTerm={searchTerm}
                   onCellEditStateChange={handleCellEditStateChange}
                   editHistory={cellEditHistory}
+                  onCellFocusWithHistory={onCellFocusWithHistory}
+                  lockedCells={lockedCells}
+                  onCellContextMenu={onCellContextMenu}
                 />
               );
             })

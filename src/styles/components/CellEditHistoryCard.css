@@ -104,6 +104,17 @@
   line-height: 1.4;
 }
 
+.sf-timeline-draft-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: #ff9800;
+  background-color: #fff3e0;
+  padding: 2px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 .sf-timeline-timestamp {
   font-size: 12px;
   color: #706e6b;
@@ -231,12 +242,6 @@
 /* Discussion Section */
 .sf-timeline-discussion {
   padding-top: 0;
-}
-
-.sf-timeline-discussion.has-note {
-  margin-top: 0;
-  padding-top: 12px;
-  border-top: 1px solid #dddbda;
 }
 
 .sf-timeline-replies {

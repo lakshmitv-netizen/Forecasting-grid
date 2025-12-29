@@ -12,6 +12,7 @@ interface CellDetailsHistoryPanelProps {
   data?: MeasureData[];
   layout?: string;
   editHistory?: CellEditHistoryEntry[];
+  draftEditHistory?: Map<string, CellEditHistoryEntry>; // Draft (unsaved) edits
   onAddNote?: (rowId: string, monthKey: string, note: string) => void;
 }
 
@@ -22,6 +23,7 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
   data = [],
   layout = 'Measures / Dimensions x Time',
   editHistory = [],
+  draftEditHistory,
   onAddNote
 }) => {
   const [activeTab, setActiveTab] = useState<'single' | 'multi'>('single');
@@ -83,7 +85,11 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
         : focusedCell.rowId;
     }
     
-    const filtered = editHistory
+    // Merge drafts and saved history
+    const draftsArray = draftEditHistory ? Array.from(draftEditHistory.values()) : [];
+    const allHistory = [...draftsArray, ...editHistory];
+    
+    const filtered = allHistory
       .filter(entry => {
         // Exact match
         const exactMatch = entry.cellKey === cellKey;
@@ -105,7 +111,7 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
       .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()); // Most recent first
     
     return filtered;
-  }, [focusedCell, editHistory, layout]);
+  }, [focusedCell, editHistory, draftEditHistory, layout]);
   
   // Add reply to a card
   const handleAddCardReply = useCallback((entryId: string, message: string) => {
@@ -172,12 +178,7 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
           </div>
-          <p className="cell-details-history-panel-title">Cell Details and History</p>
-          <div className="cell-details-history-panel-info-icon">
-            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
+          <p className="cell-details-history-panel-title">Cell Details & Updates</p>
         </div>
         <div className="cell-details-history-panel-actions">
           <button className="cell-details-history-panel-close" onClick={onClose} aria-label="Close">
@@ -275,6 +276,7 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                           replies={cardReplies[entry.id] || []}
                           onAddReply={handleAddCardReply}
                           isLast={index === cellEditHistory.length - 1}
+                          isFirst={index === 0}
                         />
                       ))
                     ) : (

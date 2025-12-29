@@ -12,7 +12,7 @@ interface GridRowProps {
   isExpanded: boolean;
   expandedRows: Set<string>;
   onToggleExpand: (id: string) => void;
-  formatValue: (value: number) => string;
+  formatValue: (value: number, isQuantity?: boolean) => string;
   onCellChange?: (rowId: string, monthKey: keyof GridRowType['values'], newValue: number, note?: string) => void;
   visibleTimeKeys?: (keyof GridRowType['values'])[];
   focusedCell?: { rowId: string; monthKey: keyof GridRowType['values'] } | null;
@@ -21,10 +21,14 @@ interface GridRowProps {
   editedCells?: Map<string, number>; // key: `${rowId}-${monthKey}`, value: originalValue
   impactedCells?: Map<string, number>; // key: `${rowId}-${monthKey}`, value: originalValue
   savedEditedCells?: Map<string, string>; // key: `${rowId}-${monthKey}`, value: icon color - cells that were edited and saved (show icon only)
+  unsavedNotes?: Map<string, string>; // key: `${rowId}-${monthKey}`, value: note text - notes for dirty cells
   columnWidth?: number; // Column width in pixels for time period columns
   searchTerm?: string; // Search term for highlighting
   onCellEditStateChange?: (isEditing: boolean, rowId: string, monthKey: keyof GridRowType['values']) => void; // Callback when cell edit state changes
   editHistory?: CellEditHistoryEntry[]; // Edit history to check for notes
+  onCellFocusWithHistory?: (cellKey: string, cellRect: DOMRect | null, cellValue?: number) => void; // Callback when a cell is focused
+  lockedCells?: Set<string>; // Set of locked cell keys that cannot be edited
+  onCellContextMenu?: (e: React.MouseEvent, cellKey: string, cellValue: number, isLocked: boolean, isEditable: boolean) => void; // Callback for right-click context menu
 }
 
 const GridRowComponent: React.FC<GridRowProps> = ({
@@ -42,10 +46,14 @@ const GridRowComponent: React.FC<GridRowProps> = ({
   editedCells,
   impactedCells,
   savedEditedCells,
+  unsavedNotes,
   columnWidth = 100,
   searchTerm = '',
   onCellEditStateChange,
   editHistory = [],
+  onCellFocusWithHistory,
+  lockedCells = new Set<string>(),
+  onCellContextMenu,
 }) => {
   const hasChildren = row.children && row.children.length > 0;
   const [editingCell, setEditingCell] = useState<{ monthKey: keyof GridRowType['values'] } | null>(null);
@@ -153,7 +161,10 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     }
     setEditingCell({ monthKey });
     setEditValue(row.values[monthKey].toString());
-    setAdjustmentNote(''); // Clear note when starting new edit
+    // Check for unsaved note for this cell
+    const cellKey = `${row.id}-${monthKey}`;
+    const unsavedNote = unsavedNotes?.get(cellKey) || '';
+    setAdjustmentNote(unsavedNote); // Restore unsaved note if it exists
   };
 
   const handleCellEnterKey = (monthKey: keyof GridRowType['values']) => {
@@ -167,9 +178,16 @@ const GridRowComponent: React.FC<GridRowProps> = ({
       console.log('[GridRow] No onCellChange handler, returning');
       return;
     }
+    // Close the edit info popover when entering edit mode
+    if (onCellFocusWithHistory) {
+      onCellFocusWithHistory('', null);
+    }
     setEditingCell({ monthKey });
     setEditValue(row.values[monthKey].toString());
-    setAdjustmentNote(''); // Clear note when starting new edit
+    // Check for unsaved note for this cell
+    const cellKey = `${row.id}-${monthKey}`;
+    const unsavedNote = unsavedNotes?.get(cellKey) || '';
+    setAdjustmentNote(unsavedNote); // Restore unsaved note if it exists
     // Notify parent that editing started - use setTimeout to ensure state is set
     setTimeout(() => {
       if (onCellEditStateChange) {
@@ -639,6 +657,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                     }
                   }}
                 />
+                
               </div>
             </div>,
             document.body
@@ -647,11 +666,21 @@ const GridRowComponent: React.FC<GridRowProps> = ({
       );
     }
     
-    // Measure rows are not editable - they are calculated values
-    const isEditable = row.type !== 'measure' && onCellChange;
-    
     // Check if this cell has been directly edited or impacted
     const cellKey = `${row.id}-${monthKey}`;
+    
+    // Check if cell is locked
+    const isCellLocked = lockedCells.has(cellKey);
+    
+    // Check if this is a readonly measure (Last Year data)
+    const isReadonlyMeasure = row.id.includes('measure-ly-order') || 
+                              row.id.includes('-measure-ly-order') ||
+                              row.name?.includes('Last Year');
+    
+    // Measure rows are not editable - they are calculated values
+    // Locked cells are also not editable
+    // Readonly measures (Last Year data) are not editable
+    const isEditable = row.type !== 'measure' && onCellChange && !isCellLocked && !isReadonlyMeasure;
     const editedOriginalValue = editedCells?.get(cellKey);
     const impactedOriginalValue = impactedCells?.get(cellKey);
     const savedIconColor = savedEditedCells?.get(cellKey);
@@ -683,15 +712,17 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     
     if (isDirectlyEdited) {
       const isIncrement = deltaPercent !== null && deltaPercent > 0;
-      const iconColor = isIncrement ? '#ff5d2d' : '#2E76E1';
       const deltaColor = isIncrement ? '#ff5d2d' : '#2E76E1';
       
       return (
         <div className="cell-value-wrapper-edited-container">
+          <div className="cell-value-left-icon">
+            <div style={{ width: '18px', height: '18px' }}></div>
+          </div>
           <div className="cell-value-left-section">
-            {deltaPercent !== null && (
+            {deltaPercent !== null && Math.abs(deltaPercent) > 0.001 && (
               <div className="cell-delta-badge" style={{ color: deltaColor }}>
-                {deltaPercent > 0 ? '+' : ''} {deltaPercent.toFixed(0)}%
+                {deltaPercent > 0 ? '+' : ''} {deltaPercent.toFixed(2)}%
               </div>
             )}
             <span 
@@ -706,15 +737,6 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               )}
             </span>
           </div>
-          <div className="cell-edit-icon">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="12" cy="12" r="12" fill={iconColor}/>
-              {/* User head - connected directly to body */}
-              <circle cx="12" cy="9.5" r="3.2" fill="white"/>
-              {/* User body/shoulders - wider and better proportioned, connected to head */}
-              <path d="M4.5 18.5C4.5 15.2 7.7 12.5 12 12.5C16.3 12.5 19.5 15.2 19.5 18.5V20H4.5V18.5Z" fill="white"/>
-            </svg>
-          </div>
         </div>
       );
     }
@@ -722,11 +744,29 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     // Saved edited cell: show only icon, no badge, normal value positioning
     if (isSavedEdited) {
       const iconColor = savedIconColor || '#2E76E1'; // Use stored color or default blue
+      // Use saved icon color to determine arrow direction (orange = increase, blue = decrease)
+      const isIncrease = iconColor === '#ff5d2d' || iconColor === '#FF5D2D';
       
       return (
         <div className="cell-value-wrapper-saved-container">
+          <div className="cell-value-left-icon">
+            {isCellLocked ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
+                <rect x="7" y="11" width="10" height="9" rx="1" fill="#6b7280"/>
+                <path d="M9 11V7c0-1.66 1.34-3 3-3s3 1.34 3 3v4" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" fill="none"/>
+              </svg>
+            ) : isIncrease ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 6v10M12 6l4 4M12 6l-4 4" stroke="#ff5d2d" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+              </svg>
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 18V8M12 18l4-4M12 18l-4-4" stroke="#2E76E1" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+              </svg>
+            )}
+          </div>
           <span 
-            className={`cell-value ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
+            className={`cell-value cell-value-saved ${!isCellLocked && (isIncrease ? 'cell-value-increase' : 'cell-value-decrease')} ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
             style={{ cursor: isEditable ? 'pointer' : 'default' }}
             onClick={isEditable ? (e) => handleCellValueClick(monthKey, e) : undefined}
           >
@@ -736,15 +776,6 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               formatValue(currentValue)
             )}
           </span>
-          <div className="cell-edit-icon cell-edit-icon-saved">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="12" cy="12" r="12" fill={iconColor}/>
-              {/* User head */}
-              <circle cx="12" cy="9.5" r="3.2" fill="white"/>
-              {/* User body/shoulders */}
-              <path d="M4.5 18.5C4.5 15.2 7.7 12.5 12 12.5C16.3 12.5 19.5 15.2 19.5 18.5V20H4.5V18.5Z" fill="white"/>
-            </svg>
-          </div>
         </div>
       );
     }
@@ -756,10 +787,13 @@ const GridRowComponent: React.FC<GridRowProps> = ({
       
       return (
         <div className="cell-value-wrapper-impacted-container">
+          <div className="cell-value-left-icon">
+            <div style={{ width: '18px', height: '18px' }}></div>
+          </div>
           <div className="cell-value-left-section">
-            {deltaPercent !== null && (
+            {deltaPercent !== null && Math.abs(deltaPercent) > 0.001 && (
               <div className="cell-delta-badge" style={{ color: deltaColor }}>
-                {deltaPercent > 0 ? '+' : ''} {deltaPercent.toFixed(0)}%
+                {deltaPercent > 0 ? '+' : ''} {deltaPercent.toFixed(2)}%
               </div>
             )}
             <span 
@@ -782,23 +816,45 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     const cellValueMatchesSearch = otherTerms.length > 0 && matchesNumber(cellValue, otherTerms);
     
     return (
-      <span 
-        className={`cell-value ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
-        style={{ cursor: isEditable ? 'pointer' : 'default' }}
-        onClick={isEditable ? (e) => handleCellValueClick(monthKey, e) : undefined}
-      >
-        {cellValueMatchesSearch ? (
-          <SearchHighlight text={formatValue(cellValue)} searchTerms={otherTerms} />
-        ) : (
-          formatValue(cellValue)
-        )}
-      </span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+        <div className="cell-value-left-icon">
+          {isCellLocked ? (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
+              <rect x="7" y="11" width="10" height="9" rx="1" fill="#6b7280"/>
+              <path d="M9 11V7c0-1.66 1.34-3 3-3s3 1.34 3 3v4" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" fill="none"/>
+            </svg>
+          ) : (
+            <div style={{ width: '18px', height: '18px' }}></div>
+          )}
+        </div>
+        <span 
+          className={`cell-value ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
+          style={{ cursor: isEditable ? 'pointer' : 'default' }}
+          onClick={isEditable ? (e) => handleCellValueClick(monthKey, e) : undefined}
+        >
+          {cellValueMatchesSearch ? (
+            <SearchHighlight text={formatValue(cellValue, row.name?.toLowerCase().includes('quantity'))} searchTerms={otherTerms} />
+          ) : (
+            formatValue(cellValue)
+          )}
+        </span>
+      </div>
     );
   };
 
+  // Check if this row is a readonly measure (Last Year data) for row-level styling
+  const isRowReadonlyMeasure = row.id.includes('measure-ly-order') || 
+                               row.id.includes('-measure-ly-order') ||
+                               row.name?.includes('Last Year');
+  
+  // Check if this is the actual measure row (not a child dimension row)
+  const isActualMeasureRow = row.type === 'measure' && isRowReadonlyMeasure;
+  // Check if this is a dimension row under a readonly measure
+  const isDimensionUnderReadonlyMeasure = row.type !== 'measure' && isRowReadonlyMeasure;
+
   return (
     <>
-      <tr className={`grid-row ${row.type === 'measure' ? 'measure-row' : ''}`}>
+      <tr className={`grid-row ${row.type === 'measure' ? 'measure-row' : ''} ${isActualMeasureRow ? 'readonly-measure-row-actual' : ''} ${isDimensionUnderReadonlyMeasure ? 'readonly-dimension-row' : ''}`}>
         <td className="grid-cell">
           <div className="cell-content">
             <span className={`cell-indent level-${level}`}></span>
@@ -828,7 +884,14 @@ const GridRowComponent: React.FC<GridRowProps> = ({
         {timeKeys.map((key) => {
           const cellKey = `${row.id}-${key}`;
           const isFocused = focusedCell?.rowId === row.id && focusedCell?.monthKey === key;
-          const isEditable = row.type !== 'measure' && onCellChange;
+          const isCellLocked = lockedCells.has(cellKey);
+          // Check if this is a readonly measure (Last Year data)
+          const isReadonlyMeasureCell = row.id.includes('measure-ly-order') || 
+                                        row.id.includes('-measure-ly-order') ||
+                                        row.name?.includes('Last Year');
+          // Only apply texture to dimension cells under readonly measures, not the measure row itself
+          const shouldShowTexture = isDimensionUnderReadonlyMeasure;
+          const isEditable = row.type !== 'measure' && onCellChange && !isCellLocked && !isReadonlyMeasureCell;
           
           // Check if this cell has a note - check editHistory for any entry with a note for this cell
           const hasNote = editHistory && editHistory.length > 0 && editHistory.some(entry => {
@@ -852,7 +915,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                   cellRefs.current.set(cellKey, el);
                 }
               }}
-              className={`grid-cell cell-value-cell ${isFocused ? 'cell-focused' : ''} ${(() => {
+              className={`grid-cell cell-value-cell ${isFocused ? 'cell-focused' : ''} ${shouldShowTexture ? 'cell-readonly-texture' : ''} ${hasNote ? 'cell-has-note' : ''} ${(() => {
                 const cellKeyForCheck = `${row.id}-${key}`;
                 const editedOriginalValue = editedCells?.get(cellKeyForCheck);
                 const impactedOriginalValue = impactedCells?.get(cellKeyForCheck);
@@ -875,9 +938,23 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 return '';
               })()}`}
               tabIndex={isEditable ? 0 : -1}
-              onFocus={() => {
+              onFocus={(e) => {
                 if (onCellFocus && isEditable) {
                   onCellFocus({ rowId: row.id, monthKey: key });
+                }
+                // Call onCellFocusWithHistory for any editable cell
+                // But NOT if we're currently editing (adjustment note dropdown is shown)
+                // And NOT if cell is in dirty state (edited but not saved)
+                if (onCellFocusWithHistory && isEditable && !editingCell) {
+                  const focusCellKey = `${row.id}-${key}`;
+                  const isDirty = editedCells?.has(focusCellKey) && !savedEditedCells?.has(focusCellKey);
+                  // Don't show popover for dirty/unsaved cells
+                  if (!isDirty) {
+                    const cellElement = e.currentTarget;
+                    const cellRect = cellElement.getBoundingClientRect();
+                    const cellValue = row.values[key];
+                    onCellFocusWithHistory(focusCellKey, cellRect, cellValue);
+                  }
                 }
               }}
               onKeyDown={(e) => {
@@ -885,6 +962,12 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                   e.preventDefault();
                   e.stopPropagation();
                   handleCellEnterKey(key);
+                }
+              }}
+              onContextMenu={(e) => {
+                if (onCellContextMenu) {
+                  const cellValue = row.values[key];
+                  onCellContextMenu(e, cellKey, cellValue, isCellLocked, isEditable || false);
                 }
               }}
             >
@@ -916,9 +999,13 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               editedCells={editedCells}
               impactedCells={impactedCells}
               savedEditedCells={savedEditedCells}
+              unsavedNotes={unsavedNotes}
               columnWidth={columnWidth}
               searchTerm={searchTerm}
               editHistory={editHistory}
+              onCellFocusWithHistory={onCellFocusWithHistory}
+              lockedCells={lockedCells}
+              onCellContextMenu={onCellContextMenu}
             />
           ))}
         </>

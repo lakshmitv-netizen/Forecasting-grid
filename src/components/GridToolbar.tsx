@@ -141,7 +141,7 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
             <path d="M5 9.2h3V19H5V9.2zM10.6 5h2.8v14h-2.8V5zm5.6 8H19v6h-2.8v-6z"/>
           </svg>
         </button>
-        <button className={`grid-button-group-item ${isNotesActive ? 'active' : ''}`} title="Cell Details and History" onClick={onNotesClick}>
+        <button className={`grid-button-group-item ${isNotesActive ? 'active' : ''}`} title="Cell Details & Updates" onClick={onNotesClick}>
           <svg fill="currentColor" viewBox="0 0 24 24" width="16" height="16">
             <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
           </svg>

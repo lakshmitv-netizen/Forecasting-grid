@@ -1,0 +1,151 @@
+.cell-edit-info-popover {
+  position: fixed;
+  z-index: 10000;
+  background: white;
+  border: 1px solid #d8d8d8;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  width: 320px;
+  padding: 14px;
+}
+
+.cell-edit-info-popover-nubbin {
+  position: absolute;
+  top: -8px;
+  left: 24px;
+  width: 14px;
+  height: 14px;
+  background: white;
+  border-left: 1px solid #d8d8d8;
+  border-top: 1px solid #d8d8d8;
+  transform: rotate(45deg);
+  box-shadow: -2px -2px 4px rgba(0, 0, 0, 0.04);
+}
+
+.cell-edit-info-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: #999;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cell-edit-info-close:hover {
+  background: #f0f0f0;
+  color: #333;
+}
+
+/* Header with avatar */
+.cell-edit-info-header {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.cell-edit-info-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #0250D9;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.cell-edit-info-header-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cell-edit-info-username {
+  font-size: 14px;
+  font-weight: 600;
+  color: #181818;
+  line-height: 1.3;
+}
+
+.cell-edit-info-timestamp {
+  font-size: 12px;
+  color: #706e6b;
+  margin-top: 1px;
+}
+
+.cell-edit-info-change-text {
+  font-size: 13px;
+  color: #444;
+  line-height: 1.4;
+  margin-top: 10px;
+  margin-left: 42px;
+}
+
+.cell-edit-info-change-text strong {
+  font-weight: 700;
+  color: #181818;
+}
+
+.cell-edit-info-delta {
+  font-weight: 600;
+}
+
+.cell-edit-info-delta.increase {
+  color: #e36209;
+}
+
+.cell-edit-info-delta.decrease {
+  color: #0366d6;
+}
+
+/* Note section */
+.cell-edit-info-note {
+  margin-top: 10px;
+  margin-left: 42px;
+}
+
+.cell-edit-info-note-text {
+  font-size: 13px;
+  color: #555;
+  line-height: 1.4;
+  font-style: italic;
+  word-wrap: break-word;
+}
+
+/* Separator line */
+.cell-edit-info-separator {
+  height: 1px;
+  background: #e5e5e5;
+  margin: 8px 0 6px 0;
+}
+
+/* View history button */
+.cell-edit-info-history-btn {
+  display: block;
+  width: 100%;
+  padding: 6px 12px;
+  background: none;
+  border: 1px solid #0176d3;
+  border-radius: 4px;
+  color: #0176d3;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s;
+}
+
+.cell-edit-info-history-btn:hover {
+  background: #f0f7ff;
+}

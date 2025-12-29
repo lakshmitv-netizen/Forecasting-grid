@@ -14,7 +14,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: var(--spacing-1);
+  margin-bottom: calc(var(--spacing-1) + 8px);
 }
 
 .breadcrumbs {
@@ -63,15 +63,35 @@
   white-space: nowrap;
 }
 
-.refresh-icon {
-  width: 16px;
-  height: 16px;
-  cursor: pointer;
-  color: var(--color-neutral-text);
+.refresh-button {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 24px !important;
+  height: 24px !important;
+  padding: 4px !important;
+  border: 1px solid #c9c9c9 !important;
+  border-radius: 50% !important;
+  background-color: #ffffff !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1) !important;
 }
 
-.refresh-icon:hover {
-  color: var(--color-primary-blue);
+.refresh-button:hover {
+  background-color: #f0f0f0 !important;
+  border-color: #0176d3 !important;
+}
+
+.refresh-icon {
+  width: 14px !important;
+  height: 14px !important;
+  color: #0176d3 !important;
+}
+
+.refresh-button:hover .refresh-icon {
+  color: #014486 !important;
 }
 
 .grid-toolbar {
@@ -196,7 +216,8 @@
   min-height: 0;
   min-width: 0; /* Allow flex item to shrink below content size */
   gap: 0;
-  overflow: hidden; /* Prevent overflow, let children handle scrolling */
+  overflow: visible; /* Allow shadow to be visible */
+  padding: 4px; /* Space for shadow */
 }
 
 .grid-container-wrapper {
@@ -206,12 +227,13 @@
   min-height: 0;
   min-width: 0; /* Allow flex item to shrink below content size */
   position: relative;
-  overflow: hidden; /* Prevent overflow, let grid-container handle scrolling */
-  padding-bottom: 50px; /* Add padding at bottom to account for fixed footer */
+  overflow: visible; /* Allow shadow to be visible */
+  padding: 8px; /* Space for shadow */
+  padding-bottom: 58px; /* Add padding at bottom to account for fixed footer + shadow */
 }
 
 .grid-container {
-  border: var(--border-width-1) solid var(--color-border) !important;
+  border: none !important;
   border-radius: var(--border-radius-1);
   background-color: var(--color-surface-white) !important;
   flex: 1;
@@ -221,6 +243,7 @@
   margin-bottom: 0;
   display: block;
   max-height: calc(100vh - 210px); /* Extend grid height closer to footer */
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18), 0 4px 8px rgba(0, 0, 0, 0.12) !important;
 }
 
 .grid-table {
@@ -248,20 +271,21 @@
 }
 
 .grid-header {
-  background-color: var(--color-surface-gray) !important;
+  background-color: #E5E5E5 !important;
   border-bottom: var(--border-width-2) solid var(--color-border) !important;
 }
 
 .grid-header th {
   padding: var(--spacing-3) var(--spacing-4);
   text-align: left;
+  font-family: var(--font-family-base) !important;
   font-weight: var(--font-weight-semibold) !important;
   font-size: var(--font-size-base) !important;
   color: var(--color-dark-text) !important;
   line-height: var(--line-height-base) !important;
   border-right: var(--border-width-1) solid var(--color-border) !important;
   white-space: nowrap;
-  background-color: var(--color-surface-gray) !important;
+  background-color: #E5E5E5 !important;
   /* Sticky header for vertical scroll */
   position: sticky;
   top: 0;
@@ -273,13 +297,25 @@
 }
 
 .grid-header th:first-child {
-  min-width: 300px;
+  min-width: 275px !important;
+  max-width: 275px !important;
+  width: 275px !important;
   position: sticky;
   left: 0;
   top: 0;
   z-index: 20; /* Higher z-index for corner cell - sticky both ways */
-  background-color: var(--color-surface-gray) !important;
-  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
+  background-color: #E5E5E5 !important;
+}
+
+.grid-header th:first-child::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: -10px;
+  bottom: 0;
+  width: 10px;
+  background: linear-gradient(to right, rgba(0, 0, 0, 0.1), transparent);
+  pointer-events: none;
 }
 
 .grid-header-title-container {
@@ -289,20 +325,25 @@
 }
 
 .grid-header-settings-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  color: var(--color-dark-text);
-  transition: color 0.2s;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 24px !important;
+  height: 24px !important;
+  padding: 4px !important;
+  border: 1px solid #c9c9c9 !important;
+  border-radius: 4px !important;
+  background-color: #ffffff !important;
+  cursor: pointer !important;
+  color: var(--color-dark-text) !important;
+  transition: all 0.15s ease;
   flex-shrink: 0;
 }
 
 .grid-header-settings-button:hover {
-  color: var(--color-primary-blue);
+  color: var(--color-primary-blue) !important;
+  border-color: var(--color-primary-blue) !important;
+  background-color: #f0f0f0 !important;
 }
 
 .grid-header-settings-button svg {
@@ -310,7 +351,7 @@
 }
 
 .grid-header th:not(:first-child) {
-  text-align: left;
+  text-align: center;
   min-width: 100px;
 }
 
@@ -329,11 +370,11 @@
 }
 
 .grid-row:hover {
-  background-color: var(--color-surface-gray) !important;
+  background-color: #D8E6FE !important;
 }
 
 .grid-row.measure-row {
-  background-color: var(--color-surface-white) !important;
+  background-color: #F3F3F3 !important;
   font-weight: var(--font-weight-semibold) !important;
 }
 
@@ -362,9 +403,10 @@
   font-weight: 600 !important;
 }
 
-/* For Dimensions / Time x Measures layout: Dimension rows bold, Time rows normal */
+/* For Dimensions / Time x Measures layout: Dimension rows bold with background, Time rows normal */
 .dimensions-time-table:not(.time-dimensions-table) .grid-row.dimension-row {
   font-weight: 600 !important;
+  background-color: #F3F3F3 !important;
 }
 
 .dimensions-time-table:not(.time-dimensions-table) .grid-row.time-row,
@@ -374,12 +416,13 @@
   font-weight: normal !important;
 }
 
-/* For Time / Dimensions x Measures layout: Time rows bold, Dimension rows normal */
+/* For Time / Dimensions x Measures layout: Time rows bold with background, Dimension rows normal */
 .time-dimensions-table .grid-row.time-row,
 .time-dimensions-table .grid-row.time-row.year,
 .time-dimensions-table .grid-row.time-row.quarter,
 .time-dimensions-table .grid-row.time-row.month {
   font-weight: 600 !important;
+  background-color: #F3F3F3 !important;
 }
 
 .time-dimensions-table .grid-row.dimension-row {
@@ -399,15 +442,38 @@
   left: 0;
   z-index: 5;
   background-color: inherit !important;
-  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
+  min-width: 275px !important;
+  max-width: 275px !important;
+  width: 275px !important;
+}
+
+.grid-cell:first-child::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: -10px;
+  bottom: 0;
+  width: 10px;
+  background: linear-gradient(to right, rgba(0, 0, 0, 0.1), transparent);
+  pointer-events: none;
 }
 
 .grid-row:hover .grid-cell:first-child {
-  background-color: var(--color-surface-gray) !important;
+  background-color: #D8E6FE !important;
 }
 
 .grid-row.measure-row .grid-cell:first-child {
-  background-color: var(--color-surface-white) !important;
+  background-color: #F3F3F3 !important;
+}
+
+/* Dimension rows first column in Dimensions / Time x Measures view */
+.dimensions-time-table:not(.time-dimensions-table) .grid-row.dimension-row .grid-cell:first-child {
+  background-color: #F3F3F3 !important;
+}
+
+/* Time rows first column in Time / Dimensions x Measures view */
+.time-dimensions-table .grid-row.time-row .grid-cell:first-child {
+  background-color: #F3F3F3 !important;
 }
 
 .grid-cell:last-child {
@@ -494,7 +560,7 @@
 }
 
 .cell-value {
-  text-align: left !important;
+  text-align: center !important;
   color: var(--color-dark-text) !important;
   font-size: var(--font-size-base) !important;
   line-height: var(--line-height-base) !important;
@@ -510,6 +576,39 @@
   cursor: default !important;
 }
 
+/* Diagonal line texture for non-editable cells (Last Year data) */
+.cell-readonly-texture {
+  background: 
+    repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 5px,
+      #e0e0e0 5px,
+      #e0e0e0 6px
+    ),
+    #f8f8f8 !important;
+  cursor: default !important;
+}
+
+.cell-readonly-texture .cell-value {
+  cursor: default !important;
+}
+
+/* Actual measure row for readonly measures (Last Year data) - same background as other measures, no texture */
+.readonly-measure-row-actual {
+  background-color: #F3F3F3 !important;
+  font-weight: var(--font-weight-semibold) !important;
+}
+
+.readonly-measure-row-actual > td {
+  background-color: #F3F3F3 !important;
+}
+
+/* Dimension rows under readonly measures - texture on value cells, white first column */
+.readonly-dimension-row > td:first-child {
+  background: #ffffff !important;
+}
+
 .cell-value-cell.edited-cell {
   background-color: #f9e3b6 !important; /* Light orange/beige background */
   border: 1px solid #c9c9c9 !important; /* Gray border */
@@ -523,11 +622,19 @@
 .cell-value-wrapper-edited-container {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   width: 100%;
-  height: 42px; /* Match Figma: 42px container height */
-  padding: 0 8px; /* Match Figma: 8px horizontal padding */
-  gap: 8px;
+  height: 100%;
+  min-height: 42px; /* Match Figma: 42px container height */
+  padding: 0;
+  gap: 0;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  box-sizing: border-box;
+  overflow: visible; /* Ensure icons are visible at edges */
 }
 
 .cell-value-cell.impacted-cell {
@@ -536,16 +643,29 @@
   padding: 0 !important; /* Remove padding - container handles it */
   position: relative;
   vertical-align: middle;
-  height: auto; /* Match regular cell height */
+}
+
+/* Keep measure row background color for impacted cells in measure rows */
+.grid-row.measure-row .cell-value-cell.impacted-cell {
+  background-color: #F3F3F3 !important;
 }
 
 .cell-value-wrapper-impacted-container {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
   width: 100%;
-  height: 42px; /* Match Figma: 42px container height */
-  padding: 0 8px; /* Match Figma: 8px horizontal padding */
+  height: 100%;
+  min-height: 42px; /* Match Figma: 42px container height */
+  padding: 0;
+  gap: 0;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  box-sizing: border-box;
+  overflow: visible; /* Ensure icons are visible at edges */
 }
 
 .cell-value-impacted {
@@ -554,16 +674,31 @@
   line-height: 18px;
 }
 
+.cell-value-left-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  position: absolute;
+  left: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+}
+
 .cell-value-left-section {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
   gap: 0px; /* No gap between delta and value */
-  flex: 1;
-  min-width: 0;
+  width: 100%;
   height: 42px; /* Match Figma: 42px height */
-  padding: 3px 0; /* Match Figma: 3px vertical padding */
+  padding: 3px 22px; /* Top/bottom: 3px, left/right: 22px (symmetric padding for proper centering, arrow overlays on left - 2px + 18px arrow + 2px spacing) */
+  position: relative;
+  z-index: 0;
+  box-sizing: border-box;
 }
 
 .cell-delta-badge {
@@ -591,26 +726,48 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
-  width: 40px; /* Increased width for larger icon */
-  height: 42px; /* Match Figma: 42px height */
-  padding: 4px 8px 4px 8px; /* Match Figma: 4px vertical, 8px left padding */
+  width: 20px;
+  height: 20px;
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
 }
 
 .cell-edit-icon svg {
-  width: 40px;
-  height: 40px;
+  width: 20px;
+  height: 20px;
   display: block;
 }
 
 .cell-value-wrapper-saved-container {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   width: 100%;
-  gap: 8px;
+  gap: 0;
   height: auto; /* Don't force height */
   min-height: 0;
+  padding: 0;
+  position: relative;
+  box-sizing: border-box;
+  overflow: visible; /* Ensure icons are visible at edges */
+}
+
+.cell-value-wrapper-saved-container > .cell-value {
+  padding: 0 22px; /* left/right: 22px (symmetric padding for proper centering, arrow overlays on left - 2px + 18px arrow + 2px spacing) */
+  box-sizing: border-box;
+}
+
+.cell-value-saved.cell-value-increase {
+  color: #ff5d2d !important; /* Orange for increase */
+  font-weight: 600 !important; /* Semibold */
+}
+
+.cell-value-saved.cell-value-decrease {
+  color: #2E76E1 !important; /* Blue for decrease */
+  font-weight: 600 !important; /* Semibold */
 }
 
 .cell-edit-icon-saved {
@@ -619,7 +776,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
   padding: 0 !important; /* Remove padding for saved icon */
 }
 
@@ -630,7 +791,7 @@
 }
 
 .cell-value-cell {
-  text-align: left;
+  text-align: center;
   position: relative;
   cursor: pointer;
   user-select: none;
@@ -665,7 +826,7 @@
 
 .cell-input {
   width: 100%;
-  text-align: left;
+  text-align: center;
   border: 1px solid var(--color-primary-blue);
   border-radius: 2px;
   padding: 2px 4px;
@@ -711,9 +872,32 @@
   right: 0;
   width: 0;
   height: 0;
-  border-top: 10px solid #6b7280;
+  border-top: 10px solid #DA9401;
   border-left: 10px solid transparent;
   z-index: 1000;
   pointer-events: none;
+}
+
+
+/* Lock indicator for locked cells */
+.cell-lock-indicator {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 14px;
+  height: 14px;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #706e6b;
+  pointer-events: none;
+  z-index: 1000;
+}
+
+.cell-lock-indicator svg {
+  width: 10px;
+  height: 10px;
 }
 
