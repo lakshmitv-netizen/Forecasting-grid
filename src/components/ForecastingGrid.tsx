@@ -206,6 +206,7 @@ const ForecastingGrid: React.FC = () => {
           }
           
           // Get current value from grid's internal state (reads latest after previous updates)
+          if (!getCurrentCellValueRef.current) continue;
           const currentValue = getCurrentCellValueRef.current(rowId, monthKey);
           
           // Calculate new value based on rule
@@ -889,7 +890,7 @@ const ForecastingGrid: React.FC = () => {
             onCellChangeHandlerReady={(handler) => {
               cellChangeHandlerRef.current = handler;
             }}
-            onGetCurrentCellValueReady={(handler) => {
+            onGetCurrentCellValueReady={(handler: (rowId: string, monthKey: string) => number) => {
               getCurrentCellValueRef.current = handler;
             }}
         />

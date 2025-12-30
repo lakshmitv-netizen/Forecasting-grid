@@ -104,9 +104,6 @@ const CellEditHistoryCard: React.FC<CellEditHistoryCardProps> = ({ entry, replie
   // Use "John Carter" as the user name, initials "JC"
   const userName = entry.userName || 'John Carter';
   const userInitials = getUserInitials(userName);
-  
-  // Check if this is a draft (unsaved) entry
-  const isDraft = entry.id.startsWith('draft-');
 
   // For note-only entries, show a truncated preview
   const isNoteOnly = !hasEdit && hasNote;

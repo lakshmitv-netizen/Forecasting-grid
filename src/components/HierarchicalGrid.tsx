@@ -46,6 +46,7 @@ interface HierarchicalGridProps {
   selectedCells?: Set<string>; // Set of selected cell keys
   onCellSelect?: (cellKey: string, event: React.MouseEvent) => void; // Callback when a cell is clicked for selection
   onCellChangeHandlerReady?: (handler: (rowId: string, monthKey: string, newValue: number, note?: string) => void) => void; // Callback to expose cell change handler for programmatic updates
+  onGetCurrentCellValueReady?: (handler: (rowId: string, monthKey: string) => number) => void; // Callback to expose function to get current cell value
 }
 
 const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({ 
