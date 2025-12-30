@@ -182,7 +182,7 @@
 }
 
 .settings-field-spaced {
-  margin-top: 14px;
+  margin-top: 1px;
 }
 
 .settings-field-label {
@@ -226,6 +226,16 @@
   height: 16px;
   color: var(--color-on-surface-2);
   pointer-events: none;
+}
+
+.settings-field-helper-text {
+  font-family: var(--font-family-base);
+  font-size: 12px;
+  font-weight: var(--font-weight-regular);
+  line-height: 16px;
+  color: var(--color-neutral-text);
+  margin-top: 4px;
+  margin-bottom: 0;
 }
 
 /* Dropdown Wrapper */
@@ -415,76 +425,80 @@
 
 /* Button Group */
 .settings-button-group {
-  display: flex;
-  gap: 0;
-  border-radius: var(--border-radius-circle);
-  overflow: hidden;
-  border: 1px solid var(--color-neutral-text);
+  display: flex !important;
+  gap: 0 !important;
+  border-radius: 9999px !important;
+  overflow: hidden !important;
+  border: 1px solid #5c5c5c !important;
 }
 
 .settings-button {
-  flex: 1;
-  padding: var(--spacing-2);
-  border: none;
-  background-color: var(--color-surface-white);
-  font-family: var(--font-family-base);
-  font-size: var(--font-size-1);
-  font-weight: var(--font-weight-semibold);
-  line-height: var(--line-height-1);
-  color: var(--color-primary-blue);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--spacing-1);
-  transition: background-color 0.2s;
-  position: relative;
+  flex: 1 !important;
+  padding: var(--spacing-2) !important;
+  border: none !important;
+  background-color: white !important;
+  font-family: var(--font-family-base) !important;
+  font-size: var(--font-size-1) !important;
+  font-weight: var(--font-weight-semibold) !important;
+  line-height: var(--line-height-1) !important;
+  color: #0250D9 !important;
+  cursor: pointer !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: var(--spacing-1) !important;
+  transition: background-color 0.15s !important;
+  position: relative !important;
 }
 
 .settings-button:not(:last-child)::after {
-  content: '';
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background-color: var(--color-neutral-text);
+  content: '' !important;
+  position: absolute !important;
+  right: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  width: 1px !important;
+  background-color: #5c5c5c !important;
 }
 
 .settings-button-right {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0;
-  padding: 0;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0 !important;
+  padding: 0 !important;
 }
 
 .settings-button-text {
-  flex: 1;
-  text-align: center;
-  padding: var(--spacing-2);
+  flex: 1 !important;
+  text-align: center !important;
+  padding: var(--spacing-2) !important;
 }
 
 .settings-button-separator {
-  width: 1px;
-  height: 20px;
-  background-color: var(--color-neutral-text);
-  flex-shrink: 0;
-  align-self: center;
+  width: 1px !important;
+  height: 20px !important;
+  background-color: #5c5c5c !important;
+  flex-shrink: 0 !important;
+  align-self: center !important;
 }
 
 .settings-button:hover {
-  background-color: var(--color-surface-gray);
+  background-color: #f3f2f2 !important;
 }
 
 .settings-button-icon {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-  padding: var(--spacing-2);
-  display: block;
-  stroke: var(--color-primary-blue);
-  color: var(--color-primary-blue);
+  width: 16px !important;
+  height: 16px !important;
+  flex-shrink: 0 !important;
+  padding: var(--spacing-2) !important;
+  display: block !important;
+  color: #0250D9 !important;
+}
+
+.settings-button-icon path {
+  stroke: #0250D9 !important;
+  fill: none !important;
 }
 
 /* Slider */

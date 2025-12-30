@@ -4,7 +4,7 @@ import { CellEditHistoryEntry } from '../types/editHistory';
 import { AdjustmentNote } from '../types/adjustmentNote';
 import { mockData } from '../data/mockData';
 import { adjustmentMeasuresData } from '../data/adjustmentMeasuresData';
-import { findRowById } from '../utils/valuePropagation';
+import { findRowById, getChildren, distributeProportionally, propagateDownward, propagateUpward } from '../utils/valuePropagation';
 import HierarchicalGrid from './HierarchicalGrid';
 import DimensionsTimeGrid from './DimensionsTimeGrid';
 import TimeDimensionsGrid from './TimeDimensionsGrid';
@@ -25,6 +25,7 @@ const ForecastingGrid: React.FC = () => {
   const [selectedMeasureSubgroup, setSelectedMeasureSubgroup] = useState<string>('Revenue and Quantity Measures');
   const [selectedLayoutState, setSelectedLayoutState] = useState<string>('Measures / Dimensions x Time');
   const [data, setData] = useState<MeasureData[]>(mockData);
+  const [visibleMeasureIds, setVisibleMeasureIds] = useState<Set<string>>(new Set());
   
   // Store focused cell for each layout
   const hierarchicalGridFocusRef = useRef<HierarchicalGridFocus>(null);
@@ -37,31 +38,80 @@ const ForecastingGrid: React.FC = () => {
   // State to track selected cells for multi-cell operations
   const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set());
   const [lastSelectedCell, setLastSelectedCell] = useState<string | null>(null);
+  // Ref to track selectedCells for synchronous access
+  const selectedCellsRef = useRef<Set<string>>(new Set());
+  
+  // Track which cell is currently being edited globally
+  const [editingCellKey, setEditingCellKey] = useState<string | null>(null);
+  // Track cells that were impacted but are now saved (to prevent showing old popovers)
+  const [savedImpactedCells, setSavedImpactedCells] = useState<Set<string>>(new Set());
+  // Ref to track savedImpactedCells for synchronous access in callbacks
+  const savedImpactedCellsRef = useRef<Set<string>>(new Set());
+  
+  // Keep refs in sync with state
+  useEffect(() => {
+    selectedCellsRef.current = selectedCells;
+  }, [selectedCells]);
+  
+  useEffect(() => {
+    savedImpactedCellsRef.current = savedImpactedCells;
+  }, [savedImpactedCells]);
   
   // Handler for cell selection
   const handleCellSelect = useCallback((cellKey: string, event: React.MouseEvent) => {
+    // Prevent selection if this is a double-click (which should enter edit mode)
+    // Note: detail is only available on click events, not mousedown
+    if (event.type === 'click' && event.detail === 2) {
+      return;
+    }
+    
     const isCtrlOrCmd = event.ctrlKey || event.metaKey;
     const isShift = event.shiftKey;
     
+    // If clicking a cell while another is editing, ALWAYS clear selection synchronously first
+    // This prevents the editing cell from staying selected
+    // BUT: Don't do this for Shift or Ctrl/Cmd clicks (they should work normally)
+    if (editingCellKey && editingCellKey !== cellKey && !isCtrlOrCmd && !isShift) {
+      // Clear selection and select only the new cell in one operation
+      setSelectedCells(new Set([cellKey]));
+      setLastSelectedCell(cellKey);
+      return; // Early return to prevent double-processing
+    }
+    
     setSelectedCells(prev => {
-      const newSelection = new Set(prev);
+      const newSelection = new Set<string>();
       
       if (isCtrlOrCmd) {
-        // Toggle selection
-        if (newSelection.has(cellKey)) {
+        // Toggle selection - keep previous selection and toggle this cell
+        prev.forEach(cell => newSelection.add(cell));
+        if (prev.has(cellKey)) {
           newSelection.delete(cellKey);
         } else {
           newSelection.add(cellKey);
         }
         setLastSelectedCell(cellKey);
-      } else if (isShift && lastSelectedCell) {
-        // Range selection - select all cells between lastSelectedCell and cellKey
-        // This is a simplified version - you may want to implement proper range logic based on grid structure
-        newSelection.add(cellKey);
-        newSelection.add(lastSelectedCell);
-        // Add all cells in between (simplified - would need grid structure knowledge)
+      } else if (isShift) {
+        // Shift key pressed - range selection
+        if (lastSelectedCell && lastSelectedCell !== cellKey) {
+          // Range selection - keep previous selection and add range from lastSelectedCell to cellKey
+          // First, keep all previously selected cells
+          prev.forEach(cell => newSelection.add(cell));
+          // Then add the range endpoints
+          newSelection.add(cellKey);
+          newSelection.add(lastSelectedCell);
+          // Add all cells in between (simplified - would need grid structure knowledge)
+          // For now, just select the two endpoints
+          setLastSelectedCell(cellKey);
+        } else {
+          // Shift clicked but no lastSelectedCell or same cell - treat as single selection and set it for next Shift click
+          newSelection.clear();
+          newSelection.add(cellKey);
+          setLastSelectedCell(cellKey);
+        }
       } else {
-        // Single selection - clear previous and select new
+        // Single selection - ALWAYS clear previous and select new
+        // This handles: normal click, or clicking same cell
+        // This ensures that when clicking a cell while another is editing, we clear the old selection
         newSelection.clear();
         newSelection.add(cellKey);
         setLastSelectedCell(cellKey);
@@ -69,7 +119,7 @@ const ForecastingGrid: React.FC = () => {
       
       return newSelection;
     });
-  }, [lastSelectedCell]);
+  }, [lastSelectedCell, editingCellKey]);
   
   // Clear selection handler
   const handleClearSelection = useCallback(() => {
@@ -81,14 +131,16 @@ const ForecastingGrid: React.FC = () => {
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      // Don't clear if clicking on a cell, dropdown, or panel
+      // Don't clear if clicking on a cell, dropdown, panel, or toolbar buttons
       if (
         target.closest('.grid-cell') ||
         target.closest('.cell-details-history-panel') ||
         target.closest('.settings-panel') ||
         target.closest('.filters-panel') ||
         target.closest('.cell-details-history-dropdown-list') ||
-        target.closest('.multi-cell-dropdown-list')
+        target.closest('.multi-cell-dropdown-list') ||
+        target.closest('.grid-button-group') ||
+        target.closest('.grid-button-group-item')
       ) {
         return;
       }
@@ -103,8 +155,545 @@ const ForecastingGrid: React.FC = () => {
     };
   }, []);
   
+  // Function to create initial edit history entries with sample data
+  const createInitialEditHistory = (): CellEditHistoryEntry[] => {
+    const now = new Date();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const twoDaysAgo = new Date(now);
+    twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+    
+    return [
+      // Cells with both arrow and note indicators
+      {
+        id: 'initial-1',
+        cellKey: 'account-measure-sa-qty-jan2026',
+        rowId: 'account-measure-sa-qty',
+        timeKey: 'jan2026',
+        oldValue: 800,
+        newValue: 950,
+        note: 'Increased forecast based on strong Q1 pipeline and new customer commitments',
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-2',
+        cellKey: 'category-transmission-measure-sa-rev-feb2026',
+        rowId: 'category-transmission-measure-sa-rev',
+        timeKey: 'feb2026',
+        oldValue: 40000,
+        newValue: 35000,
+        note: 'Adjusted downward due to supply chain delays affecting transmission assembly',
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-3',
+        cellKey: 'product-trn-a-measure-opp-qty-mar2026',
+        rowId: 'product-trn-a-measure-opp-qty',
+        timeKey: 'mar2026',
+        oldValue: 120,
+        newValue: 150,
+        note: 'TRN 750 - A demand increased following successful product launch event',
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-3a',
+        cellKey: 'product-trn-b-measure-sa-qty-apr2026',
+        rowId: 'product-trn-b-measure-sa-qty',
+        timeKey: 'apr2026',
+        oldValue: 80,
+        newValue: 105,
+        note: 'TRN 750 - B showing strong performance in Q2, adjusted forecast upward',
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-3b',
+        cellKey: 'category-chassis-measure-opp-rev-may2026',
+        rowId: 'category-chassis-measure-opp-rev',
+        timeKey: 'may2026',
+        oldValue: 60000,
+        newValue: 52000,
+        note: 'Chassis components forecast reduced due to material cost increases and supplier delays',
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-3c',
+        cellKey: 'product-chs-a-measure-sa-qty-jun2026',
+        rowId: 'product-chs-a-measure-sa-qty',
+        timeKey: 'jun2026',
+        oldValue: 120,
+        newValue: 145,
+        note: 'CHS 500 - A demand surge expected in June following new customer onboarding',
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-3d',
+        cellKey: 'account-measure-opp-qty-jul2026',
+        rowId: 'account-measure-opp-qty',
+        timeKey: 'jul2026',
+        oldValue: 1200,
+        newValue: 1100,
+        note: 'Q3 opportunity quantity adjusted based on revised sales pipeline analysis',
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-3e',
+        cellKey: 'category-engine-measure-sa-rev-aug2026',
+        rowId: 'category-engine-measure-sa-rev',
+        timeKey: 'aug2026',
+        oldValue: 40000,
+        newValue: 45000,
+        note: 'Engine assembly revenue increased due to higher production capacity and efficiency gains',
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-3f',
+        cellKey: 'product-eng-y-measure-opp-rev-sep2026',
+        rowId: 'product-eng-y-measure-opp-rev',
+        timeKey: 'sep2026',
+        oldValue: 12000,
+        newValue: 10000,
+        note: 'Engine Y revenue forecast reduced following competitive pricing analysis and market conditions',
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-3g',
+        cellKey: 'product-trn-c-measure-sa-qty-oct2026',
+        rowId: 'product-trn-c-measure-sa-qty',
+        timeKey: 'oct2026',
+        oldValue: 80,
+        newValue: 95,
+        note: 'TRN 750 - C sales forecast updated based on customer feedback and product improvements',
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-3h',
+        cellKey: 'category-transmission-measure-opp-qty-nov2026',
+        rowId: 'category-transmission-measure-opp-qty',
+        timeKey: 'nov2026',
+        oldValue: 600,
+        newValue: 680,
+        note: 'Transmission assembly opportunity quantity increased for Q4 based on strong market demand',
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-3i',
+        cellKey: 'product-chs-b-measure-opp-rev-dec2026',
+        rowId: 'product-chs-b-measure-opp-rev',
+        timeKey: 'dec2026',
+        oldValue: 12000,
+        newValue: 10500,
+        note: 'CHS 500 - B year-end forecast adjusted to reflect conservative Q4 projections',
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-3j',
+        cellKey: 'product-trn-d-measure-sa-qty-jan2026',
+        rowId: 'product-trn-d-measure-sa-qty',
+        timeKey: 'jan2026',
+        oldValue: 80,
+        newValue: 65,
+        note: 'TRN 750 - D forecast reduced due to component availability constraints',
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-3k',
+        cellKey: 'category-chassis-measure-sa-rev-feb2026',
+        rowId: 'category-chassis-measure-sa-rev',
+        timeKey: 'feb2026',
+        oldValue: 40000,
+        newValue: 36000,
+        note: 'Chassis components revenue decreased following customer order cancellations',
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-3l',
+        cellKey: 'product-chs-c-measure-opp-qty-mar2026',
+        rowId: 'product-chs-c-measure-opp-qty',
+        timeKey: 'mar2026',
+        oldValue: 120,
+        newValue: 95,
+        note: 'CHS 500 - C opportunity quantity reduced after competitor pricing analysis',
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-3m',
+        cellKey: 'account-measure-sa-rev-apr2026',
+        rowId: 'account-measure-sa-rev',
+        timeKey: 'apr2026',
+        oldValue: 80000,
+        newValue: 72000,
+        note: 'Sales agreement revenue adjusted downward due to delayed contract negotiations',
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-3n',
+        cellKey: 'product-eng-z-measure-opp-rev-may2026',
+        rowId: 'product-eng-z-measure-opp-rev',
+        timeKey: 'may2026',
+        oldValue: 12000,
+        newValue: 9800,
+        note: 'Engine Z opportunity revenue decreased following technical specification changes',
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-3o',
+        cellKey: 'category-engine-measure-opp-qty-jun2026',
+        rowId: 'category-engine-measure-opp-qty',
+        timeKey: 'jun2026',
+        oldValue: 600,
+        newValue: 520,
+        note: 'Engine assembly opportunity quantity reduced due to market volatility and economic factors',
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-3p',
+        cellKey: 'product-trn-e-measure-sa-rev-jul2026',
+        rowId: 'product-trn-e-measure-sa-rev',
+        timeKey: 'jul2026',
+        oldValue: 8000,
+        newValue: 6800,
+        note: 'TRN 750 - E sales revenue forecast decreased following quality control review',
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-3q',
+        cellKey: 'category-chassis-measure-sa-qty-aug2026',
+        rowId: 'category-chassis-measure-sa-qty',
+        timeKey: 'aug2026',
+        oldValue: 400,
+        newValue: 340,
+        note: 'Chassis components quantity reduced due to production capacity limitations',
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-3r',
+        cellKey: 'product-chs-d-measure-opp-rev-sep2026',
+        rowId: 'product-chs-d-measure-opp-rev',
+        timeKey: 'sep2026',
+        oldValue: 12000,
+        newValue: 10200,
+        note: 'CHS 500 - D opportunity revenue adjusted following customer budget constraints',
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-3s',
+        cellKey: 'account-measure-opp-qty-oct2026',
+        rowId: 'account-measure-opp-qty',
+        timeKey: 'oct2026',
+        oldValue: 1200,
+        newValue: 1080,
+        note: 'Opportunity quantity decreased due to extended sales cycle and market uncertainty',
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-3t',
+        cellKey: 'category-transmission-measure-sa-rev-nov2026',
+        rowId: 'category-transmission-measure-sa-rev',
+        timeKey: 'nov2026',
+        oldValue: 40000,
+        newValue: 35000,
+        note: 'Transmission assembly sales revenue reduced following supplier delivery delays',
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      // Cells with just arrow indicators (no notes)
+      {
+        id: 'initial-4',
+        cellKey: 'account-measure-opp-rev-apr2026',
+        rowId: 'account-measure-opp-rev',
+        timeKey: 'apr2026',
+        oldValue: 120000,
+        newValue: 135000,
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-5',
+        cellKey: 'category-engine-measure-sa-qty-may2026',
+        rowId: 'category-engine-measure-sa-qty',
+        timeKey: 'may2026',
+        oldValue: 400,
+        newValue: 320,
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-6',
+        cellKey: 'product-eng-x-measure-opp-rev-jun2026',
+        rowId: 'product-eng-x-measure-opp-rev',
+        timeKey: 'jun2026',
+        oldValue: 12000,
+        newValue: 14000,
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-6a',
+        cellKey: 'product-trn-c-measure-sa-qty-jan2026',
+        rowId: 'product-trn-c-measure-sa-qty',
+        timeKey: 'jan2026',
+        oldValue: 80,
+        newValue: 95,
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-6b',
+        cellKey: 'category-chassis-measure-sa-qty-feb2026',
+        rowId: 'category-chassis-measure-sa-qty',
+        timeKey: 'feb2026',
+        oldValue: 400,
+        newValue: 320,
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-6c',
+        cellKey: 'product-chs-b-measure-opp-qty-mar2026',
+        rowId: 'product-chs-b-measure-opp-qty',
+        timeKey: 'mar2026',
+        oldValue: 120,
+        newValue: 140,
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-6d',
+        cellKey: 'account-measure-sa-rev-may2026',
+        rowId: 'account-measure-sa-rev',
+        timeKey: 'may2026',
+        oldValue: 80000,
+        newValue: 88000,
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-6e',
+        cellKey: 'product-eng-x-measure-sa-qty-jul2026',
+        rowId: 'product-eng-x-measure-sa-qty',
+        timeKey: 'jul2026',
+        oldValue: 80,
+        newValue: 70,
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-6f',
+        cellKey: 'category-transmission-measure-opp-rev-aug2026',
+        rowId: 'category-transmission-measure-opp-rev',
+        timeKey: 'aug2026',
+        oldValue: 60000,
+        newValue: 55000,
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-6g',
+        cellKey: 'product-trn-e-measure-sa-qty-sep2026',
+        rowId: 'product-trn-e-measure-sa-qty',
+        timeKey: 'sep2026',
+        oldValue: 80,
+        newValue: 90,
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-6h',
+        cellKey: 'category-engine-measure-opp-qty-oct2026',
+        rowId: 'category-engine-measure-opp-qty',
+        timeKey: 'oct2026',
+        oldValue: 600,
+        newValue: 650,
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-6i',
+        cellKey: 'product-chs-c-measure-sa-rev-nov2026',
+        rowId: 'product-chs-c-measure-sa-rev',
+        timeKey: 'nov2026',
+        oldValue: 8000,
+        newValue: 7200,
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-6j',
+        cellKey: 'account-measure-opp-rev-dec2026',
+        rowId: 'account-measure-opp-rev',
+        timeKey: 'dec2026',
+        oldValue: 120000,
+        newValue: 132000,
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-6k',
+        cellKey: 'product-trn-a-measure-sa-rev-feb2026',
+        rowId: 'product-trn-a-measure-sa-rev',
+        timeKey: 'feb2026',
+        oldValue: 8000,
+        newValue: 7500,
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-6l',
+        cellKey: 'category-chassis-measure-opp-qty-apr2026',
+        rowId: 'category-chassis-measure-opp-qty',
+        timeKey: 'apr2026',
+        oldValue: 600,
+        newValue: 540,
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-6m',
+        cellKey: 'product-eng-y-measure-sa-qty-may2026',
+        rowId: 'product-eng-y-measure-sa-qty',
+        timeKey: 'may2026',
+        oldValue: 80,
+        newValue: 88,
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-6n',
+        cellKey: 'category-transmission-measure-sa-qty-jun2026',
+        rowId: 'category-transmission-measure-sa-qty',
+        timeKey: 'jun2026',
+        oldValue: 400,
+        newValue: 380,
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-6o',
+        cellKey: 'product-chs-d-measure-opp-qty-jul2026',
+        rowId: 'product-chs-d-measure-opp-qty',
+        timeKey: 'jul2026',
+        oldValue: 120,
+        newValue: 135,
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      // Cells with just note indicators (no value changes)
+      {
+        id: 'initial-7',
+        cellKey: 'account-measure-sa-qty-jul2026',
+        rowId: 'account-measure-sa-qty',
+        timeKey: 'jul2026',
+        oldValue: 800,
+        newValue: 800,
+        note: 'Monitoring Q3 trends closely - may need adjustment based on mid-quarter review',
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-8',
+        cellKey: 'category-transmission-measure-opp-qty-aug2026',
+        rowId: 'category-transmission-measure-opp-qty',
+        timeKey: 'aug2026',
+        oldValue: 600,
+        newValue: 600,
+        note: 'Waiting for confirmation on large enterprise deal before finalizing August forecast',
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-9',
+        cellKey: 'product-trn-b-measure-sa-rev-sep2026',
+        rowId: 'product-trn-b-measure-sa-rev',
+        timeKey: 'sep2026',
+        oldValue: 8000,
+        newValue: 8000,
+        note: 'TRN 750 - B showing consistent performance, no changes needed at this time',
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'initial-10',
+        cellKey: 'product-eng-y-measure-opp-qty-oct2026',
+        rowId: 'product-eng-y-measure-opp-qty',
+        timeKey: 'oct2026',
+        oldValue: 120,
+        newValue: 120,
+        note: 'Engine Y production capacity review scheduled for next week',
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+    ];
+  };
+
   // State to track edit history for all cells (includes both edits and notes) - SAVED edits only
-  const [editHistory, setEditHistory] = useState<CellEditHistoryEntry[]>([]);
+  const [editHistory, setEditHistory] = useState<CellEditHistoryEntry[]>(createInitialEditHistory());
   
   // State to track DRAFT edit history (unsaved edits) - Map keyed by cellKey for quick lookup/update
   const [draftEditHistory, setDraftEditHistory] = useState<Map<string, CellEditHistoryEntry>>(new Map());
@@ -345,22 +934,70 @@ const ForecastingGrid: React.FC = () => {
     });
   }, [addDraftEditHistory]);
 
+  // Function to add a new note entry (always creates a new thread, never updates existing)
+  // Used for notes posted from the panel footer
+  // Uses entry ID as Map key to allow multiple entries per cellKey
+  const addNewNoteEntry = useCallback((entry: Omit<CellEditHistoryEntry, 'id' | 'timestamp' | 'userId' | 'userName'>) => {
+    setDraftEditHistory(prev => {
+      const newMap = new Map(prev);
+      // Always create a new entry with unique ID, even if one exists for this cellKey
+      const uniqueId = `draft-note-${entry.cellKey}-${Date.now()}-${Math.random()}`;
+      const newDraft: CellEditHistoryEntry = {
+        ...entry,
+        id: uniqueId,
+        timestamp: new Date(),
+        userId: 'john-carter',
+        userName: 'John Carter',
+      };
+      
+      // Ensure note is preserved and trimmed
+      if (newDraft.note) {
+        newDraft.note = newDraft.note.trim();
+      }
+      
+      // Use unique ID as key to allow multiple entries per cellKey
+      // This allows multiple note threads for the same cell
+      newMap.set(uniqueId, newDraft);
+      
+      return newMap;
+    });
+  }, []);
+
   // Handler for adding note from the panel footer
+  // Always creates a new thread entry, never updates existing
   const handlePanelAddNote = useCallback((rowId: string, monthKey: string, note: string) => {
     const cellKey = `${rowId}-${monthKey}`;
-    addAdjustmentNote({
+    // Use addNewNoteEntry to always create a new thread
+    addNewNoteEntry({
       cellKey,
       rowId,
       timeKey: monthKey,
       measureId: undefined,
       note,
     });
-  }, [addAdjustmentNote]);
+  }, [addNewNoteEntry]);
 
   // Handler for showing edit info popover when a cell is focused
   // Check both draft and saved edit history
-  const handleCellFocusWithHistory = useCallback((cellKey: string, cellRect: DOMRect | null, cellValue?: number, isLocked?: boolean) => {
+  const handleCellFocusWithHistory = useCallback((cellKey: string, cellRect: DOMRect | null, cellValue?: number, isLocked?: boolean, isImpacted?: boolean) => {
     if (!cellRect) {
+      setEditInfoPopover(null);
+      return;
+    }
+    
+    // If cell is impacted, don't show old edit history popover - impacted cells show their own state
+    // Also don't show popover for cells that were impacted but are now saved (no direct change in current session)
+    if (isImpacted) {
+      console.log('[handleCellFocusWithHistory] Cell is impacted, closing popover:', cellKey);
+      setEditInfoPopover(null);
+      return;
+    }
+    
+    // Check if this cell was impacted but is now saved (shouldn't show popover)
+    // These cells were impacted in a previous session but are now saved, so they shouldn't show old popovers
+    // Use ref for synchronous access to latest value
+    if (savedImpactedCellsRef.current.has(cellKey)) {
+      console.log('[handleCellFocusWithHistory] Cell was saved impacted, closing popover:', cellKey, 'savedImpactedCells size:', savedImpactedCellsRef.current.size);
       setEditInfoPopover(null);
       return;
     }
@@ -371,6 +1008,7 @@ const ForecastingGrid: React.FC = () => {
     const latestEntry = draftEntry || savedEntry;
     
     // Show popover if there's edit history OR if cell is locked
+    // But don't show if cell was impacted and saved (no direct change in current session)
     if (!latestEntry && !isLocked) {
       setEditInfoPopover(null);
       return;
@@ -413,7 +1051,7 @@ const ForecastingGrid: React.FC = () => {
         left: leftPos
       }
     });
-  }, [editHistory, draftEditHistory]);
+  }, [editHistory, draftEditHistory]); // Note: savedImpactedCellsRef is a ref, so it doesn't need to be in deps
 
   // Close edit info popover
   const handleCloseEditInfoPopover = useCallback(() => {
@@ -423,6 +1061,10 @@ const ForecastingGrid: React.FC = () => {
   // Open edit history panel from popover
   const handleViewEditHistory = useCallback(() => {
     setEditInfoPopover(null);
+    // Switch to single cell tab when opening from popover
+    // Force panel remount by changing key to ensure tab switches
+    setCellDetailsInitialTab('single');
+    setPanelKey(prev => prev + 1); // Change key to force remount
     setIsCellDetailsHistoryOpen(true);
     setIsSettingsOpen(false);
     setIsFiltersOpen(false);
@@ -436,18 +1078,105 @@ const ForecastingGrid: React.FC = () => {
   // Wrapper for onDataChange that tracks edit history
   // Removed unused handleDataChangeWithHistory - using onEditHistory callback in grid components instead
   
+  // Function to apply initial edit history to data
+  const applyInitialEditHistoryToData = useCallback((baseData: MeasureData[]): MeasureData[] => {
+    const initialHistory = createInitialEditHistory();
+    const updatedData = JSON.parse(JSON.stringify(baseData)); // Deep clone
+    
+    // Update individual cell values to their final (newValue) state
+    initialHistory.forEach(entry => {
+      if (entry.oldValue !== undefined && entry.newValue !== undefined && entry.oldValue !== entry.newValue) {
+        // Find the row and update its value to the final value
+        const row = findRowById(entry.rowId, updatedData);
+        if (row && entry.timeKey && row.values[entry.timeKey as keyof typeof row.values] !== undefined) {
+          const delta = entry.newValue - entry.oldValue;
+          const monthKey = entry.timeKey as keyof typeof row.values;
+          
+          // Check if this row has children (it's a parent row)
+          const children = getChildren(entry.rowId, updatedData);
+          
+          if (children.length > 0) {
+            // This is a parent row - distribute the change proportionally to children
+            // First, update the parent row value
+            row.values[monthKey] = entry.newValue;
+            
+            // Then distribute the delta to children proportionally
+            const distribution = distributeProportionally(delta, children, monthKey as any);
+            
+            for (const [childId, childDelta] of distribution.entries()) {
+              const child = findRowById(childId, updatedData);
+              if (child) {
+                const currentValue = child.values[monthKey];
+                child.values[monthKey] = currentValue + childDelta;
+                
+                // Recursively propagate to grandchildren if any
+                const grandchildUpdates = propagateDownward(childId, monthKey as any, childDelta, updatedData);
+                grandchildUpdates.forEach(update => {
+                  const grandchild = findRowById(update.rowId, updatedData);
+                  if (grandchild) {
+                    grandchild.values[update.monthKey] = update.newValue;
+                  }
+                });
+              }
+            }
+          } else {
+            // This is a leaf row - update directly and propagate upward to parents
+            row.values[monthKey] = entry.newValue;
+            
+            // Propagate upward to update parent rows
+            const ancestorUpdates = propagateUpward(entry.rowId, monthKey as any, delta, updatedData);
+            ancestorUpdates.forEach(update => {
+              const ancestor = findRowById(update.rowId, updatedData);
+              if (ancestor) {
+                ancestor.values[update.monthKey] = update.newValue;
+              }
+            });
+          }
+        }
+      }
+    });
+    
+    // Note: HierarchicalGrid will automatically recalculate aggregations (quarters, year) 
+    // and parent row sums when it receives this data, but since we've already distributed
+    // parent changes to children, the sums will be correct
+    
+    return updatedData;
+  }, []);
+
   // Update data when measure subgroup changes
   useEffect(() => {
     if (selectedMeasureSubgroup === 'Adjustment Measures') {
       setData(adjustmentMeasuresData);
+      // Initialize all measures as visible
+      setVisibleMeasureIds(new Set(adjustmentMeasuresData.map(m => m.id)));
     } else {
-      setData(mockData);
+      // Always apply initial edit history to mockData for Revenue and Quantity Measures
+      const dataWithHistory = applyInitialEditHistoryToData(mockData);
+      setData(dataWithHistory);
+      // Initialize all measures as visible
+      setVisibleMeasureIds(new Set(mockData.map(m => m.id)));
     }
-  }, [selectedMeasureSubgroup]);
+  }, [selectedMeasureSubgroup, applyInitialEditHistoryToData]);
+
+  // Handle measure reordering
+  const handleMeasuresReorder = useCallback((orderedMeasures: MeasureData[], visibleIds: Set<string>) => {
+    setData(orderedMeasures);
+    setVisibleMeasureIds(new Set(visibleIds)); // Create a new Set to ensure state update
+  }, []);
+
+  // Filter data based on visible measures
+  const filteredData = useMemo(() => {
+    if (visibleMeasureIds.size === 0) {
+      // If no visibility set yet, show all
+      return data;
+    }
+    return data.filter(measure => visibleMeasureIds.has(measure.id));
+  }, [data, visibleMeasureIds]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const [isCellDetailsHistoryOpen, setIsCellDetailsHistoryOpen] = useState(false);
   const [cellDetailsInitialTab, setCellDetailsInitialTab] = useState<'single' | 'multi'>('single');
+  const [panelKey, setPanelKey] = useState(0); // Key to force panel remount when switching tabs
   
   // State for cell edit info popover
   const [editInfoPopover, setEditInfoPopover] = useState<{
@@ -457,6 +1186,14 @@ const ForecastingGrid: React.FC = () => {
     isLocked?: boolean;
     position: { top: number; left: number };
   } | null>(null);
+  
+  // Also check and close popover if currently open cell becomes saved impacted
+  useEffect(() => {
+    if (editInfoPopover && savedImpactedCellsRef.current.has(editInfoPopover.cellKey)) {
+      console.log('[ForecastingGrid] Currently open popover cell is now saved impacted, closing:', editInfoPopover.cellKey);
+      setEditInfoPopover(null);
+    }
+  }, [editInfoPopover, savedImpactedCells]);
 
   // State for context menu
   const [contextMenu, setContextMenu] = useState<{
@@ -808,6 +1545,13 @@ const ForecastingGrid: React.FC = () => {
               setIsCellDetailsHistoryOpen(false); // Close cell details if filters opens
             }}
             onNotesClick={() => {
+              // Capture selectedCells size from ref BEFORE any state changes or click handlers run
+              // This ensures we get the value before click-outside handler potentially clears it
+              const hasMultipleSelection = selectedCellsRef.current.size > 1;
+              
+              // Set the initial tab and open panel
+              // The useEffect in CellDetailsHistoryPanel will handle updating the active tab
+              setCellDetailsInitialTab(hasMultipleSelection ? 'multi' : 'single');
               setIsCellDetailsHistoryOpen(true);
               setIsSettingsOpen(false); // Close settings if cell details opens
               setIsFiltersOpen(false); // Close filters if cell details opens
@@ -823,7 +1567,7 @@ const ForecastingGrid: React.FC = () => {
       <div className="grid-wrapper">
         {selectedLayoutState === 'Dimensions / Time x Measures' ? (
           <DimensionsTimeGrid 
-            data={data} 
+            data={filteredData} 
             onDataChange={setData} 
             selectedDimensionLevels={selectedDimensionLevels}
             selectedTimeGranularities={selectedTimeGranularities}
@@ -841,7 +1585,7 @@ const ForecastingGrid: React.FC = () => {
           />
         ) : selectedLayoutState === 'Time / Dimensions x Measures' ? (
           <TimeDimensionsGrid 
-            data={data} 
+            data={filteredData} 
             onDataChange={setData} 
             selectedDimensionLevels={selectedDimensionLevels}
             selectedTimeGranularities={selectedTimeGranularities}
@@ -859,7 +1603,7 @@ const ForecastingGrid: React.FC = () => {
           />
         ) : (
           <HierarchicalGrid 
-            data={data} 
+            data={filteredData} 
             onDataChange={setData} 
             selectedDimensionLevels={selectedDimensionLevels}
             selectedTimeGranularities={selectedTimeGranularities}
@@ -893,6 +1637,23 @@ const ForecastingGrid: React.FC = () => {
             onGetCurrentCellValueReady={(handler: (rowId: string, monthKey: string) => number) => {
               getCurrentCellValueRef.current = handler;
             }}
+            onEditingCellChange={(cellKey) => {
+              setEditingCellKey(cellKey);
+              // Clear selection when entering edit mode
+              if (cellKey) {
+                setSelectedCells(prev => {
+                  // Remove the editing cell from selection if it's there
+                  const newSelection = new Set(prev);
+                  newSelection.delete(cellKey);
+                  return newSelection;
+                });
+              }
+            }}
+            onSavedImpactedCellsReady={(cells) => {
+              console.log('[ForecastingGrid] Received savedImpactedCells update:', Array.from(cells.keys()));
+              setSavedImpactedCells(cells);
+              savedImpactedCellsRef.current = cells; // Update ref immediately for synchronous access
+            }}
         />
         )}
         <SettingsPanel 
@@ -910,6 +1671,9 @@ const ForecastingGrid: React.FC = () => {
           onMeasureSubgroupChange={setSelectedMeasureSubgroup}
           selectedLayout={selectedLayoutState}
           onLayoutChange={handleLayoutChange}
+          measures={data}
+          onMeasuresReorder={handleMeasuresReorder}
+          visibleMeasureIds={visibleMeasureIds}
         />
         <FiltersPanel 
           isOpen={isFiltersOpen} 
@@ -921,6 +1685,7 @@ const ForecastingGrid: React.FC = () => {
           data={data}
         />
         <CellDetailsHistoryPanel 
+          key={panelKey}
           isOpen={isCellDetailsHistoryOpen} 
           onClose={() => {
             setIsCellDetailsHistoryOpen(false);

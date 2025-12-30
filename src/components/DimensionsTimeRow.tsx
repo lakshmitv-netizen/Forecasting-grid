@@ -54,7 +54,7 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
     }
   }, [editingCell]);
 
-  const handleCellValueClick = (measureId: string, e: React.MouseEvent) => {
+  const handleCellValueDoubleClick = (measureId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     // Only time rows (year, quarter, month) are editable
     if (row.type === 'year' || row.type === 'quarter' || row.type === 'month') {
@@ -63,7 +63,7 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
         return;
       }
       const currentValue = row.measureValues.get(measureId) || 0;
-      console.log('[DimensionsTimeRow] Cell clicked, entering edit mode:', { rowId: row.id, measureId, currentValue });
+      console.log('[DimensionsTimeRow] Cell double-clicked, entering edit mode:', { rowId: row.id, measureId, currentValue });
       setEditingCell({ measureId });
       setEditValue(currentValue.toString());
     }
@@ -189,7 +189,7 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
       return (
         <div 
           className="cell-value-wrapper-edited-container"
-          onClick={isEditable ? (e) => handleCellValueClick(measureId, e) : undefined}
+          onDoubleClick={isEditable ? (e) => handleCellValueDoubleClick(measureId, e) : undefined}
           style={{ cursor: isEditable ? 'pointer' : 'default' }}
         >
           <div className="cell-value-left-icon">
@@ -232,17 +232,17 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
       return (
         <div 
           className="cell-value-wrapper-saved-container"
-          onClick={isEditable ? (e) => handleCellValueClick(measureId, e) : undefined}
+          onDoubleClick={isEditable ? (e) => handleCellValueDoubleClick(measureId, e) : undefined}
           style={{ cursor: isEditable ? 'pointer' : 'default' }}
         >
-          <div className="cell-value-left-icon">
+          <div className={`cell-value-left-icon ${isIncrease ? 'cell-arrow-increase' : 'cell-arrow-decrease'}`}>
             {isIncrease ? (
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 6v10M12 6l4 4M12 6l-4 4" stroke="#ff5d2d" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                <path d="M12 6v10M12 6l4 4M12 6l-4 4" stroke="#ff5d2d" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
               </svg>
             ) : (
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 18V8M12 18l4-4M12 18l-4-4" stroke="#2E76E1" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                <path d="M12 18V8M12 18l4-4M12 18l-4-4" stroke="#2E76E1" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
               </svg>
             )}
           </div>
@@ -272,7 +272,7 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
       return (
         <div 
           className="cell-value-wrapper-impacted-container"
-          onClick={isEditable ? (e) => handleCellValueClick(measureId, e) : undefined}
+          onDoubleClick={isEditable ? (e) => handleCellValueDoubleClick(measureId, e) : undefined}
           style={{ cursor: isEditable ? 'pointer' : 'default' }}
         >
           <div className="cell-value-left-icon">
@@ -314,7 +314,7 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
         <span 
           className={`cell-value ${!isEditable ? 'cell-value-readonly' : ''}`}
         style={{ cursor: isEditable ? 'pointer' : 'default' }}
-        onClick={isEditable ? (e) => handleCellValueClick(measureId, e) : undefined}
+        onDoubleClick={isEditable ? (e) => handleCellValueDoubleClick(measureId, e) : undefined}
       >
         {searchTerm && searchTerm.trim() ? (() => {
           const searchTerms = extractSearchTerms(searchTerm);
@@ -435,9 +435,11 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
               }}
               className={cellClassName}
               tabIndex={isEditable ? 0 : -1}
-              onClick={(e) => {
-                // If clicking directly on the td (not on the inner span), trigger edit mode
-                if (isEditable && e.target === e.currentTarget) {
+              onDoubleClick={(e) => {
+                // Double-click anywhere on the cell to enter edit mode
+                if (isEditable && !editingCell) {
+                  e.preventDefault();
+                  e.stopPropagation();
                   handleCellEnterKey(measure.id);
                 }
               }}

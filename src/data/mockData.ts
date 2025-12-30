@@ -45,7 +45,7 @@ const createHierarchy = (
   return [
     {
       id: `account-${measureId}`,
-      name: 'Magna Drive - Michigan Plan',
+      name: 'MagnaDrive - Michigan Plant',
       parentId: measureId,
       level: 1,
       type: 'account',

@@ -265,7 +265,7 @@
   border-radius: 0;
   background-color: var(--color-surface-white) !important;
   flex: 1;
-  min-width: 0;
+  min-width: 300px; /* Ensure container is at least as wide as first frozen column */
   min-height: 0;
   overflow: auto; /* Single overflow property for both directions */
   margin-bottom: 0;
@@ -279,7 +279,8 @@
   border-collapse: collapse;
   font-size: var(--font-size-base);
   table-layout: auto;
-  border-top: 1px solid var(--color-border);
+  border: 1px solid #A0A0A0;
+  min-width: 300px; /* Ensure table is at least as wide as first frozen column */
 }
 
 /* When searching/filtering, don't force full width */
@@ -300,8 +301,7 @@
 }
 
 .grid-header {
-  background-color: #E5E5E5 !important;
-  border-bottom: var(--border-width-2) solid var(--color-border) !important;
+  background-color: #EBF2FF !important;
 }
 
 .grid-header th {
@@ -312,13 +312,12 @@
   font-size: var(--font-size-base) !important;
   color: var(--color-dark-text) !important;
   line-height: var(--line-height-base) !important;
-  border-right: var(--border-width-1) solid var(--color-border) !important;
+  border-right: 1px solid #A0A0A0 !important;
+  border-top: 1px solid #A0A0A0 !important;
+  border-bottom: 1px solid #A0A0A0 !important;
   white-space: nowrap;
-  background-color: #E5E5E5 !important;
+  background-color: #EBF2FF !important;
   /* Sticky header for vertical scroll */
-  position: sticky;
-  top: 0;
-  z-index: 10;
 }
 
 .grid-header th:last-child {
@@ -326,14 +325,17 @@
 }
 
 .grid-header th:first-child {
-  min-width: 275px !important;
-  max-width: 275px !important;
-  width: 275px !important;
+  min-width: 300px !important;
+  max-width: 300px !important;
+  width: 300px !important;
   position: sticky;
   left: 0;
   top: 0;
   z-index: 20; /* Higher z-index for corner cell - sticky both ways */
-  background-color: #E5E5E5 !important;
+  background-color: #EBF2FF !important;
+  border-right: 1px solid #A0A0A0 !important;
+  border-top: 1px solid #A0A0A0 !important;
+  border-bottom: 1px solid #A0A0A0 !important;
 }
 
 .grid-header th:first-child::after {
@@ -361,10 +363,10 @@
   height: 24px !important;
   padding: 4px !important;
   border: 1px solid #c9c9c9 !important;
-  border-radius: 4px !important;
+  border-radius: 50% !important;
   background-color: #ffffff !important;
   cursor: pointer !important;
-  color: var(--color-dark-text) !important;
+  color: #0250D9 !important;
   transition: all 0.15s ease;
   flex-shrink: 0;
 }
@@ -393,7 +395,6 @@
 }
 
 .grid-row {
-  border-bottom: var(--border-width-1) solid var(--color-border) !important;
   transition: background-color 0.2s;
   background-color: var(--color-surface-white) !important;
 }
@@ -402,6 +403,7 @@
   background-color: #F5F9FF !important;
 }
 
+/* Measure rows in "Measures / Dimensions x Time" layout - header rows */
 .grid-row.measure-row {
   background-color: #F3F3F3 !important;
   font-weight: var(--font-weight-semibold) !important;
@@ -460,7 +462,9 @@
 
 .grid-cell {
   padding: var(--spacing-3) var(--spacing-4);
-  border-right: var(--border-width-1) solid var(--color-border) !important;
+  border-right: 1px solid #A0A0A0 !important;
+  border-top: 1px solid #A0A0A0 !important;
+  border-bottom: 1px solid #A0A0A0 !important;
   vertical-align: middle;
   background-color: inherit !important;
   min-height: 43px; /* Match Figma: 43px minimum height */
@@ -470,10 +474,13 @@
   position: sticky;
   left: 0;
   z-index: 5;
-  background-color: inherit !important;
-  min-width: 275px !important;
-  max-width: 275px !important;
-  width: 275px !important;
+  background-color: white !important; /* White background for first frozen column */
+  min-width: 300px !important;
+  max-width: 300px !important;
+  width: 300px !important;
+  border-right: 1px solid #A0A0A0 !important;
+  border-top: 1px solid #A0A0A0 !important;
+  border-bottom: 1px solid #A0A0A0 !important;
 }
 
 .grid-cell:first-child::after {
@@ -485,23 +492,93 @@
   width: 10px;
   background: linear-gradient(to right, rgba(0, 0, 0, 0.1), transparent);
   pointer-events: none;
+  z-index: -1; /* Place gradient behind border */
 }
 
 .grid-row:hover .grid-cell:first-child {
-  background-color: #F5F9FF !important;
+  background-color: white !important; /* Keep white color on hover */
 }
 
+/* Measure rows - keep their original background color */
 .grid-row.measure-row .grid-cell:first-child {
+  background-color: #F3F3F3 !important;
+}
+
+.grid-row.measure-row:hover .grid-cell:first-child {
   background-color: #F3F3F3 !important;
 }
 
 /* Dimension rows first column in Dimensions / Time x Measures view */
 .dimensions-time-table:not(.time-dimensions-table) .grid-row.dimension-row .grid-cell:first-child {
-  background-color: #F3F3F3 !important;
+  background-color: #F3F3F3 !important; /* Grey background to match measure rows */
+}
+
+.dimensions-time-table:not(.time-dimensions-table) .grid-row.dimension-row:hover .grid-cell:first-child {
+  background-color: #F3F3F3 !important; /* Keep grey color on hover */
 }
 
 /* Time rows first column in Time / Dimensions x Measures view */
 .time-dimensions-table .grid-row.time-row .grid-cell:first-child {
+  background-color: #F3F3F3 !important; /* Grey background to match measure rows */
+}
+
+.time-dimensions-table .grid-row.time-row:hover .grid-cell:first-child {
+  background-color: #F3F3F3 !important; /* Keep grey color on hover */
+}
+
+/* Keep first frozen column white for all cells (except measure/dimension/time rows which have grey) */
+.grid-cell:first-child.cell-focused {
+  background-color: white !important;
+}
+
+.grid-cell:first-child:focus {
+  background-color: white !important;
+}
+
+.grid-cell:first-child.cell-selected {
+  background-color: white !important;
+}
+
+.grid-cell:first-child.cell-selected.cell-focused {
+  background-color: white !important;
+}
+
+/* Measure rows first column - keep grey even when focused/selected */
+.grid-row.measure-row .grid-cell:first-child.cell-focused {
+  background-color: #F3F3F3 !important;
+}
+
+.grid-row.measure-row .grid-cell:first-child:focus {
+  background-color: #F3F3F3 !important;
+}
+
+.grid-row.measure-row .grid-cell:first-child.cell-selected {
+  background-color: #F3F3F3 !important;
+}
+
+/* Dimension rows first column - keep grey even when focused/selected */
+.dimensions-time-table:not(.time-dimensions-table) .grid-row.dimension-row .grid-cell:first-child.cell-focused {
+  background-color: #F3F3F3 !important;
+}
+
+.dimensions-time-table:not(.time-dimensions-table) .grid-row.dimension-row .grid-cell:first-child:focus {
+  background-color: #F3F3F3 !important;
+}
+
+.dimensions-time-table:not(.time-dimensions-table) .grid-row.dimension-row .grid-cell:first-child.cell-selected {
+  background-color: #F3F3F3 !important;
+}
+
+/* Time rows first column - keep grey even when focused/selected */
+.time-dimensions-table .grid-row.time-row .grid-cell:first-child.cell-focused {
+  background-color: #F3F3F3 !important;
+}
+
+.time-dimensions-table .grid-row.time-row .grid-cell:first-child:focus {
+  background-color: #F3F3F3 !important;
+}
+
+.time-dimensions-table .grid-row.time-row .grid-cell:first-child.cell-selected {
   background-color: #F3F3F3 !important;
 }
 
@@ -633,9 +710,9 @@
   background-color: #F3F3F3 !important;
 }
 
-/* Dimension rows under readonly measures - texture on value cells, white first column */
+/* Dimension rows under readonly measures - texture on value cells, grey first column */
 .readonly-dimension-row > td:first-child {
-  background: #ffffff !important;
+  background: #F3F3F3 !important; /* Grey background to match measure rows */
 }
 
 .cell-value-cell.edited-cell {
@@ -716,6 +793,20 @@
   z-index: 1;
 }
 
+.cell-value-left-icon.cell-arrow-increase {
+  border: 2.5px solid #ff5d2d;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+}
+
+.cell-value-left-icon.cell-arrow-decrease {
+  border: 2.5px solid #2E76E1;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+}
+
 .cell-value-left-section {
   display: flex;
   flex-direction: column;
@@ -724,7 +815,8 @@
   gap: 0px; /* No gap between delta and value */
   width: 100%;
   height: 42px; /* Match Figma: 42px height */
-  padding: 3px 22px; /* Top/bottom: 3px, left/right: 22px (symmetric padding for proper centering, arrow overlays on left - 2px + 18px arrow + 2px spacing) */
+  padding: 3px 22px; /* Top/bottom: 3px, right: 22px */
+  padding-left: 30px; /* Icon is 20px wide at left:8px, so ends at 28px. Add 2px gap = 30px */
   position: relative;
   z-index: 0;
   box-sizing: border-box;
@@ -789,7 +881,8 @@
 }
 
 .cell-value-wrapper-saved-container > .cell-value {
-  padding: 0 22px; /* left/right: 22px (symmetric padding for proper centering, arrow overlays on left - 2px + 18px arrow + 2px spacing) */
+  padding: 0 22px; /* right: 22px, left padding adjusted to ensure 2px gap from icon */
+  padding-left: 30px; /* Icon is 20px wide at left:8px, so ends at 28px. Add 2px gap = 30px */
   box-sizing: border-box;
 }
 
@@ -832,7 +925,7 @@
 
 
 .cell-value-cell:hover {
-  background-color: rgba(0, 123, 255, 0.05);
+  background-color: rgba(0, 0, 0, 0.02);
 }
 
 .grid-row.measure-row .cell-value-cell:hover {
@@ -850,13 +943,33 @@
 }
 
 .cell-selected {
-  background-color: #E6F0FF !important;
-  border: 2px solid #0050D9 !important;
-  box-shadow: 0 0 0 1px rgba(0, 80, 217, 0.2) !important;
+  background-color: transparent !important;
+  border: 2px solid #000000 !important;
+  box-shadow: none !important;
+  outline: none !important; /* Remove outline when selected */
 }
 
 .cell-selected.cell-focused {
-  background-color: #D6E8FF !important;
+  background-color: transparent !important;
+  outline: none !important; /* Remove outline when selected and focused */
+}
+
+.cell-selected:focus {
+  outline: none !important; /* Remove focus outline when selected */
+}
+
+/* Ensure edited cells always show orange background, even when selected */
+.cell-selected.edited-cell {
+  background-color: #f9e3b6 !important; /* Light orange/beige background */
+  border: 2px solid #000000 !important; /* Black border for selection */
+  box-shadow: none !important;
+}
+
+/* Ensure impacted cells always show yellow background, even when selected */
+.cell-selected.impacted-cell {
+  background-color: #fef5e7 !important; /* Lighter yellow background */
+  border: 2px solid #000000 !important; /* Black border for selection */
+  box-shadow: none !important;
 }
 
 .grid-container {

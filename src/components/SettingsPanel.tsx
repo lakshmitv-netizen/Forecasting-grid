@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { MeasureData } from '../types';
+import ReorderMeasuresModal from './ReorderMeasuresModal';
 import '../styles/components/SettingsPanel.css';
 
 interface SettingsPanelProps {
@@ -16,6 +18,9 @@ interface SettingsPanelProps {
   onMeasureSubgroupChange?: (subgroup: string) => void;
   selectedLayout?: string;
   onLayoutChange?: (layout: string) => void;
+  measures?: MeasureData[]; // Current measures data
+  onMeasuresReorder?: (orderedMeasures: MeasureData[], visibleMeasureIds: Set<string>) => void; // Callback when measures are reordered
+  visibleMeasureIds?: Set<string>; // Set of visible measure IDs
 }
 
 const layoutOptions = [
@@ -79,7 +84,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   selectedMeasureSubgroup: propSelectedMeasureSubgroup,
   onMeasureSubgroupChange,
   selectedLayout: propSelectedLayout,
-  onLayoutChange
+  onLayoutChange,
+  measures = [],
+  onMeasuresReorder,
+  visibleMeasureIds = new Set()
 }) => {
   const [selectedLayout, setSelectedLayout] = useState(propSelectedLayout || layoutOptions[0].value);
   const [isLayoutDropdownOpen, setIsLayoutDropdownOpen] = useState(false);
@@ -90,6 +98,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   );
   const [isMeasureSubgroupDropdownOpen, setIsMeasureSubgroupDropdownOpen] = useState(false);
   const measureSubgroupDropdownRef = useRef<HTMLDivElement>(null);
+  const [isReorderModalOpen, setIsReorderModalOpen] = useState(false);
   
   // Sync internal state with props
   useEffect(() => {
@@ -276,10 +285,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
         {/* Panel Body */}
         <div className="settings-panel-body">
-          {/* Table Layout Section */}
+          {/* Layout Section */}
           <div className="settings-section">
             <div className="settings-section-header">
-              <p className="settings-section-title">Measure, Dimension & Time Settings</p>
+              <p className="settings-section-title">Layout</p>
             </div>
 
             <div className="settings-field">
@@ -318,11 +327,28 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 )}
               </div>
             </div>
+          </div>
+
+          {/* Measure, Dimension & Time Settings Section */}
+          <div className="settings-section">
+            <div className="settings-section-header">
+              <p className="settings-section-title">Measure, Dimension & Time Settings</p>
+            </div>
 
             <div className="settings-field">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                 <label className="settings-field-label" style={{ marginBottom: 0 }}>Measure Subgroup</label>
-                <a href="#" className="settings-link" style={{ marginBottom: 0 }}>Reorder Measures</a>
+                <a 
+                  href="#" 
+                  className="settings-link" 
+                  style={{ marginBottom: 0 }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setIsReorderModalOpen(true);
+                  }}
+                >
+                  Reorder Measures
+                </a>
               </div>
               <div className="settings-dropdown-wrapper" ref={measureSubgroupDropdownRef}>
                 <div 
@@ -356,6 +382,11 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   </div>
                 )}
               </div>
+              {measures.length > 0 && (
+                <p className="settings-field-helper-text">
+                  Showing {visibleMeasureIds.size === 0 ? measures.length : measures.filter(m => visibleMeasureIds.has(m.id)).length} out of {measures.length} measures
+                </p>
+              )}
             </div>
 
             <div className="settings-field settings-field-spaced">
@@ -403,7 +434,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               </div>
             </div>
 
-            <div className="settings-field" style={{ marginTop: '16px' }}>
+            <div className="settings-field" style={{ marginTop: '12px' }}>
               <label className="settings-field-label">Time Granularity</label>
               <div className="settings-dropdown-wrapper" ref={timeGranularityDropdownRef}>
                 <div 
@@ -466,7 +497,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   disabled={!onCollapseAllRows}
                 >
                   <span className="settings-button-text">Collapse All Rows</span>
-                  <span className="settings-button-separator"></span>
                   <svg className="settings-button-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
@@ -484,8 +514,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   Reset Column Width
                 </button>
                 <button className="settings-button settings-button-right">
-                  <span className="settings-button-text">Reset Sort</span>
-                  <span className="settings-button-separator"></span>
+                  <span className="settings-button-text">Freeze columns</span>
                   <svg className="settings-button-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
@@ -510,9 +539,25 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 <span className="settings-slider-value">{sliderValue}</span>
               </div>
             </div>
-          </div>
         </div>
       </div>
+      
+      {/* Reorder Measures Modal */}
+      {measures.length > 0 && (
+        <ReorderMeasuresModal
+          isOpen={isReorderModalOpen}
+          onClose={() => setIsReorderModalOpen(false)}
+          measures={measures}
+          measureSubgroup={selectedMeasureSubgroup || ''}
+          visibleMeasureIds={visibleMeasureIds}
+          onSave={(orderedMeasures, visibleMeasureIds) => {
+            if (onMeasuresReorder) {
+              onMeasuresReorder(orderedMeasures, visibleMeasureIds);
+            }
+          }}
+        />
+      )}
+    </div>
   );
 };
 

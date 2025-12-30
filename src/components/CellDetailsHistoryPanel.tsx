@@ -39,7 +39,7 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
   // Update activeTab when panel opens or initialTab prop changes
   useEffect(() => {
     if (isOpen) {
-      // When panel opens, set the tab based on initialTab prop
+      // When panel opens or initialTab changes while open, always set the tab based on initialTab prop
       setActiveTab(initialTab);
     } else {
       // Reset to single tab when panel closes
@@ -337,7 +337,7 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                       onClick={() => setIsSelectCellsDropdownOpen(!isSelectCellsDropdownOpen)}
                     >
                       <span className="cell-details-history-dropdown-value">
-                        {selectCells === 'Automatically' ? 'Automatically' : selectedCells.size > 0 ? `${selectedCells.size} cell${selectedCells.size === 1 ? '' : 's'} selected` : 'Manually'}
+                        {selectCells}
                       </span>
                       <svg className="cell-details-history-dropdown-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -372,6 +372,17 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                       </div>
                     )}
                   </div>
+                  {selectCells === 'Manually' && (
+                    <div className="cell-details-history-multi-helper-text">
+                      {selectedCells.size > 0 ? (
+                        `${selectedCells.size} cell${selectedCells.size === 1 ? '' : 's'} selected`
+                      ) : (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#5C5C5C', flexWrap: 'wrap' }}>
+                          Hold <span className="cell-details-history-shift-key">Shift</span> key and select multiple cells
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Criteria UI for Automatic Selection */}
@@ -585,8 +596,25 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                   </div>
                 )}
 
-                {/* Update Button */}
+                {/* Update and Cancel Buttons */}
                 <div className="cell-details-history-multi-actions">
+                  <button 
+                    className="cell-details-history-multi-cancel-btn"
+                    onClick={() => {
+                      // Clear form state
+                      setSelectCells('Manually');
+                      setSelectAction('Mass Update');
+                      setRule('Increase');
+                      setValue('20%');
+                      setBulkNote('');
+                      // Clear selection
+                      if (onClearSelection) {
+                        onClearSelection();
+                      }
+                    }}
+                  >
+                    Cancel
+                  </button>
                   <button 
                     className="cell-details-history-multi-update-btn"
                     onClick={() => {
@@ -605,13 +633,36 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
         ) : !hasFocusedCell ? (
           <div className="cell-details-history-empty-state">
             <div className="cell-details-history-empty-image">
-              <svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="20" y="20" width="80" height="80" rx="4" stroke="#C9C9C9" strokeWidth="2" fill="none"/>
-                <rect x="30" y="30" width="60" height="60" rx="2" fill="#F3F3F3"/>
-                <line x1="40" y1="50" x2="80" y2="50" stroke="#C9C9C9" strokeWidth="2" strokeLinecap="round"/>
-                <line x1="40" y1="65" x2="80" y2="65" stroke="#C9C9C9" strokeWidth="2" strokeLinecap="round"/>
-                <line x1="40" y1="80" x2="70" y2="80" stroke="#C9C9C9" strokeWidth="2" strokeLinecap="round"/>
-              </svg>
+              <div className="empty-state-illustration">
+                <div className="empty-state-filled-blue-sparkles">
+                  <div className="empty-state-sparkle-inner">
+                    <img src="http://localhost:3845/assets/08f41e0c3fb9c8bea8940b134fc3c2da0e9fb7f7.svg" alt="" />
+                  </div>
+                </div>
+                <div className="empty-state-subtract">
+                  <img src="http://localhost:3845/assets/ac0462cf7a97d528d288b68f32601ac60a86ae86.svg" alt="" />
+                </div>
+                <div className="empty-state-vector">
+                  <img src="http://localhost:3845/assets/ee71700f895824dbd6ef97da8ae880ca55cbe92e.svg" alt="" />
+                </div>
+                <div className="empty-state-outline-sparkles">
+                  <div className="empty-state-sparkle-inner">
+                    <img src="http://localhost:3845/assets/45cd0f19f132845900f1c376581a5dbd3d9022de.svg" alt="" />
+                  </div>
+                </div>
+                <div className="empty-state-vector-1428">
+                  <img src="http://localhost:3845/assets/53ecf33ce46383c456e1afaed9413128845a8bb7.svg" alt="" />
+                </div>
+                <div className="empty-state-group-2055247962">
+                  <img src="http://localhost:3845/assets/005101bebaee15af548e8af862282feae6b1d2e4.svg" alt="" />
+                </div>
+                <div className="empty-state-ellipse-8195">
+                  <img src="http://localhost:3845/assets/bd639c503bb86ee96a74878424e0876368e12a2f.svg" alt="" />
+                </div>
+                <div className="empty-state-polygon-1"></div>
+                <div className="empty-state-polygon-2"></div>
+                <div className="empty-state-polygon-3"></div>
+              </div>
             </div>
             <p className="cell-details-history-empty-text">Select a cell to know more</p>
           </div>
@@ -675,10 +726,41 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                         />
                       ))
                     ) : (
-                      <div>
+                      <div className="cell-details-history-empty-state-content">
+                        {hasFocusedCell && (
+                          <div className="cell-details-history-empty-illustration">
+                            <div className="cell-details-history-desert-illustration">
+                              <div className="desert-illustration-polygon">
+                                <img src="http://localhost:3845/assets/6fd0491589f0f1954fb95298f37af928239347fc.svg" alt="" />
+                              </div>
+                              <div className="desert-illustration-sparkle-1">
+                                <div className="desert-illustration-sparkle-inner">
+                                  <img src="http://localhost:3845/assets/08f41e0c3fb9c8bea8940b134fc3c2da0e9fb7f7.svg" alt="" />
+                                </div>
+                              </div>
+                              <div className="desert-illustration-sparkle-2">
+                                <img src="http://localhost:3845/assets/0c2ec79d8aa898ef72864f0bcdb0202220f02ac3.svg" alt="" />
+                              </div>
+                              <div className="desert-illustration-sparkle-3">
+                                <div className="desert-illustration-sparkle-inner">
+                                  <img src="http://localhost:3845/assets/45cd0f19f132845900f1c376581a5dbd3d9022de.svg" alt="" />
+                                </div>
+                              </div>
+                              <div className="desert-illustration-group-1">
+                                <img src="http://localhost:3845/assets/6e66973d4c957720b765d4e06e74f40071461576.svg" alt="" />
+                              </div>
+                              <div className="desert-illustration-group-2">
+                                <img src="http://localhost:3845/assets/723b30b6567991819f795b8784372ccb6d9fc481.svg" alt="" />
+                              </div>
+                              <div className="desert-illustration-group-3">
+                                <img src="http://localhost:3845/assets/78402a147d80e5e72d6a36f2bf2a01157b68268f.svg" alt="" />
+                              </div>
+                            </div>
+                          </div>
+                        )}
                         <p className="cell-details-history-placeholder">
                           {hasFocusedCell 
-                            ? 'No cell edit history available for this cell.' 
+                            ? 'No cell edit history available for this cell. Edit the value or add a note to see the changes logged here.' 
                             : 'Select a cell to view edit history.'}
                         </p>
                       </div>

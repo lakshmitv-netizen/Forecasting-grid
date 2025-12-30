@@ -22,11 +22,12 @@ interface GridRowProps {
   impactedCells?: Map<string, number>; // key: `${rowId}-${monthKey}`, value: originalValue
   savedEditedCells?: Map<string, string>; // key: `${rowId}-${monthKey}`, value: icon color - cells that were edited and saved (show icon only)
   unsavedNotes?: Map<string, string>; // key: `${rowId}-${monthKey}`, value: note text - notes for dirty cells
+  savedImpactedCells?: Set<string>; // Set of cellKeys that were impacted but are now saved (to prevent showing old notes/popovers)
   columnWidth?: number; // Column width in pixels for time period columns
   searchTerm?: string; // Search term for highlighting
   onCellEditStateChange?: (isEditing: boolean, rowId: string, monthKey: keyof GridRowType['values']) => void; // Callback when cell edit state changes
   editHistory?: CellEditHistoryEntry[]; // Edit history to check for notes
-  onCellFocusWithHistory?: (cellKey: string, cellRect: DOMRect | null, cellValue?: number, isLocked?: boolean) => void; // Callback when a cell is focused
+  onCellFocusWithHistory?: (cellKey: string, cellRect: DOMRect | null, cellValue?: number, isLocked?: boolean, isImpacted?: boolean) => void; // Callback when a cell is focused
   lockedCells?: Set<string>; // Set of locked cell keys that cannot be edited
   onCellContextMenu?: (e: React.MouseEvent, cellKey: string, cellValue: number, isLocked: boolean, isEditable: boolean) => void; // Callback for right-click context menu
   selectedCells?: Set<string>; // Set of selected cell keys
@@ -49,6 +50,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
   impactedCells,
   savedEditedCells,
   unsavedNotes,
+  savedImpactedCells = new Set<string>(),
   columnWidth = 100,
   searchTerm = '',
   onCellEditStateChange,
@@ -67,6 +69,30 @@ const GridRowComponent: React.FC<GridRowProps> = ({
   const adjustmentNoteInputRef = useRef<HTMLTextAreaElement>(null);
   const savedByEnterRef = useRef<boolean>(false);
   const isMovingToNoteInputRef = useRef<boolean>(false); // Track if we're intentionally moving focus to note input
+  const shiftKeyPressedRef = useRef<boolean>(false); // Track if Shift key is pressed during selection
+
+  // Track Shift key state globally to prevent popover when Shift is pressed
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') {
+        shiftKeyPressedRef.current = true;
+      }
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') {
+        // Small delay to allow focus event to check the state before resetting
+        setTimeout(() => {
+          shiftKeyPressedRef.current = false;
+        }, 100);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
 
   // Use visibleTimeKeys if provided, otherwise show all time keys
   const timeKeys: (keyof GridRowType['values'])[] = visibleTimeKeys || [
@@ -151,9 +177,13 @@ const GridRowComponent: React.FC<GridRowProps> = ({
   }, [editingCell]);
 
 
-  const handleCellValueClick = (monthKey: keyof GridRowType['values'], e: React.MouseEvent) => {
+  const handleCellValueDoubleClick = (monthKey: keyof GridRowType['values'], e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent cell click from firing
-    console.log('[GridRow] Cell value clicked (entering edit mode):', { rowId: row.id, rowType: row.type, monthKey });
+    // Don't enter edit mode if Shift key is pressed - just select the cell
+    if (e.shiftKey) {
+      return;
+    }
+    console.log('[GridRow] Cell value double-clicked (entering edit mode):', { rowId: row.id, rowType: row.type, monthKey });
     // Measure rows are calculated values and should not be editable
     if (row.type === 'measure') {
       console.log('[GridRow] Measure row is not editable, returning');
@@ -287,12 +317,19 @@ const GridRowComponent: React.FC<GridRowProps> = ({
       }
     }
     
-    // Refocus the cell after editing is complete
+    // Refocus the cell after editing is complete, but only if user didn't click on another cell
     setTimeout(() => {
-      if (cellRefs && onCellFocus) {
+      // Check if the active element is a different cell - if so, don't refocus
+      const activeElement = document.activeElement;
+      const isClickingAnotherCell = activeElement && (
+        activeElement.classList.contains('grid-cell') ||
+        activeElement.closest('.grid-cell')
+      );
+      
+      if (!isClickingAnotherCell && cellRefs && onCellFocus) {
         const cellKey = `${currentRowId}-${monthKey}`;
         const cellElement = cellRefs.current.get(cellKey);
-        if (cellElement) {
+        if (cellElement && document.activeElement !== cellElement) {
           cellElement.focus();
           onCellFocus({ rowId: currentRowId, monthKey });
         }
@@ -449,6 +486,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
   };
 
   const renderCellValue = (monthKey: keyof GridRowType['values']) => {
+    const cellKey = `${row.id}-${monthKey}`;
+    
     if (editingCell?.monthKey === monthKey) {
       return (
         <>
@@ -671,23 +710,56 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     }
     
     // Check if this cell has been directly edited or impacted
-    const cellKey = `${row.id}-${monthKey}`;
+    // Note: cellKey is already declared at the top of renderCellValue
     
     // Check if cell is locked
     const isCellLocked = lockedCells.has(cellKey);
     
-    // Check if this cell has a note - check editHistory for any entry with a note for this cell
-    const hasNote = editHistory && editHistory.length > 0 && editHistory.some(entry => {
-      // Match by cellKey exactly
-      if (entry.cellKey === cellKey) {
-        return !!(entry.note && entry.note.trim() !== '');
+    const editedOriginalValue = editedCells?.get(cellKey);
+    const impactedOriginalValue = impactedCells?.get(cellKey);
+    const savedIconColor = savedEditedCells?.get(cellKey);
+    const isSavedEdited = savedIconColor !== undefined;
+    const currentValue = row.values[monthKey];
+    // Check if edited (directly edited by user) - if in map, consider it edited
+    const isDirectlyEdited = editedOriginalValue !== undefined;
+    // Check if impacted (changed due to editing another cell) - if in map, consider it impacted
+    const isImpacted = !isDirectlyEdited && impactedOriginalValue !== undefined;
+    
+    // Check if this cell has a note
+    // For impacted cells: only show note indicator if there's an unsaved note (new note added after impact)
+    // For saved impacted cells (were impacted but now saved): don't show old notes
+    // For non-impacted cells: show note indicator if there's a note in editHistory (saved notes)
+    const wasImpactedAndSaved = savedImpactedCells.has(cellKey);
+    // Calculate hasNote - explicitly exclude saved impacted cells
+    // IMPORTANT: If cell is saved impacted, NEVER show note indicator, regardless of other conditions
+    let hasNote = false;
+    if (wasImpactedAndSaved || savedImpactedCells.has(cellKey)) {
+      // Cell is saved impacted - don't show any notes
+      hasNote = false;
+    } else if (isImpacted) {
+      // For impacted cells: only show note if there's an unsaved note (added after impact)
+      hasNote = !!(unsavedNotes?.get(cellKey) && unsavedNotes.get(cellKey)!.trim() !== '');
+    } else {
+      // For non-impacted cells: only show note if there's a note in editHistory
+      if (editHistory && editHistory.length > 0) {
+        hasNote = editHistory.some(entry => {
+          // Match by cellKey exactly
+          if (entry.cellKey === cellKey) {
+            return !!(entry.note && entry.note.trim() !== '');
+          }
+          // Also check if rowId and timeKey match (for compatibility)
+          if (entry.rowId === row.id && entry.timeKey === monthKey) {
+            return !!(entry.note && entry.note.trim() !== '');
+          }
+          return false;
+        });
       }
-      // Also check if rowId and timeKey match (for compatibility)
-      if (entry.rowId === row.id && entry.timeKey === monthKey) {
-        return !!(entry.note && entry.note.trim() !== '');
-      }
-      return false;
-    });
+    }
+    
+    // Force hasNote to false if cell is saved impacted (safety check in renderCellValue)
+    // Also double-check savedImpactedCells directly to be absolutely sure
+    const isDefinitelySavedImpactedRender = savedImpactedCells.has(cellKey);
+    const finalHasNoteForRender = (wasImpactedAndSaved || isDefinitelySavedImpactedRender) ? false : hasNote;
     
     // Check if this is a readonly measure (Last Year data)
     const isReadonlyMeasure = row.id.includes('measure-ly-order') || 
@@ -698,15 +770,6 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     // Locked cells are also not editable
     // Readonly measures (Last Year data) are not editable
     const isEditable = row.type !== 'measure' && onCellChange && !isCellLocked && !isReadonlyMeasure;
-    const editedOriginalValue = editedCells?.get(cellKey);
-    const impactedOriginalValue = impactedCells?.get(cellKey);
-    const savedIconColor = savedEditedCells?.get(cellKey);
-    const isSavedEdited = savedIconColor !== undefined;
-    const currentValue = row.values[monthKey];
-    // Check if edited (directly edited by user) - if in map, consider it edited
-    const isDirectlyEdited = editedOriginalValue !== undefined;
-    // Check if impacted (changed due to editing another cell) - if in map, consider it impacted
-    const isImpacted = !isDirectlyEdited && impactedOriginalValue !== undefined;
     
     // Calculate delta as percentage
     let deltaPercent: number | null = null;
@@ -753,7 +816,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               <span 
                 className={`cell-value cell-value-edited ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
                 style={{ cursor: isEditable ? 'pointer' : 'default', color: deltaColor }}
-                onClick={isEditable ? (e) => handleCellValueClick(monthKey, e) : undefined}
+                onDoubleClick={isEditable ? (e) => handleCellValueDoubleClick(monthKey, e) : undefined}
               >
                 {valueMatchesSearch ? (
                   <SearchHighlight text={formatValue(currentValue)} searchTerms={otherTerms} />
@@ -763,24 +826,72 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               </span>
             </div>
           </div>
-          {/* Dog ear triangle indicator for cells with notes */}
-          {hasNote && (
+          {/* Dog ear triangle indicator for cells with notes - but not for saved impacted cells */}
+          {finalHasNoteForRender && !savedImpactedCells.has(cellKey) && (
             <div className="cell-note-indicator"></div>
           )}
         </>
       );
     }
     
+    // Impacted cell: show impacted state with new value and delta, no old arrow
+    if (isImpacted) {
+      const isIncrement = deltaPercent !== null && deltaPercent > 0;
+      const deltaColor = isIncrement ? '#ff5d2d' : '#2E76E1';
+      
+      return (
+        <>
+          <div className="cell-value-wrapper-edited-container">
+            <div className="cell-value-left-icon">
+              {isCellLocked ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
+                  <rect x="5" y="11" width="14" height="9" rx="1" fill="#6b7280"/>
+                  <path d="M9 11V7c0-1.66 1.34-3 3-3s3 1.34 3 3v4" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" fill="none"/>
+                </svg>
+              ) : (
+                <div style={{ width: '18px', height: '18px' }}></div>
+              )}
+            </div>
+            <div className="cell-value-left-section">
+              {deltaPercent !== null && Math.abs(deltaPercent) > 0.001 && (
+                <div className="cell-delta-badge" style={{ color: deltaColor }}>
+                  {deltaPercent > 0 ? '+' : ''} {deltaPercent.toFixed(2)}%
+                </div>
+              )}
+              <span 
+                className={`cell-value cell-value-edited ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
+                style={{ cursor: isEditable ? 'pointer' : 'default', color: deltaColor }}
+                onDoubleClick={isEditable ? (e) => handleCellValueDoubleClick(monthKey, e) : undefined}
+              >
+                {valueMatchesSearch ? (
+                  <SearchHighlight text={formatValue(currentValue)} searchTerms={otherTerms} />
+                ) : (
+                  formatValue(currentValue)
+                )}
+              </span>
+            </div>
+          </div>
+          {/* Don't show old note indicator for impacted cells */}
+        </>
+      );
+    }
+    
     // Saved edited cell: show only icon, no badge, normal value positioning
-    if (isSavedEdited) {
+    // Only show if NOT impacted (impacted cells take precedence)
+    // Also check if this cell was impacted and saved - if so, don't show old notes
+    if (isSavedEdited && !isImpacted) {
       const iconColor = savedIconColor || '#2E76E1'; // Use stored color or default blue
       // Use saved icon color to determine arrow direction (orange = increase, blue = decrease)
       const isIncrease = iconColor === '#ff5d2d' || iconColor === '#FF5D2D';
       
+      // For saved edited cells, only show note if it wasn't impacted and saved
+      // (if it was impacted and saved, don't show old notes)
+      const shouldShowNote = hasNote && !wasImpactedAndSaved;
+      
       return (
         <>
           <div className="cell-value-wrapper-saved-container">
-            <div className="cell-value-left-icon">
+            <div className={`cell-value-left-icon ${!isCellLocked && (isIncrease ? 'cell-arrow-increase' : 'cell-arrow-decrease')}`}>
               {isCellLocked ? (
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
                   <rect x="5" y="11" width="14" height="9" rx="1" fill="#6b7280"/>
@@ -788,18 +899,18 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 </svg>
               ) : isIncrease ? (
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M12 6v10M12 6l4 4M12 6l-4 4" stroke="#ff5d2d" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                  <path d="M12 6v10M12 6l4 4M12 6l-4 4" stroke="#ff5d2d" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
                 </svg>
               ) : (
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M12 18V8M12 18l4-4M12 18l-4-4" stroke="#2E76E1" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                  <path d="M12 18V8M12 18l4-4M12 18l-4-4" stroke="#2E76E1" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
                 </svg>
               )}
             </div>
             <span 
               className={`cell-value cell-value-saved ${!isCellLocked && (isIncrease ? 'cell-value-increase' : 'cell-value-decrease')} ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
               style={{ cursor: isEditable ? 'pointer' : 'default' }}
-              onClick={isEditable ? (e) => handleCellValueClick(monthKey, e) : undefined}
+              onDoubleClick={isEditable ? (e) => handleCellValueDoubleClick(monthKey, e) : undefined}
             >
               {valueMatchesSearch ? (
                 <SearchHighlight text={formatValue(currentValue)} searchTerms={otherTerms} />
@@ -808,8 +919,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               )}
             </span>
           </div>
-          {/* Dog ear triangle indicator for cells with notes */}
-          {hasNote && (
+          {/* Dog ear triangle indicator for cells with notes - but not for saved impacted cells */}
+          {finalHasNoteForRender && shouldShowNote && !savedImpactedCells.has(cellKey) && (
             <div className="cell-note-indicator"></div>
           )}
         </>
@@ -818,6 +929,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     
     if (isImpacted) {
       // Impacted cell: lighter yellow background, delta badge, no icon
+      // Only show note indicator if there's an unsaved note (added after impact)
       const isIncrement = deltaPercent !== null && deltaPercent > 0;
       const deltaColor = isIncrement ? '#ff5d2d' : '#2E76E1';
       
@@ -843,7 +955,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               <span 
                 className={`cell-value cell-value-impacted ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
                 style={{ cursor: isEditable ? 'pointer' : 'default', color: deltaColor }}
-                onClick={isEditable ? (e) => handleCellValueClick(monthKey, e) : undefined}
+                onDoubleClick={isEditable ? (e) => handleCellValueDoubleClick(monthKey, e) : undefined}
               >
                 {valueMatchesSearch ? (
                   <SearchHighlight text={formatValue(currentValue)} searchTerms={otherTerms} />
@@ -853,8 +965,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               </span>
             </div>
           </div>
-          {/* Dog ear triangle indicator for cells with notes */}
-          {hasNote && (
+          {/* Dog ear triangle indicator - only show unsaved notes for impacted cells, not for saved impacted cells */}
+          {finalHasNoteForRender && !savedImpactedCells.has(cellKey) && (
             <div className="cell-note-indicator"></div>
           )}
         </>
@@ -879,7 +991,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
         <span 
           className={`cell-value ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
           style={{ cursor: isEditable ? 'pointer' : 'default' }}
-          onClick={isEditable ? (e) => handleCellValueClick(monthKey, e) : undefined}
+          onDoubleClick={isEditable ? (e) => handleCellValueDoubleClick(monthKey, e) : undefined}
         >
           {cellValueMatchesSearch ? (
             <SearchHighlight text={formatValue(cellValue, row.name?.toLowerCase().includes('quantity'))} searchTerms={otherTerms} />
@@ -918,6 +1030,44 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               </div>
             )}
             {!hasChildren && <span style={{ width: '16px', display: 'inline-block' }}></span>}
+            {row.type === 'account' && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginLeft: '4px', marginRight: '4px', width: '24px', height: '24px' }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <rect width="24" height="24" rx="12" fill="#5867E8"/>
+                  <path d="M18.6463 12.2486C18.674 11.7779 18.314 11.6394 18.1755 11.6394H13.1909C12.7479 11.6394 12.6925 12.1102 12.6925 12.1379V17.5379H18.6463V12.2486ZM15.2125 16.1256C15.2125 16.3748 15.0186 16.5963 14.7417 16.5963H14.2709C14.0217 16.5963 13.8002 16.3748 13.8002 16.1256V15.6548C13.8002 15.4056 13.994 15.184 14.2709 15.184H14.7417C14.9909 15.184 15.2125 15.4056 15.2125 15.6548V16.1256ZM15.2125 13.7717C15.2125 14.0209 15.0186 14.2425 14.7417 14.2425H14.2709C14.0217 14.2425 13.8002 14.0209 13.8002 13.7717V13.3009C13.8002 13.0517 13.994 12.8302 14.2709 12.8302H14.7417C14.9909 12.8302 15.2125 13.0517 15.2125 13.3009V13.7717ZM17.5109 16.1256C17.5109 16.3748 17.3171 16.5963 17.0402 16.5963H16.5694C16.3202 16.5963 16.0986 16.3748 16.0986 16.1256V15.6548C16.0986 15.4056 16.2925 15.184 16.5694 15.184H17.0402C17.2894 15.184 17.5109 15.4056 17.5109 15.6548V16.1256ZM17.5109 13.7717C17.5109 14.0209 17.3171 14.2425 17.0402 14.2425H16.5694C16.3202 14.2425 16.0986 14.0209 16.0986 13.7717V13.3009C16.0986 13.0517 16.2925 12.8302 16.5694 12.8302H17.0402C17.2894 12.8302 17.5109 13.0517 17.5109 13.3009V13.7717ZM14.0494 9.75632V7.07017C14.0771 6.5994 13.7448 6.46094 13.6063 6.46094H5.85247C5.40939 6.46094 5.354 6.93171 5.354 6.9594V17.5379H11.3079V10.7809C11.3079 10.7809 11.3079 10.2271 11.8063 10.2271H13.6063C13.8832 10.2271 14.0494 9.95017 14.0494 9.75632ZM7.874 15.904C7.874 16.1532 7.68016 16.3748 7.40323 16.3748H6.96016C6.71093 16.3748 6.48939 16.1532 6.48939 15.904V15.4332C6.48939 15.184 6.68323 14.9625 6.96016 14.9625H7.43093C7.68016 14.9625 7.9017 15.184 7.9017 15.4332V15.904H7.874ZM7.874 13.5225C7.874 13.7717 7.68016 13.9932 7.40323 13.9932H6.96016C6.71093 13.9932 6.48939 13.7717 6.48939 13.5225V13.0517C6.48939 12.8025 6.68323 12.5809 6.96016 12.5809H7.43093C7.68016 12.5809 7.9017 12.8025 7.9017 13.0517V13.5225H7.874ZM7.874 11.1686C7.874 11.4179 7.68016 11.6394 7.40323 11.6394H6.96016C6.71093 11.6394 6.48939 11.4179 6.48939 11.1686V10.6979C6.48939 10.4486 6.68323 10.2271 6.96016 10.2271H7.43093C7.68016 10.2271 7.9017 10.4486 7.9017 10.6979V11.1686H7.874ZM7.874 8.81478C7.874 9.06401 7.68016 9.28555 7.40323 9.28555H6.96016C6.71093 9.28555 6.48939 9.06401 6.48939 8.81478V8.34401C6.48939 8.09478 6.68323 7.87325 6.96016 7.87325H7.43093C7.68016 7.87325 7.9017 8.09478 7.9017 8.34401V8.81478H7.874ZM10.394 15.904C10.394 16.1532 10.2002 16.3748 9.92323 16.3748H9.45247C9.20324 16.3748 8.9817 16.1532 8.9817 15.904V15.4332C8.9817 15.184 9.17554 14.9625 9.45247 14.9625H9.92323C10.1725 14.9625 10.394 15.184 10.394 15.4332V15.904ZM10.394 13.5225C10.394 13.7717 10.2002 13.9932 9.92323 13.9932H9.45247C9.20324 13.9932 8.9817 13.7717 8.9817 13.5225V13.0517C8.9817 12.8025 9.17554 12.5809 9.45247 12.5809H9.92323C10.1725 12.5809 10.394 12.8025 10.394 13.0517V13.5225ZM10.394 11.1686C10.394 11.4179 10.2002 11.6394 9.92323 11.6394H9.45247C9.20324 11.6394 8.9817 11.4179 8.9817 11.1686V10.6979C8.9817 10.4486 9.17554 10.2271 9.45247 10.2271H9.92323C10.1725 10.2271 10.394 10.4486 10.394 10.6979V11.1686ZM10.394 8.81478C10.394 9.06401 10.2002 9.28555 9.92323 9.28555H9.45247C9.20324 9.28555 8.9817 9.06401 8.9817 8.81478V8.34401C8.9817 8.09478 9.17554 7.87325 9.45247 7.87325H9.92323C10.1725 7.87325 10.394 8.09478 10.394 8.34401V8.81478ZM12.914 8.81478C12.914 9.06401 12.7202 9.28555 12.4432 9.28555H12.0002C11.7509 9.28555 11.5294 9.06401 11.5294 8.81478V8.34401C11.5294 8.09478 11.7232 7.87325 12.0002 7.87325H12.4709C12.7202 7.87325 12.9417 8.09478 12.9417 8.34401V8.81478H12.914Z" fill="white"/>
+                </svg>
+              </span>
+            )}
+            {row.type === 'product' && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginLeft: '4px', marginRight: '4px', width: '24px', height: '24px' }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <g clipPath="url(#clip0_2078_22246)">
+                    <rect width="24" height="24" rx="4" fill="#9050E9"/>
+                    <path d="M5.2798 15.8408H6.4798C6.7438 15.8408 6.9598 15.6248 6.9598 15.3608V7.92078C6.9598 7.65678 6.7438 7.44078 6.4798 7.44078H5.2798C5.0158 7.44078 4.7998 7.65678 4.7998 7.92078V15.3608C4.7998 15.6248 5.0158 15.8408 5.2798 15.8408ZM18.7198 7.44078H17.5198C17.2558 7.44078 17.0398 7.65678 17.0398 7.92078V15.3608C17.0398 15.6248 17.2558 15.8408 17.5198 15.8408H18.7198C18.9838 15.8408 19.1998 15.6248 19.1998 15.3608V7.92078C19.1998 7.65678 18.9838 7.44078 18.7198 7.44078ZM12.7198 15.8408C12.9838 15.8408 13.1998 15.6248 13.1998 15.3608V7.92078C13.1998 7.65678 12.9838 7.44078 12.7198 7.44078H11.2798C11.0158 7.44078 10.7998 7.65678 10.7998 7.92078V15.3608C10.7998 15.6248 11.0158 15.8408 11.2798 15.8408H12.7198ZM15.5998 15.8408C15.8638 15.8408 16.0798 15.6248 16.0798 15.3608V7.92078C16.0798 7.65678 15.8638 7.44078 15.5998 7.44078H15.1198C14.8558 7.44078 14.6398 7.65678 14.6398 7.92078V15.3608C14.6398 15.6248 14.8558 15.8408 15.1198 15.8408H15.5998ZM9.3598 15.8408C9.6238 15.8408 9.8398 15.6248 9.8398 15.3608V7.92078C9.8398 7.65678 9.6238 7.44078 9.3598 7.44078H8.8798C8.6158 7.44078 8.3998 7.65678 8.3998 7.92078V15.3608C8.3998 15.6248 8.6158 15.8408 8.8798 15.8408H9.3598ZM18.7198 17.2808H5.2798C5.0158 17.2808 4.7998 17.4968 4.7998 17.7608V18.2408C4.7998 18.5048 5.0158 18.7208 5.2798 18.7208H18.7198C18.9838 18.7208 19.1998 18.5048 19.1998 18.2408V17.7608C19.1998 17.4968 18.9838 17.2808 18.7198 17.2808ZM18.7198 4.80078H5.2798C5.0158 4.80078 4.7998 5.01678 4.7998 5.28078V5.76078C4.7998 6.02478 5.0158 6.24078 5.2798 6.24078H18.7198C18.9838 6.24078 19.1998 6.02478 19.1998 5.76078V5.28078C19.1998 5.01678 18.9838 4.80078 18.7198 4.80078Z" fill="white"/>
+                  </g>
+                  <defs>
+                    <clipPath id="clip0_2078_22246">
+                      <rect width="24" height="24" rx="12" fill="white"/>
+                    </clipPath>
+                  </defs>
+                </svg>
+              </span>
+            )}
+            {row.type === 'category' && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginLeft: '4px', marginRight: '4px', width: '24px', height: '24px' }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <g clipPath="url(#clip0_2078_22252)">
+                    <rect width="24" height="24" rx="4" fill="#396547"/>
+                    <path d="M14.8318 7.05678L16.9678 9.19278C17.4478 9.64878 17.4478 10.4168 16.9678 10.8728L11.3998 16.4168V8.78478L13.1278 7.03278C13.2409 6.92186 13.3749 6.83445 13.522 6.77558C13.6691 6.7167 13.8264 6.68754 13.9848 6.68977C14.1432 6.692 14.2996 6.72558 14.445 6.78858C14.5904 6.85157 14.7218 6.94272 14.8318 7.05678ZM8.9998 4.80078H5.9998C5.68154 4.80078 5.37632 4.92721 5.15128 5.15225C4.92623 5.3773 4.7998 5.68252 4.7998 6.00078V16.5128C4.7998 16.8658 4.86933 17.2153 5.00442 17.5414C5.1395 17.8676 5.3375 18.1639 5.5871 18.4135C5.83671 18.6631 6.13303 18.8611 6.45915 18.9962C6.78527 19.1313 7.13481 19.2008 7.4878 19.2008C7.8408 19.2008 8.19033 19.1313 8.51646 18.9962C8.84258 18.8611 9.1389 18.6631 9.38851 18.4135C9.63811 18.1639 9.83611 17.8676 9.97119 17.5414C10.1063 17.2153 10.1758 16.8658 10.1758 16.5128V6.00078C10.1998 5.32878 9.6478 4.80078 8.9998 4.80078ZM7.4878 17.7128C6.8158 17.7128 6.2878 17.1848 6.2878 16.5128C6.2878 15.8408 6.8158 15.3128 7.4878 15.3128C8.1598 15.3128 8.6878 15.8408 8.6878 16.5128C8.6878 17.1848 8.1598 17.7128 7.4878 17.7128ZM17.9998 13.8008H15.8878L14.4478 15.2408H17.7598L17.7358 17.7608H11.9518L10.5118 19.2008H17.9998C18.3181 19.2008 18.6233 19.0744 18.8483 18.8493C19.0734 18.6243 19.1998 18.319 19.1998 18.0008V15.0008C19.1998 14.6825 19.0734 14.3773 18.8483 14.1523C18.6233 13.9272 18.3181 13.8008 17.9998 13.8008Z" fill="white"/>
+                  </g>
+                  <defs>
+                    <clipPath id="clip0_2078_22252">
+                      <rect width="24" height="24" rx="12" fill="white"/>
+                    </clipPath>
+                  </defs>
+                </svg>
+              </span>
+            )}
             <span className="cell-name">
               {searchTerm && searchTerm.trim() ? (
                 <SearchHighlight 
@@ -942,18 +1092,49 @@ const GridRowComponent: React.FC<GridRowProps> = ({
           const shouldShowTexture = isDimensionUnderReadonlyMeasure;
           const isEditable = row.type !== 'measure' && onCellChange && !isCellLocked && !isReadonlyMeasureCell;
           
-          // Check if this cell has a note - check editHistory for any entry with a note for this cell
-          const hasNote = editHistory && editHistory.length > 0 && editHistory.some(entry => {
-            // Match by cellKey exactly
-            if (entry.cellKey === cellKey) {
-              return !!(entry.note && entry.note.trim() !== '');
+          // Check if this cell has a note
+          // For impacted cells: only show note indicator if there's an unsaved note (new note added after impact)
+          // For saved impacted cells (were impacted but now saved): don't show old notes
+          // For non-impacted cells: show note indicator if there's a note in editHistory (saved notes)
+          const cellKeyForNoteCheck = `${row.id}-${key}`;
+          const editedOriginalValueForNote = editedCells?.get(cellKeyForNoteCheck);
+          const impactedOriginalValueForNote = impactedCells?.get(cellKeyForNoteCheck);
+          const isImpactedForNote = !editedOriginalValueForNote && impactedOriginalValueForNote !== undefined;
+          // Check if cell is saved impacted - use multiple checks to be absolutely sure
+          const wasImpactedAndSavedForNote = savedImpactedCells.has(cellKeyForNoteCheck);
+          // Also check with rowId-timeKey format in case cellKey format differs
+          const wasImpactedAndSavedAlt = savedImpactedCells.has(`${row.id}-${key}`);
+          const isSavedImpacted = wasImpactedAndSavedForNote || wasImpactedAndSavedAlt;
+          
+          // Calculate hasNote - explicitly exclude saved impacted cells
+          // IMPORTANT: If cell is saved impacted, NEVER show note indicator, regardless of other conditions
+          let hasNote = false;
+          if (isSavedImpacted) {
+            // Cell is saved impacted - don't show any notes, period
+            hasNote = false;
+          } else if (isImpactedForNote) {
+            // For impacted cells: only show note if there's an unsaved note (added after impact)
+            hasNote = !!(unsavedNotes?.get(cellKeyForNoteCheck) && unsavedNotes.get(cellKeyForNoteCheck)!.trim() !== '');
+          } else {
+            // For non-impacted cells: only show note if there's a note in editHistory
+            if (editHistory && editHistory.length > 0) {
+              hasNote = editHistory.some(entry => {
+                // Match by cellKeyForNoteCheck exactly (not cellKey which might be from outer scope)
+                if (entry.cellKey === cellKeyForNoteCheck) {
+                  return !!(entry.note && entry.note.trim() !== '');
+                }
+                // Also check if rowId and timeKey match (for compatibility)
+                if (entry.rowId === row.id && entry.timeKey === key) {
+                  return !!(entry.note && entry.note.trim() !== '');
+                }
+                return false;
+              });
             }
-            // Also check if rowId and timeKey match (for compatibility)
-            if (entry.rowId === row.id && entry.timeKey === key) {
-              return !!(entry.note && entry.note.trim() !== '');
-            }
-            return false;
-          });
+          }
+          
+          // Force hasNote to false if cell is saved impacted (safety check)
+          // Triple-check savedImpactedCells directly to be absolutely sure
+          const finalHasNote = isSavedImpacted ? false : hasNote;
           
           return (
             <td
@@ -964,7 +1145,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                   cellRefs.current.set(cellKey, el);
                 }
               }}
-              className={`grid-cell cell-value-cell ${isFocused ? 'cell-focused' : ''} ${shouldShowTexture ? 'cell-readonly-texture' : ''} ${hasNote ? 'cell-has-note' : ''} ${selectedCells.has(cellKey) ? 'cell-selected' : ''} ${(() => {
+              className={`grid-cell cell-value-cell ${isFocused ? 'cell-focused' : ''} ${shouldShowTexture ? 'cell-readonly-texture' : ''} ${finalHasNote && !isSavedImpacted ? 'cell-has-note' : ''} ${selectedCells.has(cellKey) ? 'cell-selected' : ''} ${(() => {
                 const cellKeyForCheck = `${row.id}-${key}`;
                 const editedOriginalValue = editedCells?.get(cellKeyForCheck);
                 const impactedOriginalValue = impactedCells?.get(cellKeyForCheck);
@@ -990,9 +1171,66 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 return '';
               })()}`}
               tabIndex={isEditable ? 0 : -1}
-              onClick={(e) => {
-                if (onCellSelect && isEditable) {
+              onMouseDown={(e) => {
+                // Track Shift key state for this selection
+                shiftKeyPressedRef.current = e.shiftKey;
+                // Use mousedown to catch selection earlier, before blur refocus happens
+                // Only handle if this is a left click
+                if (e.button !== 0) {
+                  return;
+                }
+                // If this cell is currently being edited, don't trigger selection
+                if (editingCell?.monthKey === key) {
+                  return;
+                }
+                // If another cell in this row is being edited, clear selection first
+                // BUT: Don't override Shift or Ctrl/Cmd keys - let them work normally (handle in onClick)
+                // Only handle normal clicks here when another cell is editing
+                if (editingCell && editingCell.monthKey !== key && onCellSelect && isEditable && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+                  // Clear any existing selection by selecting only this cell
+                  // Only do this if no modifier keys are pressed
+                  const syntheticEvent = { ...e, ctrlKey: false, metaKey: false, shiftKey: false, detail: 1 } as React.MouseEvent;
+                  onCellSelect(cellKey, syntheticEvent);
+                  return;
+                }
+                // Don't handle Shift/Ctrl/Cmd in mousedown - let onClick handle them for better reliability
+                if (onCellSelect && isEditable && !e.shiftKey && !e.ctrlKey && !e.metaKey && !editingCell) {
                   onCellSelect(cellKey, e);
+                }
+              }}
+              onClick={(e) => {
+                // Track Shift key state for this selection
+                shiftKeyPressedRef.current = e.shiftKey;
+                // Prevent selection on double-click
+                if (e.detail === 2) {
+                  return;
+                }
+                // If this cell is currently being edited, don't trigger selection
+                if (editingCell?.monthKey === key) {
+                  return;
+                }
+                // Handle selection on click - especially for Shift/Ctrl/Cmd keys
+                // This ensures modifier keys are properly detected
+                if (onCellSelect && isEditable) {
+                  // Always handle Shift/Ctrl/Cmd clicks here for better reliability
+                  if (e.shiftKey || e.ctrlKey || e.metaKey) {
+                    onCellSelect(cellKey, e);
+                  } else if (!editingCell) {
+                    // For normal clicks, handle here if mousedown didn't already handle it
+                    // (mousedown handles normal clicks when another cell is editing)
+                    onCellSelect(cellKey, e);
+                  }
+                }
+              }}
+              onDoubleClick={(e) => {
+                // Don't enter edit mode if Shift key is pressed - just select the cell
+                if (e.shiftKey) {
+                  return;
+                }
+                if (isEditable && !editingCell) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleCellEnterKey(key);
                 }
               }}
               onFocus={(e) => {
@@ -1002,20 +1240,35 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 // Call onCellFocusWithHistory for any editable cell OR locked cell
                 // But NOT if we're currently editing (adjustment note dropdown is shown)
                 // And NOT if cell is in dirty state (edited but not saved)
-                if (onCellFocusWithHistory && (isEditable || isCellLocked) && !editingCell) {
+                // And NOT if Shift key was pressed during selection (user is selecting cells)
+                if (onCellFocusWithHistory && (isEditable || isCellLocked) && !editingCell && !shiftKeyPressedRef.current) {
                   const focusCellKey = `${row.id}-${key}`;
                   const isDirty = editedCells?.has(focusCellKey) && !savedEditedCells?.has(focusCellKey);
+                  // Check if this cell is impacted
+                  const isImpactedCell = impactedCells?.has(focusCellKey);
+                  // Check if this cell was impacted but is now saved (don't show popover)
+                  const wasImpactedAndSaved = savedImpactedCells.has(focusCellKey);
                   // Don't show popover for dirty/unsaved cells (unless locked)
-                  if (!isDirty || isCellLocked) {
+                  // Also don't show popover for impacted cells (they show their own state)
+                  // Also don't show popover for saved impacted cells (they were impacted but are now saved)
+                  if ((!isDirty || isCellLocked) && !isImpactedCell && !wasImpactedAndSaved) {
                     const cellElement = e.currentTarget;
                     const cellRect = cellElement.getBoundingClientRect();
                     const cellValue = row.values[key];
-                    onCellFocusWithHistory(focusCellKey, cellRect, cellValue, isCellLocked);
+                    onCellFocusWithHistory(focusCellKey, cellRect, cellValue, isCellLocked, isImpactedCell || wasImpactedAndSaved);
+                  } else if (isImpactedCell || wasImpactedAndSaved) {
+                    // Explicitly close popover for impacted cells or saved impacted cells
+                    if (onCellFocusWithHistory) {
+                      onCellFocusWithHistory(focusCellKey, null, undefined, isCellLocked, true);
+                    }
                   }
                 }
+                // Reset shift key tracking after focus
+                shiftKeyPressedRef.current = false;
               }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && isEditable) {
+                // Don't enter edit mode if Shift key is pressed - just select the cell
+                if (e.key === 'Enter' && isEditable && !e.shiftKey) {
                   e.preventDefault();
                   e.stopPropagation();
                   handleCellEnterKey(key);
@@ -1029,8 +1282,9 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               }}
             >
               {renderCellValue(key)}
-              {/* Dog ear triangle indicator for cells with notes */}
-              {hasNote && (
+              {/* Dog ear triangle indicator for cells with notes - but not for saved impacted cells */}
+              {/* Force check: don't show if saved impacted - check savedImpactedCells directly with multiple formats */}
+              {!isSavedImpacted && !savedImpactedCells.has(cellKeyForNoteCheck) && !savedImpactedCells.has(`${row.id}-${key}`) && finalHasNote && (
                 <div className="cell-note-indicator"></div>
               )}
             </td>

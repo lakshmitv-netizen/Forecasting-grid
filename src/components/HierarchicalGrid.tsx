@@ -47,6 +47,8 @@ interface HierarchicalGridProps {
   onCellSelect?: (cellKey: string, event: React.MouseEvent) => void; // Callback when a cell is clicked for selection
   onCellChangeHandlerReady?: (handler: (rowId: string, monthKey: string, newValue: number, note?: string) => void) => void; // Callback to expose cell change handler for programmatic updates
   onGetCurrentCellValueReady?: (handler: (rowId: string, monthKey: string) => number) => void; // Callback to expose function to get current cell value
+  onEditingCellChange?: (cellKey: string | null) => void; // Callback when editing cell changes (cellKey format: `${rowId}-${monthKey}`)
+  onSavedImpactedCellsReady?: (cells: Set<string>) => void; // Callback to expose saved impacted cells
 }
 
 const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({ 
@@ -76,7 +78,9 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   selectedCells = new Set(),
   onCellSelect,
   onCellChangeHandlerReady,
-  onGetCurrentCellValueReady
+  onGetCurrentCellValueReady,
+  onEditingCellChange,
+  onSavedImpactedCellsReady
 }) => {
   // Store onEditHistory in a ref so it's always available in callbacks
   const onEditHistoryRef = useRef(onEditHistory);
@@ -233,10 +237,19 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   const handleCellEditStateChange = useCallback((isEditing: boolean, rowId: string, monthKey: string) => {
     if (isEditing) {
       setEditingCell({ rowId, monthKey: monthKey as keyof GridRowType['values'] });
+      // Notify parent of editing cell key
+      if (onEditingCellChange) {
+        const cellKey = `${rowId}-${monthKey}`;
+        onEditingCellChange(cellKey);
+      }
     } else {
       setEditingCell(null);
+      // Notify parent that editing stopped
+      if (onEditingCellChange) {
+        onEditingCellChange(null);
+      }
     }
-  }, []);
+  }, [onEditingCellChange]);
   
   // Track edited cells and their original values to show delta
   const [editedCells, setEditedCells] = useState<Map<string, number>>(new Map()); // key: `${rowId}-${monthKey}`, value: originalValue
@@ -245,6 +258,26 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   // Track saved edited cells (cells that were edited and saved - these keep the icon but no badge)
   // Map key: `${rowId}-${monthKey}`, value: icon color ('#ff5d2d' for increment, '#2E76E1' for decrement)
   const [savedEditedCells, setSavedEditedCells] = useState<Map<string, string>>(new Map());
+  
+  // Track cells that were impacted but are now saved (to prevent showing old notes/popovers)
+  // Set of cellKeys that were impacted in the current session but are now saved
+  const [savedImpactedCells, setSavedImpactedCells] = useState<Set<string>>(new Set());
+  
+  // Initialize savedEditedCells from cellEditHistory on mount
+  useEffect(() => {
+    if (cellEditHistory.length > 0) {
+      const initialSavedCells = new Map<string, string>();
+      cellEditHistory.forEach(entry => {
+        // Only add cells that have value changes (not just notes)
+        if (entry.oldValue !== undefined && entry.newValue !== undefined && entry.oldValue !== entry.newValue) {
+          const isIncrement = entry.newValue > entry.oldValue;
+          const iconColor = isIncrement ? '#ff5d2d' : '#2E76E1';
+          initialSavedCells.set(entry.cellKey, iconColor);
+        }
+      });
+      setSavedEditedCells(initialSavedCells);
+    }
+  }, []); // Only run on mount
   // Track unsaved notes for dirty cells (cells that are edited but not saved)
   // Map key: `${rowId}-${monthKey}`, value: note text
   const [unsavedNotes, setUnsavedNotes] = useState<Map<string, string>>(new Map());
@@ -579,7 +612,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       return;
     }
     
-    // Only run auto-expansion on structural changes (header changes, expanded rows), not on value changes
+    // Only run auto-expansion on structural changes (header changes), not on value changes or row expand/collapse
     const currentHeadersKey = visibleTimeHeaders.map(h => h.key).join(',');
     const headersChanged = previousVisibleHeadersRef.current !== currentHeadersKey;
     const expandedRowsChanged = expandedRows.size !== previousExpandedRowsRef.current?.size;
@@ -589,7 +622,8 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     previousExpandedRowsRef.current = expandedRows;
     
     // Skip auto-expansion if only values changed (not structure)
-    if (!headersChanged && !expandedRowsChanged) {
+    // Also skip if only expandedRows changed (expand/collapse all buttons) - don't recalculate column widths
+    if (!headersChanged) {
       return;
     }
     
@@ -1524,6 +1558,17 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
           } else {
             console.log('[GRID] Impacted cell already exists, keeping original:', key);
           }
+          
+          // If this cell was previously saved edited (has arrow), remove it from savedEditedCells
+          // so it shows as impacted instead of showing the old arrow
+          if (savedEditedCells.has(key)) {
+            setSavedEditedCells(prevSaved => {
+              const newSavedMap = new Map(prevSaved);
+              newSavedMap.delete(key);
+              console.log('[GRID] Removed cell from savedEditedCells (now impacted):', key);
+              return newSavedMap;
+            });
+          }
         }
       });
       console.log('[GRID] Total impacted cells after update:', newMap.size);
@@ -2257,9 +2302,15 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     setImpactedCells(new Map());
     // Also clear saved edited cells
     setSavedEditedCells(new Map());
+    // Clear saved impacted cells
+    setSavedImpactedCells(new Set());
+    // Notify parent that saved impacted cells are cleared
+    if (onSavedImpactedCellsReady) {
+      onSavedImpactedCellsReady(new Set());
+    }
     // Clear unsaved notes
     setUnsavedNotes(new Map());
-  }, [onClearDrafts]);
+  }, [onClearDrafts, onSavedImpactedCellsReady]);
 
   // Save handler
   const handleSave = useCallback(() => {
@@ -2312,6 +2363,30 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       console.log('[SAVE] Total saved edited cells:', newMap.size);
       return newMap;
     });
+    // Track which cells were impacted but are now saved (to prevent showing old notes/popovers)
+    // These cells were impacted but not directly edited, so they shouldn't show note indicators or popovers
+    const impactedCellKeys = Array.from(impactedCells.keys());
+    console.log('[SAVE] Impacted cells to track:', impactedCellKeys);
+    console.log('[SAVE] Edited cells:', Array.from(editedCells.keys()));
+    setSavedImpactedCells(prev => {
+      const newSet = new Set(prev);
+      impactedCellKeys.forEach(key => {
+        // Only add if it wasn't directly edited (directly edited cells go to savedEditedCells)
+        if (!editedCells.has(key)) {
+          newSet.add(key);
+          console.log('[SAVE] Adding to savedImpactedCells:', key);
+        } else {
+          console.log('[SAVE] Skipping savedImpactedCells (was directly edited):', key);
+        }
+      });
+      console.log('[SAVE] Total saved impacted cells:', newSet.size);
+      // Notify parent of saved impacted cells
+      if (onSavedImpactedCellsReady) {
+        onSavedImpactedCellsReady(newSet);
+      }
+      return newSet;
+    });
+    
     // Clear impacted cells (they're now saved)
     setImpactedCells(new Map());
     // Clear editedCells - remove all cells
@@ -2461,6 +2536,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                     impactedCells={impactedCells}
                     savedEditedCells={savedEditedCells}
                     unsavedNotes={unsavedNotes}
+                    savedImpactedCells={savedImpactedCells}
                     columnWidth={columnWidth}
                     searchTerm={searchTerm}
                     onCellEditStateChange={handleCellEditStateChange}
@@ -2495,6 +2571,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                   impactedCells={impactedCells}
                   savedEditedCells={savedEditedCells}
                   unsavedNotes={unsavedNotes}
+                  savedImpactedCells={savedImpactedCells}
                   columnWidth={columnWidth}
                   searchTerm={searchTerm}
                   onCellEditStateChange={handleCellEditStateChange}
