@@ -318,6 +318,9 @@
   white-space: nowrap;
   background-color: #EBF2FF !important;
   /* Sticky header for vertical scroll */
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .grid-header th:last-child {
