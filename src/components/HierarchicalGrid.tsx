@@ -43,6 +43,9 @@ interface HierarchicalGridProps {
   onCanRedoChange?: (canRedo: boolean) => void; // Callback when redo availability changes
   onCommitDrafts?: () => void; // Callback to commit draft edits to saved history (called on Save)
   onClearDrafts?: () => void; // Callback to clear draft edits (called on Cancel)
+  selectedCells?: Set<string>; // Set of selected cell keys
+  onCellSelect?: (cellKey: string, event: React.MouseEvent) => void; // Callback when a cell is clicked for selection
+  onCellChangeHandlerReady?: (handler: (rowId: string, monthKey: string, newValue: number, note?: string) => void) => void; // Callback to expose cell change handler for programmatic updates
 }
 
 const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({ 
@@ -68,7 +71,11 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   onCanRedoChange,
   onCellContextMenu,
   onCommitDrafts,
-  onClearDrafts
+  onClearDrafts,
+  selectedCells = new Set(),
+  onCellSelect,
+  onCellChangeHandlerReady,
+  onGetCurrentCellValueReady
 }) => {
   // Store onEditHistory in a ref so it's always available in callbacks
   const onEditHistoryRef = useRef(onEditHistory);
@@ -109,6 +116,23 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   }, [onEditHistory]);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [gridData, setGridData] = useState<MeasureData[]>(data);
+  
+  // Sync gridData with data prop changes (for mass updates from parent)
+  // Use a ref to track if we're updating from internal changes vs external
+  const isInternalUpdateRef = useRef(false);
+  const prevDataRef = useRef(data);
+  const isMassUpdateRef = useRef(false);
+  
+  useEffect(() => {
+    // Only sync if data actually changed and it wasn't from an internal update
+    // Skip sync during mass updates - let the grid's handleCellChange handle it
+    if (prevDataRef.current !== data && !isInternalUpdateRef.current && !isMassUpdateRef.current) {
+      prevDataRef.current = data;
+      setGridData(data);
+    }
+    isInternalUpdateRef.current = false;
+    isMassUpdateRef.current = false;
+  }, [data]);
   // Track preserved values for year/quarter edits at account/category levels
   const preservedValuesRef = useRef<Map<string, { monthKey: keyof GridRowType['values']; value: number }>>(new Map());
   // Track focused cell for keyboard navigation
@@ -1550,6 +1574,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     }
     
     if (onDataChange) {
+      isInternalUpdateRef.current = true; // Mark as internal update to prevent sync loop
       onDataChange(finalData);
     }
   }, [gridData, updateValue, onDataChange, calculateMeasureValues, recalculateTimeAggregations, distributeQuarterToMonths, distributeYearToQuarters, historyIndex, editedCells]);
@@ -1731,6 +1756,33 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       }
     }
   }, [focusedCell, getAllVisibleRows, getVisibleTimeKeys, handleCellChange]);
+
+  // Expose cell change handler for programmatic updates (mass update)
+  // Also expose a function to get current cell value from gridData
+  useEffect(() => {
+    if (onCellChangeHandlerReady) {
+      onCellChangeHandlerReady((rowId: string, monthKey: string, newValue: number, note?: string) => {
+        handleCellChange(rowId, monthKey as keyof GridRowType['values'], newValue, note);
+      });
+    }
+  }, [handleCellChange, onCellChangeHandlerReady]);
+  
+  // Expose a function to get current cell value (for mass update calculations)
+  useEffect(() => {
+    if (onGetCurrentCellValueReady) {
+      onGetCurrentCellValueReady((rowId: string, monthKey: string): number => {
+        const measure = gridData.find(m => m.id === rowId);
+        if (measure) {
+          return measure.values[monthKey as keyof typeof measure.values] || 0;
+        }
+        const row = findRowById(rowId, gridData);
+        if (row) {
+          return row.values[monthKey as keyof typeof row.values] || 0;
+        }
+        return 0;
+      });
+    }
+  }, [gridData, onGetCurrentCellValueReady]);
 
   // Auto-expand rows that match search (only when searchTerm changes, not gridData)
   useEffect(() => {
@@ -2271,6 +2323,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     setShowOnlyImpactedKPI(false);
     // Notify parent
     if (onDataChange) {
+      isInternalUpdateRef.current = true; // Mark as internal update to prevent sync loop
       onDataChange(gridData);
     }
   }, [gridData, onDataChange, editedCells, onCommitDrafts]);
@@ -2414,6 +2467,8 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                     onCellFocusWithHistory={onCellFocusWithHistory}
                     lockedCells={lockedCells}
                     onCellContextMenu={onCellContextMenu}
+                    selectedCells={selectedCells}
+                    onCellSelect={onCellSelect}
                   />
               );
               }
@@ -2446,6 +2501,8 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                   onCellFocusWithHistory={onCellFocusWithHistory}
                   lockedCells={lockedCells}
                   onCellContextMenu={onCellContextMenu}
+                  selectedCells={selectedCells}
+                  onCellSelect={onCellSelect}
                 />
               );
             })

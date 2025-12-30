@@ -148,7 +148,6 @@ const CellEditHistoryCard: React.FC<CellEditHistoryCardProps> = ({ entry, replie
         <div className="sf-timeline-header">
           <div className="sf-timeline-title-row">
             <span className="sf-timeline-username">{userName}</span>
-            {isDraft && <span className="sf-timeline-draft-badge">Unsaved</span>}
             <span className="sf-timeline-timestamp">{formatFullTimestamp(entry.timestamp)}</span>
           </div>
           <div className="sf-timeline-subtitle">

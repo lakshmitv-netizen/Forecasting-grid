@@ -8,9 +8,11 @@ interface CellContextMenuProps {
   onCopy: () => void;
   onPaste: () => void;
   onToggleLock: () => void;
+  onMassUpdate?: () => void;
   isLocked: boolean;
   canPaste: boolean;
   isEditable: boolean;
+  hasMultipleSelection: boolean;
 }
 
 const CellContextMenu: React.FC<CellContextMenuProps> = ({
@@ -20,14 +22,21 @@ const CellContextMenu: React.FC<CellContextMenuProps> = ({
   onCopy,
   onPaste,
   onToggleLock,
+  onMassUpdate,
   isLocked,
   canPaste,
-  isEditable
+  isEditable,
+  hasMultipleSelection
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      // Don't close if clicking on a menu item button
+      if (target.closest('.cell-context-menu-item')) {
+        return;
+      }
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         onClose();
       }
@@ -112,6 +121,32 @@ const CellContextMenu: React.FC<CellContextMenuProps> = ({
       </button>
 
       <div className="cell-context-menu-separator" />
+
+      {/* Mass Update - only show when multiple cells are selected */}
+      {hasMultipleSelection && onMassUpdate && (
+        <>
+          <button 
+            className="cell-context-menu-item"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (onMassUpdate) {
+                onMassUpdate();
+              }
+            }}
+          >
+            <svg className="cell-context-menu-icon" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+            </svg>
+            <span className="cell-context-menu-label">Mass Update</span>
+          </button>
+          <div className="cell-context-menu-separator" />
+        </>
+      )}
 
       {/* Lock/Unlock */}
       <button 

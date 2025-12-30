@@ -14,6 +14,10 @@ interface CellDetailsHistoryPanelProps {
   editHistory?: CellEditHistoryEntry[];
   draftEditHistory?: Map<string, CellEditHistoryEntry>; // Draft (unsaved) edits
   onAddNote?: (rowId: string, monthKey: string, note: string) => void;
+  selectedCells?: Set<string>; // Set of selected cell keys
+  onClearSelection?: () => void; // Callback to clear selection
+  onMassUpdate?: (cellKeys: string[], rule: string, value: string, note?: string) => void; // Callback for mass update
+  initialTab?: 'single' | 'multi'; // Initial tab to show when panel opens
 }
 
 const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({ 
@@ -24,13 +28,42 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
   layout = 'Measures / Dimensions x Time',
   editHistory = [],
   draftEditHistory,
-  onAddNote
+  onAddNote,
+  selectedCells = new Set(),
+  onClearSelection,
+  onMassUpdate,
+  initialTab = 'single'
 }) => {
-  const [activeTab, setActiveTab] = useState<'single' | 'multi'>('single');
+  const [activeTab, setActiveTab] = useState<'single' | 'multi'>(initialTab);
+  
+  // Update activeTab when panel opens or initialTab prop changes
+  useEffect(() => {
+    if (isOpen) {
+      // When panel opens, set the tab based on initialTab prop
+      setActiveTab(initialTab);
+    } else {
+      // Reset to single tab when panel closes
+      setActiveTab('single');
+    }
+  }, [isOpen, initialTab]);
   const [isHierarchyPopoverOpen, setIsHierarchyPopoverOpen] = useState(false);
   const [panelNoteText, setPanelNoteText] = useState('');
   const hierarchyButtonRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+  
+  // Multi-cell form state
+  const [selectCells, setSelectCells] = useState<string>('Manually');
+  const [selectAction, setSelectAction] = useState<string>('Mass Update');
+  const [rule, setRule] = useState<string>('Increase');
+  const [value, setValue] = useState<string>('20%');
+  const [bulkNote, setBulkNote] = useState<string>('');
+  const [isSelectCellsDropdownOpen, setIsSelectCellsDropdownOpen] = useState(false);
+  const [isSelectActionDropdownOpen, setIsSelectActionDropdownOpen] = useState(false);
+  const [isRuleDropdownOpen, setIsRuleDropdownOpen] = useState(false);
+  const [actionSearchTerm, setActionSearchTerm] = useState<string>('');
+  const selectCellsDropdownRef = useRef<HTMLDivElement>(null);
+  const selectActionDropdownRef = useRef<HTMLDivElement>(null);
+  const ruleDropdownRef = useRef<HTMLDivElement>(null);
   
   // Replies state - keyed by entry ID
   interface CardReply {
@@ -166,6 +199,90 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
     }
   }, [isHierarchyPopoverOpen]);
 
+  // Close multi-cell dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        selectCellsDropdownRef.current &&
+        !selectCellsDropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsSelectCellsDropdownOpen(false);
+      }
+      if (
+        selectActionDropdownRef.current &&
+        !selectActionDropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsSelectActionDropdownOpen(false);
+        setActionSearchTerm('');
+      }
+      if (
+        ruleDropdownRef.current &&
+        !ruleDropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsRuleDropdownOpen(false);
+      }
+    };
+
+    if (isSelectCellsDropdownOpen || isSelectActionDropdownOpen || isRuleDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [isSelectCellsDropdownOpen, isSelectActionDropdownOpen, isRuleDropdownOpen]);
+
+  // Multi-cell options
+  const selectCellsOptions = ['Manually', 'Automatically'];
+  
+  // Criteria state for automatic selection
+  interface SelectionCriteria {
+    id: string;
+    field: string; // 'KPI', 'Product', 'Time', 'Cell Value'
+    operator: string; // 'Equal to', 'Contains', 'Between', 'Greater than', etc.
+    value: string;
+  }
+  
+  const [criteria, setCriteria] = useState<SelectionCriteria[]>([]);
+  
+  const addCriteria = () => {
+    setCriteria([...criteria, {
+      id: `criteria-${Date.now()}-${Math.random()}`,
+      field: 'KPI',
+      operator: 'Equal to',
+      value: ''
+    }]);
+  };
+  
+  const removeCriteria = (id: string) => {
+    setCriteria(criteria.filter(c => c.id !== id));
+  };
+  
+  const updateCriteria = (id: string, updates: Partial<SelectionCriteria>) => {
+    setCriteria(criteria.map(c => c.id === id ? { ...c, ...updates } : c));
+  };
+  
+  const fieldOptions = ['KPI', 'Product', 'Time', 'Cell Value'];
+  const operatorOptions: Record<string, string[]> = {
+    'KPI': ['Equal to', 'Not equal to', 'Contains'],
+    'Product': ['Equal to', 'Not equal to', 'Contains', 'Starts with', 'Ends with'],
+    'Time': ['Equal to', 'Between', 'Before', 'After'],
+    'Cell Value': ['Equal to', 'Not equal to', 'Greater than', 'Less than', 'Between']
+  };
+  const selectActionOptions = [
+    'Mass Update',
+    'Copy',
+    'Copy Formula',
+    'Copy Trend',
+    'Copy conditional formatting rule',
+    'Copy Adjustment Notes'
+  ];
+  const ruleOptions = ['Increase', 'Decrease', 'Set to', 'Multiply by', 'Divide by'];
+  
+  // Filter actions based on search term
+  const filteredActions = selectActionOptions.filter(action =>
+    action.toLowerCase().includes(actionSearchTerm.toLowerCase())
+  );
+
   if (!isOpen) return null;
 
   return (
@@ -207,7 +324,285 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
 
       {/* Panel Body */}
       <div className="cell-details-history-panel-body">
-        {!hasFocusedCell ? (
+        {activeTab === 'multi' ? (
+          <div className="cell-details-history-content">
+            <div className="cell-details-history-tab-content">
+              <div className="cell-details-history-multi-cell-form">
+                {/* Select Cells */}
+                <div className="cell-details-history-multi-field">
+                  <label className="cell-details-history-multi-label">Select Cells</label>
+                  <div className="cell-details-history-dropdown-wrapper" ref={selectCellsDropdownRef}>
+                    <div 
+                      className={`cell-details-history-dropdown-trigger ${isSelectCellsDropdownOpen ? 'open' : ''}`}
+                      onClick={() => setIsSelectCellsDropdownOpen(!isSelectCellsDropdownOpen)}
+                    >
+                      <span className="cell-details-history-dropdown-value">
+                        {selectCells === 'Automatically' ? 'Automatically' : selectedCells.size > 0 ? `${selectedCells.size} cell${selectedCells.size === 1 ? '' : 's'} selected` : 'Manually'}
+                      </span>
+                      <svg className="cell-details-history-dropdown-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                    {isSelectCellsDropdownOpen && (
+                      <div className="cell-details-history-dropdown-list">
+                        {selectCellsOptions.map((option, index) => (
+                          <div
+                            key={index}
+                            className={`cell-details-history-dropdown-option ${selectCells === option ? 'selected' : ''}`}
+                            onClick={() => {
+                              setSelectCells(option);
+                              setIsSelectCellsDropdownOpen(false);
+                            }}
+                          >
+                            {option}
+                          </div>
+                        ))}
+                        {selectedCells.size > 0 && onClearSelection && (
+                          <div
+                            className="cell-details-history-dropdown-option"
+                            onClick={() => {
+                              onClearSelection();
+                              setIsSelectCellsDropdownOpen(false);
+                            }}
+                            style={{ color: '#0050D9', fontWeight: 500 }}
+                          >
+                            Clear Selection
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Criteria UI for Automatic Selection */}
+                {selectCells === 'Automatically' && (
+                  <div className="cell-details-history-criteria-section">
+                    <div className="cell-details-history-criteria-header">
+                      <h3 className="cell-details-history-criteria-title">Cell Selection Criteria</h3>
+                    </div>
+                    <div className="cell-details-history-criteria-list">
+                      {criteria.map((criterion) => (
+                        <div key={criterion.id} className="cell-details-history-criteria-card">
+                          <div className="cell-details-history-criteria-content">
+                            <div className="cell-details-history-criteria-field">
+                              <select
+                                value={criterion.field}
+                                onChange={(e) => updateCriteria(criterion.id, { field: e.target.value, operator: operatorOptions[e.target.value][0] || '' })}
+                                className="cell-details-history-criteria-select"
+                              >
+                                {fieldOptions.map(opt => (
+                                  <option key={opt} value={opt}>{opt}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="cell-details-history-criteria-operator">
+                              <select
+                                value={criterion.operator}
+                                onChange={(e) => updateCriteria(criterion.id, { operator: e.target.value })}
+                                className="cell-details-history-criteria-select"
+                              >
+                                {operatorOptions[criterion.field]?.map(opt => (
+                                  <option key={opt} value={opt}>{opt}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="cell-details-history-criteria-value">
+                              <input
+                                type="text"
+                                value={criterion.value}
+                                onChange={(e) => updateCriteria(criterion.id, { value: e.target.value })}
+                                placeholder="Enter value"
+                                className="cell-details-history-criteria-input"
+                              />
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => removeCriteria(criterion.id)}
+                            className="cell-details-history-criteria-delete"
+                            aria-label="Delete criterion"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                            </svg>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="cell-details-history-criteria-actions">
+                      <button
+                        onClick={addCriteria}
+                        className="cell-details-history-criteria-add-btn"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M12 5v14M5 12h14" />
+                        </svg>
+                        Add Condition
+                      </button>
+                      <button
+                        onClick={addCriteria}
+                        className="cell-details-history-criteria-add-btn"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M12 5v14M5 12h14" />
+                        </svg>
+                        Add Group
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Select Action */}
+                <div className="cell-details-history-multi-field">
+                  <label className="cell-details-history-multi-label">Select Action</label>
+                  <div className="cell-details-history-dropdown-wrapper" ref={selectActionDropdownRef}>
+                    <div 
+                      className={`cell-details-history-dropdown-trigger ${isSelectActionDropdownOpen ? 'open' : ''}`}
+                      onClick={() => setIsSelectActionDropdownOpen(!isSelectActionDropdownOpen)}
+                    >
+                      <span className="cell-details-history-dropdown-value">
+                        {selectAction}
+                      </span>
+                      <svg className="cell-details-history-dropdown-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                    {isSelectActionDropdownOpen && (
+                      <div className="cell-details-history-dropdown-list cell-details-history-dropdown-list-with-search">
+                        <div className="cell-details-history-dropdown-search">
+                          <svg className="cell-details-history-dropdown-search-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                          </svg>
+                          <input
+                            type="text"
+                            className="cell-details-history-dropdown-search-input"
+                            placeholder="Select Action"
+                            value={actionSearchTerm}
+                            onChange={(e) => setActionSearchTerm(e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        </div>
+                        <div className="cell-details-history-dropdown-options-container">
+                          {filteredActions.length > 0 ? (
+                            filteredActions.map((option, index) => (
+                              <div
+                                key={index}
+                                className={`cell-details-history-dropdown-option ${selectAction === option ? 'selected' : ''}`}
+                                onClick={() => {
+                                  setSelectAction(option);
+                                  setIsSelectActionDropdownOpen(false);
+                                  setActionSearchTerm('');
+                                }}
+                              >
+                                {option}
+                              </div>
+                            ))
+                          ) : (
+                            <div className="cell-details-history-dropdown-option cell-details-history-dropdown-no-results">
+                              No results found
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Rule - only show for Mass Update */}
+                {selectAction === 'Mass Update' && (
+                  <div className="cell-details-history-multi-field">
+                    <label className="cell-details-history-multi-label">Rule</label>
+                    <div className="cell-details-history-dropdown-wrapper" ref={ruleDropdownRef}>
+                      <div 
+                        className={`cell-details-history-dropdown-trigger ${isRuleDropdownOpen ? 'open' : ''}`}
+                        onClick={() => setIsRuleDropdownOpen(!isRuleDropdownOpen)}
+                      >
+                        <span className="cell-details-history-dropdown-value">
+                          {rule}
+                        </span>
+                        <svg className="cell-details-history-dropdown-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
+                      {isRuleDropdownOpen && (
+                        <div className="cell-details-history-dropdown-list">
+                          {ruleOptions.map((option, index) => (
+                            <div
+                              key={index}
+                              className={`cell-details-history-dropdown-option ${rule === option ? 'selected' : ''}`}
+                              onClick={() => {
+                                setRule(option);
+                                setIsRuleDropdownOpen(false);
+                              }}
+                            >
+                              {option}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Value - only show for Mass Update */}
+                {selectAction === 'Mass Update' && (
+                  <div className="cell-details-history-multi-field">
+                    <label className="cell-details-history-multi-label">Value</label>
+                    <input
+                      type="text"
+                      className="cell-details-history-multi-input"
+                      value={value}
+                      onChange={(e) => setValue(e.target.value)}
+                      placeholder="Enter value"
+                    />
+                  </div>
+                )}
+
+                {/* Bulk Add Adjustment Note - show for Mass Update */}
+                {selectAction === 'Mass Update' && (
+                  <div className="cell-details-history-multi-field">
+                    <label className="cell-details-history-multi-label">Bulk Adjustment Note</label>
+                    <textarea
+                      className="cell-details-history-multi-textarea"
+                      value={bulkNote}
+                      onChange={(e) => setBulkNote(e.target.value)}
+                      placeholder="Enter adjustment note (optional)"
+                      rows={4}
+                    />
+                  </div>
+                )}
+
+                {/* Bulk Add Adjustment Note - show for Copy Adjustment Notes */}
+                {selectAction === 'Copy Adjustment Notes' && (
+                  <div className="cell-details-history-multi-field">
+                    <label className="cell-details-history-multi-label">Bulk Add Adjustment Note</label>
+                    <textarea
+                      className="cell-details-history-multi-textarea"
+                      value={bulkNote}
+                      onChange={(e) => setBulkNote(e.target.value)}
+                      placeholder="Enter adjustment note"
+                      rows={4}
+                    />
+                  </div>
+                )}
+
+                {/* Update Button */}
+                <div className="cell-details-history-multi-actions">
+                  <button 
+                    className="cell-details-history-multi-update-btn"
+                    onClick={() => {
+                      if (selectAction === 'Mass Update' && selectedCells.size > 0 && value.trim() && onMassUpdate) {
+                        onMassUpdate(Array.from(selectedCells), rule, value.trim(), bulkNote.trim() || undefined);
+                      }
+                    }}
+                    disabled={selectAction === 'Mass Update' && (selectedCells.size === 0 || !value.trim())}
+                  >
+                    Update
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : !hasFocusedCell ? (
           <div className="cell-details-history-empty-state">
             <div className="cell-details-history-empty-image">
               <svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -222,6 +617,9 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
           </div>
         ) : (
         <div className="cell-details-history-content">
+            {/* Tab Content */}
+            {activeTab === 'single' ? (
+              <>
             {/* Cell Info Header - Compact single line: Measure · Time · Dimension */}
             {cellInfo && (
               <div className="cell-details-history-header-compact">
@@ -258,9 +656,6 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                 )}
               </div>
             )}
-
-            {/* Tab Content */}
-            {activeTab === 'single' ? (
               <div className="cell-details-history-tab-content">
                 {/* Combined Edit History and Notes Section */}
                 <div className="cell-details-history-notes-section">
@@ -291,11 +686,8 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                   </div>
                 </div>
               </div>
-            ) : (
-              <div className="cell-details-history-tab-content">
-                <p className="cell-details-history-placeholder">Multi-cell details and history content will go here...</p>
-              </div>
-            )}
+              </>
+            ) : null}
         </div>
         )}
         

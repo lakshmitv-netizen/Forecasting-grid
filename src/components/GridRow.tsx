@@ -29,6 +29,8 @@ interface GridRowProps {
   onCellFocusWithHistory?: (cellKey: string, cellRect: DOMRect | null, cellValue?: number, isLocked?: boolean) => void; // Callback when a cell is focused
   lockedCells?: Set<string>; // Set of locked cell keys that cannot be edited
   onCellContextMenu?: (e: React.MouseEvent, cellKey: string, cellValue: number, isLocked: boolean, isEditable: boolean) => void; // Callback for right-click context menu
+  selectedCells?: Set<string>; // Set of selected cell keys
+  onCellSelect?: (cellKey: string, event: React.MouseEvent) => void; // Callback when a cell is clicked for selection
 }
 
 const GridRowComponent: React.FC<GridRowProps> = ({
@@ -54,6 +56,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
   onCellFocusWithHistory,
   lockedCells = new Set<string>(),
   onCellContextMenu,
+  selectedCells = new Set(),
+  onCellSelect,
 }) => {
   const hasChildren = row.children && row.children.length > 0;
   const [editingCell, setEditingCell] = useState<{ monthKey: keyof GridRowType['values'] } | null>(null);
@@ -960,7 +964,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                   cellRefs.current.set(cellKey, el);
                 }
               }}
-              className={`grid-cell cell-value-cell ${isFocused ? 'cell-focused' : ''} ${shouldShowTexture ? 'cell-readonly-texture' : ''} ${hasNote ? 'cell-has-note' : ''} ${(() => {
+              className={`grid-cell cell-value-cell ${isFocused ? 'cell-focused' : ''} ${shouldShowTexture ? 'cell-readonly-texture' : ''} ${hasNote ? 'cell-has-note' : ''} ${selectedCells.has(cellKey) ? 'cell-selected' : ''} ${(() => {
                 const cellKeyForCheck = `${row.id}-${key}`;
                 const editedOriginalValue = editedCells?.get(cellKeyForCheck);
                 const impactedOriginalValue = impactedCells?.get(cellKeyForCheck);
@@ -986,6 +990,11 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 return '';
               })()}`}
               tabIndex={isEditable ? 0 : -1}
+              onClick={(e) => {
+                if (onCellSelect && isEditable) {
+                  onCellSelect(cellKey, e);
+                }
+              }}
               onFocus={(e) => {
                 if (onCellFocus && isEditable) {
                   onCellFocus({ rowId: row.id, monthKey: key });
@@ -1054,6 +1063,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               onCellFocusWithHistory={onCellFocusWithHistory}
               lockedCells={lockedCells}
               onCellContextMenu={onCellContextMenu}
+              selectedCells={selectedCells}
+              onCellSelect={onCellSelect}
             />
           ))}
         </>

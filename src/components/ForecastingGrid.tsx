@@ -4,6 +4,7 @@ import { CellEditHistoryEntry } from '../types/editHistory';
 import { AdjustmentNote } from '../types/adjustmentNote';
 import { mockData } from '../data/mockData';
 import { adjustmentMeasuresData } from '../data/adjustmentMeasuresData';
+import { findRowById } from '../utils/valuePropagation';
 import HierarchicalGrid from './HierarchicalGrid';
 import DimensionsTimeGrid from './DimensionsTimeGrid';
 import TimeDimensionsGrid from './TimeDimensionsGrid';
@@ -33,6 +34,75 @@ const ForecastingGrid: React.FC = () => {
   // State to track current focused cell for CellDetailsHistoryPanel (triggers re-render)
   const [currentFocusedCell, setCurrentFocusedCell] = useState<{ rowId: string; monthKey?: string; measureId?: string } | null>(null);
   
+  // State to track selected cells for multi-cell operations
+  const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set());
+  const [lastSelectedCell, setLastSelectedCell] = useState<string | null>(null);
+  
+  // Handler for cell selection
+  const handleCellSelect = useCallback((cellKey: string, event: React.MouseEvent) => {
+    const isCtrlOrCmd = event.ctrlKey || event.metaKey;
+    const isShift = event.shiftKey;
+    
+    setSelectedCells(prev => {
+      const newSelection = new Set(prev);
+      
+      if (isCtrlOrCmd) {
+        // Toggle selection
+        if (newSelection.has(cellKey)) {
+          newSelection.delete(cellKey);
+        } else {
+          newSelection.add(cellKey);
+        }
+        setLastSelectedCell(cellKey);
+      } else if (isShift && lastSelectedCell) {
+        // Range selection - select all cells between lastSelectedCell and cellKey
+        // This is a simplified version - you may want to implement proper range logic based on grid structure
+        newSelection.add(cellKey);
+        newSelection.add(lastSelectedCell);
+        // Add all cells in between (simplified - would need grid structure knowledge)
+      } else {
+        // Single selection - clear previous and select new
+        newSelection.clear();
+        newSelection.add(cellKey);
+        setLastSelectedCell(cellKey);
+      }
+      
+      return newSelection;
+    });
+  }, [lastSelectedCell]);
+  
+  // Clear selection handler
+  const handleClearSelection = useCallback(() => {
+    setSelectedCells(new Set());
+    setLastSelectedCell(null);
+  }, []);
+  
+  // Clear selection when clicking outside the grid
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      // Don't clear if clicking on a cell, dropdown, or panel
+      if (
+        target.closest('.grid-cell') ||
+        target.closest('.cell-details-history-panel') ||
+        target.closest('.settings-panel') ||
+        target.closest('.filters-panel') ||
+        target.closest('.cell-details-history-dropdown-list') ||
+        target.closest('.multi-cell-dropdown-list')
+      ) {
+        return;
+      }
+      // Clear selection on outside click
+      setSelectedCells(new Set());
+      setLastSelectedCell(null);
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+  
   // State to track edit history for all cells (includes both edits and notes) - SAVED edits only
   const [editHistory, setEditHistory] = useState<CellEditHistoryEntry[]>([]);
   
@@ -48,6 +118,11 @@ const ForecastingGrid: React.FC = () => {
   // Note: canUndo/canRedo state managed by HierarchicalGrid
   const [_canUndo, setCanUndo] = useState(false);
   const [_canRedo, setCanRedo] = useState(false);
+  
+  // Ref to store cell change handler for programmatic mass updates
+  const cellChangeHandlerRef = useRef<((rowId: string, monthKey: string, newValue: number, note?: string) => void) | null>(null);
+  // Ref to get current cell value from grid's internal state
+  const getCurrentCellValueRef = useRef<((rowId: string, monthKey: string) => number) | null>(null);
   
   // Function to add/edit DRAFT edit history entry (unsaved edits)
   // If a draft already exists for this cellKey, update it; otherwise create new
@@ -87,6 +162,160 @@ const ForecastingGrid: React.FC = () => {
       return newMap;
     });
   }, []);
+
+  // Mass update handler
+  const handleMassUpdate = useCallback((cellKeys: string[], rule: string, valueStr: string, note?: string) => {
+    if (cellKeys.length === 0) return;
+    
+    // Parse value - support percentage (e.g., "20%") or absolute number
+    const isPercentage = valueStr.trim().endsWith('%');
+    const numericValue = parseFloat(valueStr.replace('%', '').trim());
+    
+    if (isNaN(numericValue)) {
+      console.log('[MassUpdate] Invalid numeric value:', valueStr);
+      return;
+    }
+    
+    console.log('[MassUpdate] Starting update for', cellKeys.length, 'cells, rule:', rule, 'value:', numericValue, isPercentage ? '%' : '');
+    
+    // Use the grid's handler directly - it handles edited cells, impacted cells, and propagation
+    if (cellChangeHandlerRef.current && getCurrentCellValueRef.current && selectedLayoutState === 'Measures / Dimensions x Time') {
+      // Process each cell sequentially to ensure each reads the latest state after previous updates
+      const processUpdates = async () => {
+        for (let i = 0; i < cellKeys.length; i++) {
+          const cellKey = cellKeys[i];
+          
+          // Parse cellKey: format is `${rowId}-${monthKey}` where rowId can contain dashes
+          // monthKey is always the last part (e.g., 'feb2026', 'jan2026', 'year', 'q1', etc.)
+          const parts = cellKey.split('-');
+          if (parts.length < 2) {
+            console.log('[MassUpdate] Invalid cellKey:', cellKey);
+            continue;
+          }
+          const monthKey = parts[parts.length - 1];
+          const rowId = parts.slice(0, -1).join('-');
+          
+          if (!rowId || !monthKey) {
+            console.log('[MassUpdate] Invalid cellKey:', cellKey);
+            continue;
+          }
+          
+          // Wait a bit before processing to ensure previous update completed and state synced
+          if (i > 0) {
+            await new Promise(resolve => setTimeout(resolve, 200));
+          }
+          
+          // Get current value from grid's internal state (reads latest after previous updates)
+          const currentValue = getCurrentCellValueRef.current(rowId, monthKey);
+          
+          // Calculate new value based on rule
+          let newValue: number;
+          switch (rule) {
+            case 'Increase':
+              newValue = isPercentage ? currentValue * (1 + numericValue / 100) : currentValue + numericValue;
+              break;
+            case 'Decrease':
+              newValue = isPercentage ? currentValue * (1 - numericValue / 100) : currentValue - numericValue;
+              break;
+            case 'Set to':
+              newValue = numericValue;
+              break;
+            case 'Multiply by':
+              newValue = currentValue * numericValue;
+              break;
+            case 'Divide by':
+              if (numericValue === 0) continue;
+              newValue = currentValue / numericValue;
+              break;
+            default:
+              continue;
+          }
+          
+          // Round to nearest integer
+          newValue = Math.round(newValue);
+          
+          // Call the grid's handler - it will:
+          // 1. Mark cell as edited
+          // 2. Mark impacted cells
+          // 3. Trigger propagation
+          // 4. Call onEditHistory callback
+          // 5. Update gridData and call onDataChange
+          if (cellChangeHandlerRef.current) {
+            cellChangeHandlerRef.current(rowId, monthKey as any, newValue, note?.trim() || undefined);
+            
+            // Wait a bit after calling handler to allow state updates to propagate
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+        }
+      };
+      
+      // Start processing updates (don't await - let it run in background)
+      processUpdates();
+    } else {
+      // Fallback: Update data directly for other layouts
+      setData(prevData => {
+        const updatedData = JSON.parse(JSON.stringify(prevData)) as MeasureData[];
+        
+        cellKeys.forEach(cellKey => {
+          // Parse cellKey: format is `${rowId}-${monthKey}` where rowId can contain dashes
+          const parts = cellKey.split('-');
+          if (parts.length < 2) return;
+          const monthKey = parts[parts.length - 1];
+          const rowId = parts.slice(0, -1).join('-');
+          
+          if (!rowId || !monthKey) return;
+          
+          const originalRow = findRowById(rowId, prevData);
+          if (!originalRow) return;
+          
+          const currentValue = originalRow.values[monthKey as keyof typeof originalRow.values] || 0;
+          
+          let newValue: number;
+          switch (rule) {
+            case 'Increase':
+              newValue = isPercentage ? currentValue * (1 + numericValue / 100) : currentValue + numericValue;
+              break;
+            case 'Decrease':
+              newValue = isPercentage ? currentValue * (1 - numericValue / 100) : currentValue - numericValue;
+              break;
+            case 'Set to':
+              newValue = numericValue;
+              break;
+            case 'Multiply by':
+              newValue = currentValue * numericValue;
+              break;
+            case 'Divide by':
+              if (numericValue === 0) return;
+              newValue = currentValue / numericValue;
+              break;
+            default:
+              return;
+          }
+          
+          newValue = Math.round(newValue);
+          const row = findRowById(rowId, updatedData);
+          if (row) {
+            row.values[monthKey as keyof typeof row.values] = newValue;
+          }
+          
+          // Track edit history
+          addDraftEditHistory({
+            cellKey,
+            rowId,
+            timeKey: monthKey,
+            oldValue: currentValue,
+            newValue,
+            note: note?.trim() || undefined,
+          });
+        });
+        
+        return updatedData;
+      });
+    }
+    
+    // Clear selection after update
+    handleClearSelection();
+  }, [data, addDraftEditHistory, handleClearSelection, selectedLayoutState]);
 
   // Function to commit drafts to saved edit history (called on Save)
   const commitDraftsToHistory = useCallback(() => {
@@ -217,6 +446,7 @@ const ForecastingGrid: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const [isCellDetailsHistoryOpen, setIsCellDetailsHistoryOpen] = useState(false);
+  const [cellDetailsInitialTab, setCellDetailsInitialTab] = useState<'single' | 'multi'>('single');
   
   // State for cell edit info popover
   const [editInfoPopover, setEditInfoPopover] = useState<{
@@ -292,6 +522,16 @@ const ForecastingGrid: React.FC = () => {
       });
     }
   }, [contextMenu]);
+
+  const handleContextMassUpdate = useCallback(() => {
+    // Close context menu first
+    setContextMenu(null);
+    // Open the panel with multi-cell tab active immediately
+    setCellDetailsInitialTab('multi');
+    setIsCellDetailsHistoryOpen(true);
+    setIsSettingsOpen(false);
+    setIsFiltersOpen(false);
+  }, []);
 
   // Close popover on outside click
   useEffect(() => {
@@ -644,6 +884,14 @@ const ForecastingGrid: React.FC = () => {
             onCanUndoChange={setCanUndo}
             onCanRedoChange={setCanRedo}
             onCellContextMenu={handleContextMenu}
+            selectedCells={selectedCells}
+            onCellSelect={handleCellSelect}
+            onCellChangeHandlerReady={(handler) => {
+              cellChangeHandlerRef.current = handler;
+            }}
+            onGetCurrentCellValueReady={(handler) => {
+              getCurrentCellValueRef.current = handler;
+            }}
         />
         )}
         <SettingsPanel 
@@ -673,13 +921,20 @@ const ForecastingGrid: React.FC = () => {
         />
         <CellDetailsHistoryPanel 
           isOpen={isCellDetailsHistoryOpen} 
-          onClose={() => setIsCellDetailsHistoryOpen(false)}
+          onClose={() => {
+            setIsCellDetailsHistoryOpen(false);
+            setCellDetailsInitialTab('single'); // Reset to single tab for next open
+          }}
           focusedCell={currentFocusedCell}
           data={data}
           layout={selectedLayoutState}
           editHistory={editHistory}
           draftEditHistory={draftEditHistory}
           onAddNote={handlePanelAddNote}
+          selectedCells={selectedCells}
+          onClearSelection={handleClearSelection}
+          onMassUpdate={handleMassUpdate}
+          initialTab={cellDetailsInitialTab}
         />
         
         {/* Cell Edit Info Popover - shown when a cell with edit history is focused */}
@@ -703,9 +958,11 @@ const ForecastingGrid: React.FC = () => {
             onCopy={handleContextCopy}
             onPaste={handleContextPaste}
             onToggleLock={handleContextToggleLock}
+            onMassUpdate={handleContextMassUpdate}
             isLocked={contextMenu.isLocked}
             canPaste={clipboardValue !== null}
             isEditable={contextMenu.isEditable}
+            hasMultipleSelection={selectedCells.size > 1}
           />
         )}
       </div>
