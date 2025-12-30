@@ -615,7 +615,6 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     // Only run auto-expansion on structural changes (header changes), not on value changes or row expand/collapse
     const currentHeadersKey = visibleTimeHeaders.map(h => h.key).join(',');
     const headersChanged = previousVisibleHeadersRef.current !== currentHeadersKey;
-    const expandedRowsChanged = expandedRows.size !== previousExpandedRowsRef.current?.size;
     
     // Update refs
     previousVisibleHeadersRef.current = currentHeadersKey;

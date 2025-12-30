@@ -240,7 +240,6 @@ const ReorderMeasuresModal: React.FC<ReorderMeasuresModalProps> = ({
   const handleSave = () => {
     // Preserve invisible items' positions - only sort visible items
     const visibleItems = measureItems.filter(item => item.visible);
-    const invisibleItems = measureItems.filter(item => !item.visible);
     
     // Sort visible items by order
     const sortedVisibleItems = [...visibleItems].sort((a, b) => a.order - b.order);
@@ -379,7 +378,7 @@ const ReorderMeasuresModal: React.FC<ReorderMeasuresModalProps> = ({
                     </td>
                   </tr>
                 ) : (
-                  filteredItems.map((item, index) => (
+                  filteredItems.map((item, _index) => (
                   <tr 
                     key={item.id} 
                     className={`reorder-measures-row ${movingRowId === item.id ? 'reorder-measures-row-moving' : ''} ${!item.visible ? 'reorder-measures-row-hidden' : ''}`}
