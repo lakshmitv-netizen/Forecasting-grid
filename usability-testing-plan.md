@@ -132,6 +132,26 @@
 
 ---
 
+### **Task 5c: Mass Update Feature**
+**Task:** "You've selected multiple cells. Now you want to update all of them at once - maybe increase them all by 10% or set them all to a specific value. How would you do that?"
+
+**What to Observe:**
+- [ ] How do they try to update multiple cells?
+- [ ] Do they discover the Cell Details & Updates panel?
+- [ ] Do they find the Multi-cell tab?
+- [ ] Do they discover the mass update form?
+- [ ] Can they understand the update rules (Increase, Decrease, Set to, Multiply by, Divide by)?
+- [ ] Do they try percentage vs absolute values?
+- [ ] Can they add a bulk adjustment note?
+- [ ] What happens when they click Update?
+- [ ] Do all selected cells update correctly?
+- [ ] Do they see impacted cells update as well?
+- [ ] Do they notice the context menu "Mass Update" option?
+
+**Success Criteria:** User discovers and successfully uses mass update functionality
+
+---
+
 ### **Task 6: Understanding Changes**
 **Task:** "After you change a value, look around the grid. What else changed? Why do you think that happened?"
 
@@ -296,41 +316,6 @@
 
 ---
 
-### **Task 17: Mass Update Feature**
-**Task:** "You've selected multiple cells. Now you want to update all of them at once - maybe increase them all by 10% or set them all to a specific value. How would you do that?"
-
-**What to Observe:**
-- [ ] How do they try to update multiple cells?
-- [ ] Do they discover the Cell Details & Updates panel?
-- [ ] Do they find the Multi-cell tab?
-- [ ] Do they discover the mass update form?
-- [ ] Can they understand the update rules (Increase, Decrease, Set to, Multiply by, Divide by)?
-- [ ] Do they try percentage vs absolute values?
-- [ ] Can they add a bulk adjustment note?
-- [ ] What happens when they click Update?
-- [ ] Do all selected cells update correctly?
-- [ ] Do they see impacted cells update as well?
-- [ ] Do they notice the context menu "Mass Update" option?
-
-**Success Criteria:** User discovers and successfully uses mass update functionality
-
----
-
-### **Task 17b: Automatic Cell Selection**
-**Task:** "Instead of manually selecting cells, imagine you want to automatically select cells based on criteria - like all cells for a specific product, or all cells with values above a certain threshold. How would you do that?"
-
-**What to Observe:**
-- [ ] Do they discover the "Automatically" option in Select Cells dropdown?
-- [ ] Do they understand the Cell Selection Criteria UI?
-- [ ] Can they add conditions (KPI, Product, Time, Cell Value)?
-- [ ] Do they understand the operators (equals, greater than, less than, etc.)?
-- [ ] Can they build a selection criteria?
-- [ ] What happens when criteria are applied?
-
-**Success Criteria:** User discovers automatic cell selection feature
-
----
-
 ### **Task 18: Reordering Measures**
 **Task:** "You want to change the order in which measures appear in the grid, or hide some measures you don't need. How would you do that?"
 
@@ -350,22 +335,7 @@
 
 ---
 
-### **Task 19: Freezing Columns**
-**Task:** "When you scroll horizontally, you want the first column to stay visible. How would you make that happen?"
-
-**What to Observe:**
-- [ ] How do they try to freeze columns?
-- [ ] Do they discover the "Freeze columns" option?
-- [ ] Where do they look for this feature?
-- [ ] Can they successfully freeze the first column?
-- [ ] Does the frozen column stay visible when scrolling?
-- [ ] Do they understand what "frozen" means in this context?
-
-**Success Criteria:** User discovers and uses column freezing functionality
-
----
-
-### **Task 20: Overall Exploration**
+### **Task 19: Overall Exploration**
 **Task:** "Take a few minutes to explore anything that interests you. What features did you discover? What surprised you? What would you want to use in your daily work?"
 
 **What to Observe:**
