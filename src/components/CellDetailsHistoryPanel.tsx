@@ -47,6 +47,7 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
     }
   }, [isOpen, initialTab]);
   const [isHierarchyPopoverOpen, setIsHierarchyPopoverOpen] = useState(false);
+  const [nubbinLeft, setNubbinLeft] = useState<number | null>(null);
   const [panelNoteText, setPanelNoteText] = useState('');
   const hierarchyButtonRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
