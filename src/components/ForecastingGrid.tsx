@@ -1284,7 +1284,7 @@ const ForecastingGrid: React.FC = () => {
     };
     
     // Also close on blur (when cell loses focus)
-    const handleBlur = (e: FocusEvent) => {
+    const handleBlur = () => {
       // Small delay to allow focus to move to popover if clicking inside it
       setTimeout(() => {
         const activeElement = document.activeElement;
