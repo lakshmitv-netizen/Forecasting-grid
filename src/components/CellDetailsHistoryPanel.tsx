@@ -659,7 +659,22 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                 <button
                   ref={hierarchyButtonRef}
                   className="cell-details-history-hierarchy-button-compact"
-                  onClick={() => setIsHierarchyPopoverOpen(!isHierarchyPopoverOpen)}
+                  onClick={() => {
+                    setIsHierarchyPopoverOpen(!isHierarchyPopoverOpen);
+                    // Calculate nubbin position when opening
+                    if (!isHierarchyPopoverOpen && hierarchyButtonRef.current && popoverRef.current) {
+                      setTimeout(() => {
+                        if (hierarchyButtonRef.current && popoverRef.current) {
+                          const buttonRect = hierarchyButtonRef.current.getBoundingClientRect();
+                          const popoverRect = popoverRef.current.getBoundingClientRect();
+                          // Calculate button center relative to popover
+                          const buttonCenterX = buttonRect.left + buttonRect.width / 2;
+                          const nubbinPosition = buttonCenterX - popoverRect.left;
+                          setNubbinLeft(nubbinPosition);
+                        }
+                      }, 0);
+                    }
+                  }}
                   aria-label="Show hierarchy"
                 >
                   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -668,7 +683,10 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                 </button>
                 {isHierarchyPopoverOpen && (
                   <div ref={popoverRef} className="cell-details-history-hierarchy-popover">
-                    <div className="cell-details-history-hierarchy-popover-nubbin"></div>
+                    <div 
+                      className="cell-details-history-hierarchy-popover-nubbin"
+                      style={nubbinLeft !== null ? { left: `${nubbinLeft}px`, transform: 'translateX(-50%) rotate(45deg)' } : undefined}
+                    ></div>
                     <div className="cell-details-history-hierarchy-popover-content">
                       {cellInfo.dimensionPath.length > 0 ? (
                         <span className="cell-details-history-hierarchy-path">
