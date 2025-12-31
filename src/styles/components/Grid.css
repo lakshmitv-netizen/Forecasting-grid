@@ -1042,7 +1042,7 @@
   height: 0;
   border-top: 10px solid #DA9401;
   border-left: 10px solid transparent;
-  z-index: 1000;
+  z-index: 1; /* Lower than frozen column (5), frozen header (10), and corner (20) */
   pointer-events: none;
 }
 
@@ -1061,7 +1061,7 @@
   justify-content: center;
   color: #706e6b;
   pointer-events: none;
-  z-index: 1000;
+  z-index: 1; /* Lower than frozen column (5), frozen header (10), and corner (20) */
 }
 
 .cell-lock-indicator svg {
