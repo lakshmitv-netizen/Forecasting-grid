@@ -81,13 +81,17 @@
 }
 
 .last-refreshed {
-  font-size: var(--font-size-1);
-  color: #2E2E2E;
-  line-height: var(--line-height-base);
+  font-size: 14px !important;
+  color: #2E2E2E !important;
+  line-height: 18px !important;
+  font-weight: 400 !important;
 }
 
 .last-refreshed-semibold {
   font-weight: 590 !important;
+  font-size: 14px !important;
+  line-height: 18px !important;
+  color: #2E2E2E !important;
 }
 
 .refresh-button {
@@ -317,6 +321,7 @@
   border-right: 1px solid #A0A0A0 !important;
   border-top: 1px solid #A0A0A0 !important;
   border-bottom: 1px solid #A0A0A0 !important;
+  border-width: 0 1px 1px 1px !important;
   white-space: nowrap;
   background-color: #ededed !important;
   /* Sticky header for vertical scroll */
@@ -471,6 +476,7 @@
   border-right: 1px solid #A0A0A0 !important;
   border-top: 1px solid #A0A0A0 !important;
   border-bottom: 1px solid #A0A0A0 !important;
+  border-width: 1px 1px 1px 0 !important;
   vertical-align: middle;
   background-color: inherit !important;
   min-height: 43px; /* Match Figma: 43px minimum height */
