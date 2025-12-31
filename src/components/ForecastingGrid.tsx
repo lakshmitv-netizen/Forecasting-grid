@@ -1510,14 +1510,7 @@ const ForecastingGrid: React.FC = () => {
                 
                 return (
                   <>
-                    Showing{' '}
-                    <span className="last-refreshed-semibold">{parts[0]}</span>
-                    {' over '}
-                    <span className="last-refreshed-semibold">{secondPart[0]}</span>
-                    {' across '}
-                    <span className="last-refreshed-semibold">{secondPart[1]}</span>
-                    {' • Last refreshed '}
-                    <span className="last-refreshed-semibold">{lastRefreshed}</span>
+                    Showing {parts[0]} over {secondPart[0]} across {secondPart[1]} • Last refreshed {lastRefreshed}
                   </>
                 );
               })()}
