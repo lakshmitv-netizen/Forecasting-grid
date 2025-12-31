@@ -274,8 +274,8 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
       <div className="filters-panel-header">
         <div className="filters-panel-title-section">
           <button className="filters-panel-back-button" onClick={onClose} aria-label="Back">
-            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path fillRule="evenodd" clipRule="evenodd" d="M14.8618 1.23047H1.20022C0.738686 1.23047 0.523301 1.75355 0.800224 2.09201L6.76946 9.07662C6.95407 9.29201 7.04638 9.5997 7.04638 9.87662V14.3074C7.04638 14.5535 7.29253 14.7689 7.53869 14.7689H8.46176C8.70792 14.7689 8.89253 14.5535 8.89253 14.3074V9.87662C8.89253 9.56893 9.01561 9.29201 9.23099 9.07662L15.2618 2.09201C15.5387 1.75355 15.3233 1.23047 14.8618 1.23047V1.23047Z" fill="#0250D9"/>
             </svg>
           </button>
           <p className="filters-panel-title">Filters</p>
