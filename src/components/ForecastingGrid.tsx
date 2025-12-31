@@ -1271,7 +1271,7 @@ const ForecastingGrid: React.FC = () => {
     setIsFiltersOpen(false);
   }, []);
 
-  // Close popover on outside click or when clicking on any cell
+  // Close popover on outside click and scroll
   useEffect(() => {
     if (!editInfoPopover) return;
     
@@ -1279,26 +1279,21 @@ const ForecastingGrid: React.FC = () => {
       const target = e.target as HTMLElement;
       // Don't close if clicking inside the popover
       if (target.closest('.cell-edit-info-popover')) return;
-      // Close for any other click, including cells
+      // Don't close if clicking on an editable cell (will show popover for that cell)
+      if (target.closest('.editable-cell')) return;
       setEditInfoPopover(null);
     };
     
-    // Also close on blur (when cell loses focus)
-    const handleBlur = () => {
-      // Small delay to allow focus to move to popover if clicking inside it
-      setTimeout(() => {
-        const activeElement = document.activeElement;
-        if (!activeElement || !activeElement.closest('.cell-edit-info-popover')) {
-          setEditInfoPopover(null);
-        }
-      }, 100);
+    const handleScroll = () => {
+      // Close popover when scrolling
+      setEditInfoPopover(null);
     };
     
     document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('focusout', handleBlur);
+    window.addEventListener('scroll', handleScroll, true); // Use capture phase to catch all scroll events
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('focusout', handleBlur);
+      window.removeEventListener('scroll', handleScroll, true);
     };
   }, [editInfoPopover]);
 
