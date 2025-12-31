@@ -87,7 +87,7 @@
 }
 
 .last-refreshed-semibold {
-  font-weight: var(--font-weight-semibold);
+  font-weight: 590 !important;
 }
 
 .refresh-button {
@@ -316,7 +316,7 @@
   line-height: var(--line-height-base) !important;
   border-right: 1px solid #A0A0A0 !important;
   border-top: 1px solid #A0A0A0 !important;
-  border-bottom: 2px solid #A0A0A0 !important;
+  border-bottom: 1px solid #A0A0A0 !important;
   white-space: nowrap;
   background-color: #ededed !important;
   /* Sticky header for vertical scroll */
@@ -341,7 +341,7 @@
   background-color: #ededed !important;
   border-right: 1px solid #A0A0A0 !important;
   border-top: 1px solid #A0A0A0 !important;
-  border-bottom: 2px solid #A0A0A0 !important;
+  border-bottom: 1px solid #A0A0A0 !important;
 }
 
 .grid-header th:first-child::after {
