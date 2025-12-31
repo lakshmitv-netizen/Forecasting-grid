@@ -1,10 +1,18 @@
 # Usability Testing Plan
 ## Forecasting & Planning Tool Prototype
 
-**Version:** 5.0  
+**Version:** 6.0  
 **Date:** December 2025  
-**Testing Duration:** 60-90 minutes per session  
+**Testing Duration:** 75-105 minutes per session  
 **Target Users:** Financial analysts, planning managers, data analysts
+
+**New Features in v6.0:**
+- Mass update functionality for multiple cells
+- Multi-cell selection (Shift+Click, Cmd/Ctrl+Click)
+- Automatic cell selection based on criteria
+- Measure reordering and visibility controls
+- Column freezing functionality
+- Enhanced cell editing workflow (double-click to edit)
 
 ---
 
@@ -94,18 +102,33 @@
 
 ---
 
-### **Task 5: Modifying Values**
+### **Task 5: Modifying Values (Single Cell)**
 **Task:** "Imagine you need to update a forecast number. How would you go about changing it? What do you think will happen when you do?"
 
 **What to Observe:**
 - [ ] How do they approach editing?
-- [ ] What interactions do they try?
+- [ ] What interactions do they try? (double-click, Enter key)
 - [ ] Do they discover editing capability?
 - [ ] What visual feedback appears?
 - [ ] Do they understand how to save?
 - [ ] What happens after editing?
 
 **Success Criteria:** User discovers editing and understands the workflow
+
+---
+
+### **Task 5b: Multi-Cell Selection**
+**Task:** "Now imagine you need to update multiple cells at once. How would you select multiple cells? Try selecting several cells together."
+
+**What to Observe:**
+- [ ] How do they try to select multiple cells?
+- [ ] Do they discover Shift+Click or Cmd/Ctrl+Click?
+- [ ] Do they notice the selection indicators?
+- [ ] Can they select cells across different rows/columns?
+- [ ] What happens when they select multiple cells?
+- [ ] Do they see any UI changes when multiple cells are selected?
+
+**Success Criteria:** User discovers multi-cell selection functionality
 
 ---
 
@@ -118,6 +141,7 @@
 - [ ] What visual indicators do they notice?
 - [ ] Do they see different cell states (edited vs impacted)?
 - [ ] Can they explain the relationships?
+- [ ] Do they notice the save footer appearing?
 
 **Success Criteria:** User recognizes automatic value updates and understands propagation
 
@@ -272,7 +296,76 @@
 
 ---
 
-### **Task 17: Overall Exploration**
+### **Task 17: Mass Update Feature**
+**Task:** "You've selected multiple cells. Now you want to update all of them at once - maybe increase them all by 10% or set them all to a specific value. How would you do that?"
+
+**What to Observe:**
+- [ ] How do they try to update multiple cells?
+- [ ] Do they discover the Cell Details & Updates panel?
+- [ ] Do they find the Multi-cell tab?
+- [ ] Do they discover the mass update form?
+- [ ] Can they understand the update rules (Increase, Decrease, Set to, Multiply by, Divide by)?
+- [ ] Do they try percentage vs absolute values?
+- [ ] Can they add a bulk adjustment note?
+- [ ] What happens when they click Update?
+- [ ] Do all selected cells update correctly?
+- [ ] Do they see impacted cells update as well?
+- [ ] Do they notice the context menu "Mass Update" option?
+
+**Success Criteria:** User discovers and successfully uses mass update functionality
+
+---
+
+### **Task 17b: Automatic Cell Selection**
+**Task:** "Instead of manually selecting cells, imagine you want to automatically select cells based on criteria - like all cells for a specific product, or all cells with values above a certain threshold. How would you do that?"
+
+**What to Observe:**
+- [ ] Do they discover the "Automatically" option in Select Cells dropdown?
+- [ ] Do they understand the Cell Selection Criteria UI?
+- [ ] Can they add conditions (KPI, Product, Time, Cell Value)?
+- [ ] Do they understand the operators (equals, greater than, less than, etc.)?
+- [ ] Can they build a selection criteria?
+- [ ] What happens when criteria are applied?
+
+**Success Criteria:** User discovers automatic cell selection feature
+
+---
+
+### **Task 18: Reordering Measures**
+**Task:** "You want to change the order in which measures appear in the grid, or hide some measures you don't need. How would you do that?"
+
+**What to Observe:**
+- [ ] Where do they look for measure ordering options?
+- [ ] Do they discover the Settings panel?
+- [ ] Do they find the Reorder Measures option?
+- [ ] Can they understand the reorder modal?
+- [ ] Do they try changing the order numbers?
+- [ ] Do they use the visibility checkboxes?
+- [ ] Can they use the master checkbox to toggle all?
+- [ ] Do they understand the Update Sequence and Reset buttons?
+- [ ] Do they notice the sort button in the Order column?
+- [ ] Can they successfully reorder measures?
+
+**Success Criteria:** User discovers and uses measure reordering functionality
+
+---
+
+### **Task 19: Freezing Columns**
+**Task:** "When you scroll horizontally, you want the first column to stay visible. How would you make that happen?"
+
+**What to Observe:**
+- [ ] How do they try to freeze columns?
+- [ ] Do they discover the "Freeze columns" option?
+- [ ] Where do they look for this feature?
+- [ ] Can they successfully freeze the first column?
+- [ ] Does the frozen column stay visible when scrolling?
+- [ ] Do they understand what "frozen" means in this context?
+
+**Success Criteria:** User discovers and uses column freezing functionality
+
+---
+
+### **Task 20: Overall Exploration**
 **Task:** "Take a few minutes to explore anything that interests you. What features did you discover? What surprised you? What would you want to use in your daily work?"
 
 **What to Observe:**
@@ -363,7 +456,34 @@ After completing the exploration tasks, ask the following rating questions:
 
 ---
 
-### **Rating 9: Overall Satisfaction**
+### **Rating 9: Mass Update Feature**
+**Question:** "On a scale of 1 to 5, where 1 is not useful and 5 is very useful, how useful did you find the mass update feature for updating multiple cells at once?"
+
+**Rating:** ___ / 5
+
+**Follow-up:** "Would you use this feature frequently? What improvements would you suggest?"
+
+---
+
+### **Rating 10: Multi-Cell Selection**
+**Question:** "On a scale of 1 to 5, where 1 is very difficult and 5 is very easy, how easy was it to select multiple cells?"
+
+**Rating:** ___ / 5
+
+**Follow-up:** "Was the selection process intuitive? What would make it better?"
+
+---
+
+### **Rating 11: Measure Reordering**
+**Question:** "On a scale of 1 to 5, where 1 is not useful and 5 is very useful, how useful did you find the ability to reorder and hide measures?"
+
+**Rating:** ___ / 5
+
+**Follow-up:** "Would you customize the measure order frequently?"
+
+---
+
+### **Rating 12: Overall Satisfaction**
 **Question:** "On a scale of 1 to 5, where 1 is very dissatisfied and 5 is very satisfied, how satisfied are you with this tool overall?"
 
 **Rating:** ___ / 5
@@ -372,7 +492,7 @@ After completing the exploration tasks, ask the following rating questions:
 
 ---
 
-### **Rating 10: Likelihood to Use**
+### **Rating 13: Likelihood to Use**
 **Question:** "On a scale of 1 to 5, where 1 is very unlikely and 5 is very likely, how likely are you to use this tool in your daily work?"
 
 **Rating:** ___ / 5
@@ -434,74 +554,116 @@ After completing the exploration tasks, ask the following rating questions:
 15. **Layout Switching:** How useful is changing grid layouts? (1-5)
     - Comments: _______________________________
 
+16. **Mass Update:** How useful is updating multiple cells at once? (1-5)
+    - Comments: _______________________________
+
+17. **Multi-Cell Selection:** How easy was it to select multiple cells? (1-5)
+    - Comments: _______________________________
+
+18. **Automatic Cell Selection:** How useful is selecting cells by criteria? (1-5)
+    - Comments: _______________________________
+
+19. **Measure Reordering:** How useful is reordering and hiding measures? (1-5)
+    - Comments: _______________________________
+
+20. **Column Freezing:** How useful is freezing the first column? (1-5)
+    - Comments: _______________________________
+
 ### Comprehension (1-5 scale)
 
-16. **Grid Structure:** How well did you understand the grid structure? (1-5)
+21. **Grid Structure:** How well did you understand the grid structure? (1-5)
     - Comments: _______________________________
 
-17. **Data Relationships:** How clear were parent/child relationships? (1-5)
+22. **Data Relationships:** How clear were parent/child relationships? (1-5)
     - Comments: _______________________________
 
-18. **Value Propagation:** How well did you understand automatic updates? (1-5)
+23. **Value Propagation:** How well did you understand automatic updates? (1-5)
     - Comments: _______________________________
 
-19. **Visual Indicators:** How well did you understand visual feedback? (1-5)
+24. **Visual Indicators:** How well did you understand visual feedback? (1-5)
     - Comments: _______________________________
 
-20. **Layout Notation:** How well did you understand what "Measures / Dimensions x Time" means? (1-5)
+25. **Layout Notation:** How well did you understand what "Measures / Dimensions x Time" means? (1-5)
+    - Comments: _______________________________
+
+26. **Mass Update Rules:** How well did you understand the mass update rules (Increase, Decrease, Set to, etc.)? (1-5)
+    - Comments: _______________________________
+
+27. **Cell Selection Criteria:** How well did you understand automatic cell selection criteria? (1-5)
     - Comments: _______________________________
 
 ### Open-Ended Questions
 
-21. **What did you like most about the tool?**
+28. **What did you like most about the tool?**
     - _______________________________________________
 
-22. **What features were difficult to discover?**
+29. **What features were difficult to discover?**
     - _______________________________________________
 
-23. **What features were easy to discover?**
+30. **What features were easy to discover?**
     - _______________________________________________
 
-24. **What did you find confusing or unclear?**
+31. **What did you find confusing or unclear?**
     - _______________________________________________
 
-25. **What features did you find most useful?**
+32. **What features did you find most useful?**
     - _______________________________________________
 
-26. **What features did you find least useful?**
+33. **What features did you find least useful?**
     - _______________________________________________
 
-27. **What features are missing that you would need?**
+34. **What features are missing that you would need?**
     - _______________________________________________
 
-28. **What would you change to make features more discoverable?**
+35. **What would you change to make features more discoverable?**
     - _______________________________________________
 
-29. **What visual indicators were most helpful?**
+36. **What visual indicators were most helpful?**
     - _______________________________________________
 
-30. **What visual indicators were confusing or unclear?**
+37. **What visual indicators were confusing or unclear?**
     - _______________________________________________
 
-31. **How did you interpret the layout notation (Measures / Dimensions x Time)?**
+38. **How did you interpret the layout notation (Measures / Dimensions x Time)?**
     - _______________________________________________
 
-32. **Where did you expect to find controls for changing the grid layout?**
+39. **Where did you expect to find controls for changing the grid layout?**
     - _______________________________________________
 
-33. **What surprised you about the tool?**
+40. **What surprised you about the tool?**
     - _______________________________________________
 
-34. **What features did you discover that you weren't expecting?**
+41. **What features did you discover that you weren't expecting?**
     - _______________________________________________
 
-35. **Would you use this tool in your daily work? Why or why not?**
+42. **How did you discover the mass update feature?**
     - _______________________________________________
 
-36. **How does this compare to tools you currently use?**
+43. **What did you think about the mass update workflow?**
     - _______________________________________________
 
-37. **Any other comments or suggestions?**
+44. **Would you use mass update frequently? For what scenarios?**
+    - _______________________________________________
+
+45. **What improvements would you suggest for mass update?**
+    - _______________________________________________
+
+46. **How did you find the automatic cell selection feature?**
+    - _______________________________________________
+
+47. **Would you use automatic cell selection? Why or why not?**
+    - _______________________________________________
+
+48. **What did you think about the measure reordering feature?**
+    - _______________________________________________
+
+49. **Would you use this tool in your daily work? Why or why not?**
+    - _______________________________________________
+
+50. **How does this compare to tools you currently use?**
+    - _______________________________________________
+
+51. **Any other comments or suggestions?**
     - _______________________________________________
 
 ---
@@ -519,13 +681,18 @@ After completing the exploration tasks, ask the following rating questions:
 
 | Feature | Discovery Rate | Usefulness Rating | Comprehension |
 |---------|---------------|-------------------|---------------|
-| Cell Editing | >85% | >4.0/5.0 | >90% understand workflow |
+| Cell Editing (Single) | >85% | >4.0/5.0 | >90% understand workflow |
+| Multi-Cell Selection | >70% | >4.0/5.0 | >85% can select multiple cells |
+| Mass Update | >60% | >4.0/5.0 | >80% understand rules and workflow |
+| Automatic Cell Selection | >50% | >3.5/5.0 | >70% understand criteria building |
 | Value Propagation | >70% | >4.0/5.0 | >80% understand behavior |
 | Search | >80% | >4.0/5.0 | >85% can use effectively |
 | Adjustment Notes | >60% | >3.5/5.0 | >75% understand purpose |
 | Edit History | >65% | >4.0/5.0 | >80% can interpret entries |
 | Cell Locking | >50% | >3.5/5.0 | >75% understand protection |
 | Layout Switching | >70% | >3.5/5.0 | >80% understand options |
+| Measure Reordering | >60% | >3.5/5.0 | >75% can reorder successfully |
+| Column Freezing | >55% | >3.5/5.0 | >80% understand functionality |
 | Settings Panel | >75% | >3.5/5.0 | >80% can navigate options |
 | Layout Notation | >60% | >3.5/5.0 | >70% understand meaning |
 
