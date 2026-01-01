@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { MeasureData } from '../types';
 import { CellEditHistoryEntry } from '../types/editHistory';
 import { AdjustmentNote } from '../types/adjustmentNote';
@@ -1505,7 +1506,12 @@ const ForecastingGrid: React.FC = () => {
         <div className="page-header-left">
           <div className="breadcrumbs-row">
             <div className="breadcrumbs">
-              Planning & Forecasting FY26
+              <Link 
+                to="/planning-forecasting"
+                className="breadcrumbs-link"
+              >
+                Planning & Forecasting FY26
+              </Link>
               <span className="breadcrumbs-separator">&gt;</span>
               Grid
             </div>

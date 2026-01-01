@@ -45,6 +45,24 @@
   line-height: var(--line-height-base) !important;
 }
 
+.breadcrumbs-link {
+  color: #0050D9 !important;
+  text-decoration: none !important;
+  cursor: pointer !important;
+  font-size: var(--font-size-base) !important;
+  line-height: var(--line-height-base) !important;
+  transition: opacity 0.2s ease !important;
+}
+
+.breadcrumbs-link:hover {
+  opacity: 0.8 !important;
+  text-decoration: underline !important;
+}
+
+.breadcrumbs-link:active {
+  opacity: 0.6 !important;
+}
+
 .breadcrumbs-separator {
   margin: 0 var(--spacing-2);
   color: #0050D9;
