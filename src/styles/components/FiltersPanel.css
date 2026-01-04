@@ -1,7 +1,8 @@
 /* Filters Panel - Similar to Settings Panel */
 .filters-panel {
   width: 420px;
-  height: calc(100vh - 180px);
+  height: 100%;
+  max-height: 100%;
   background-color: var(--color-surface-white);
   border: 1px solid var(--color-border);
   border-radius: 0;
@@ -12,7 +13,7 @@
   min-width: 420px;
   max-width: 420px;
   box-shadow: 0px 0px 4.4px 0px rgba(0, 0, 0, 0.09), -4px 0px 4.4px 0px rgba(0, 0, 0, 0.09), -1px 0px 1.44px 0px rgba(0, 0, 0, 0.03);
-  align-self: flex-start;
+  align-self: stretch;
 }
 
 /* Panel Header */
@@ -130,6 +131,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--spacing-2);
+  min-height: 0; /* Important for flex children to scroll */
 }
 
 /* Top Section - Dropdowns */
@@ -488,5 +490,89 @@
 .filters-button-save:hover {
   background-color: var(--color-primary-blue);
   border-color: var(--color-primary-blue);
+}
+
+/* Toggle Switch */
+.filters-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  position: relative;
+}
+
+.filters-toggle-track {
+  width: 52px;
+  height: 28px;
+  background-color: #E0E0E0;
+  border-radius: 14px;
+  position: relative;
+  transition: background-color 0.2s ease;
+  display: flex;
+  align-items: center;
+  padding: 0 2px;
+}
+
+.filters-toggle.active .filters-toggle-track {
+  background-color: #0250D9;
+}
+
+.filters-toggle-thumb {
+  width: 24px;
+  height: 24px;
+  background-color: white;
+  border-radius: 50%;
+  position: absolute;
+  left: 2px;
+  transition: transform 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.filters-toggle.active .filters-toggle-thumb {
+  transform: translateX(24px);
+}
+
+.filters-toggle-check {
+  width: 16px;
+  height: 16px;
+  position: absolute;
+  left: 6px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Date Input */
+.filters-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.filters-date-input {
+  width: 100%;
+  padding: var(--spacing-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-1);
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-base);
+  color: var(--color-on-surface-2);
+  background-color: var(--color-surface-white);
+  cursor: pointer;
+}
+
+.filters-date-input:focus {
+  outline: none;
+  border-color: var(--color-accent-blue);
+}
+
+.filters-date-input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  color: var(--color-on-surface-2);
+  opacity: 0.7;
+}
+
+.filters-date-input::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
 }
 

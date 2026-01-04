@@ -21,6 +21,12 @@ interface SettingsPanelProps {
   measures?: MeasureData[]; // Current measures data
   onMeasuresReorder?: (orderedMeasures: MeasureData[], visibleMeasureIds: Set<string>) => void; // Callback when measures are reordered
   visibleMeasureIds?: Set<string>; // Set of visible measure IDs
+  showAllPeriods?: boolean;
+  onShowAllPeriodsChange?: (showAll: boolean) => void;
+  startPeriod?: string;
+  endPeriod?: string;
+  onStartPeriodChange?: (period: string) => void;
+  onEndPeriodChange?: (period: string) => void;
 }
 
 const layoutOptions = [
@@ -87,7 +93,13 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   onLayoutChange,
   measures = [],
   onMeasuresReorder,
-  visibleMeasureIds = new Set()
+  visibleMeasureIds = new Set(),
+  showAllPeriods = true,
+  onShowAllPeriodsChange,
+  startPeriod = '',
+  endPeriod = '',
+  onStartPeriodChange,
+  onEndPeriodChange
 }) => {
   const [selectedLayout, setSelectedLayout] = useState(propSelectedLayout || layoutOptions[0].value);
   const [isLayoutDropdownOpen, setIsLayoutDropdownOpen] = useState(false);
@@ -473,6 +485,58 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 )}
               </div>
             </div>
+
+            {/* Show all Periods Toggle */}
+            <div className="settings-field" style={{ marginTop: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <label className="settings-field-label">Show all Periods</label>
+                <button
+                  className={`settings-toggle ${showAllPeriods ? 'active' : ''}`}
+                  onClick={() => onShowAllPeriodsChange?.(!showAllPeriods)}
+                  aria-label="Toggle show all periods"
+                >
+                  <div className="settings-toggle-track">
+                    <div className="settings-toggle-thumb"></div>
+                    {showAllPeriods && (
+                      <svg className="settings-toggle-check" fill="none" stroke="white" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* Start and End Period Inputs */}
+            {!showAllPeriods && (
+              <>
+                <div className="settings-field" style={{ marginTop: '12px' }}>
+                  <label className="settings-field-label">Start</label>
+                  <div className="settings-input-wrapper">
+                    <input
+                      type="date"
+                      className="settings-input settings-date-input"
+                      placeholder="Start"
+                      value={startPeriod}
+                      onChange={(e) => onStartPeriodChange?.(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="settings-field" style={{ marginTop: '12px' }}>
+                  <label className="settings-field-label">End</label>
+                  <div className="settings-input-wrapper">
+                    <input
+                      type="date"
+                      className="settings-input settings-date-input"
+                      placeholder="End"
+                      value={endPeriod}
+                      onChange={(e) => onEndPeriodChange?.(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Display Settings Section */}

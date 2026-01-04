@@ -1,8 +1,8 @@
 /* Cell Details and History Panel - Similar to Settings and Filters Panel */
 .cell-details-history-panel {
   width: 420px;
-  height: calc(100vh - 180px);
-  max-height: calc(100vh - 180px);
+  height: 100%;
+  max-height: 100%;
   background-color: var(--color-surface-white);
   border: 1px solid var(--color-border);
   border-radius: 0;
@@ -13,7 +13,7 @@
   min-width: 420px;
   max-width: 420px;
   box-shadow: 0px 0px 4.4px 0px rgba(0, 0, 0, 0.09), -4px 0px 4.4px 0px rgba(0, 0, 0, 0.09), -1px 0px 1.44px 0px rgba(0, 0, 0, 0.03);
-  align-self: flex-start;
+  align-self: stretch;
   position: relative;
 }
 
@@ -156,9 +156,11 @@
 /* Panel Body */
 .cell-details-history-panel-body {
   flex: 1;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 0;
   display: flex;
+  min-height: 0; /* Important for flex children to scroll */
   flex-direction: column;
   min-height: 0;
 }
@@ -168,7 +170,8 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 0;
 }
 
@@ -687,7 +690,8 @@
   padding-top: var(--spacing-3);
   margin-bottom: 0;
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .cell-details-history-section-header {

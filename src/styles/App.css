@@ -19,6 +19,11 @@ input {
   color: inherit !important;
 }
 
+html, body {
+  height: 100%;
+  overflow: hidden !important;
+}
+
 body {
   font-family: var(--font-family-base) !important;
   font-size: var(--font-size-base) !important;
@@ -31,15 +36,17 @@ body {
 
 #root {
   width: 100%;
-  min-height: 100vh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .app {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .main-content {
@@ -47,5 +54,7 @@ body {
   display: flex;
   flex-direction: column;
   background-color: white;
+  overflow: hidden;
+  min-height: 0; /* Important for flex children to shrink */
 }
 

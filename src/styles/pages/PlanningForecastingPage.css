@@ -696,6 +696,18 @@
   font-weight: 590 !important;
 }
 
+.grid-config-nav-item.disabled,
+.grid-config-nav-item:disabled {
+  color: #c0c0c0 !important;
+  cursor: not-allowed !important;
+  background: none !important;
+}
+
+.grid-config-nav-item.disabled:hover,
+.grid-config-nav-item:disabled:hover {
+  background: none !important;
+}
+
 /* Main Content */
 .grid-config-main {
   flex: 1 !important;

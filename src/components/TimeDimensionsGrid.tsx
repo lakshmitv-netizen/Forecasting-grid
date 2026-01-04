@@ -25,6 +25,9 @@ interface TimeDimensionsGridProps {
   onFocusedCellChange?: (focus: { rowId: string; measureId: string } | null) => void;
   searchTerm?: string; // Search term for filtering rows and columns
   onEditHistory?: (entry: { cellKey: string; rowId: string; timeKey?: string; measureId?: string; oldValue: number; newValue: number }) => void; // Callback to track edit history
+  showAllPeriods?: boolean; // Whether to show all time periods or filter by date range
+  startPeriod?: string; // Start date for filtering (YYYY-MM-DD format)
+  endPeriod?: string; // End date for filtering (YYYY-MM-DD format)
 }
 
 const TimeDimensionsGrid: React.FC<TimeDimensionsGridProps> = ({
@@ -39,7 +42,10 @@ const TimeDimensionsGrid: React.FC<TimeDimensionsGridProps> = ({
   initialFocusedCell,
   onFocusedCellChange,
   searchTerm = '',
-  onEditHistory
+  onEditHistory,
+  showAllPeriods = true,
+  startPeriod = '',
+  endPeriod = ''
 }) => {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [focusedCell, setFocusedCell] = useState<{ rowId: string; measureId: string } | null>(initialFocusedCell || null);
@@ -353,16 +359,115 @@ const TimeDimensionsGrid: React.FC<TimeDimensionsGridProps> = ({
     return result;
   }, [transformedRows, selectedTimeGranularities, filterTimeRows]);
 
+  // Helper function to check if a month key falls within the date range
+  const isMonthInRange = useCallback((monthKey: string, start: string, end: string): boolean => {
+    if (!start && !end) return true;
+    
+    const monthKeyToNumber: { [key: string]: number } = {
+      'jan2026': 1, 'feb2026': 2, 'mar2026': 3, 'apr2026': 4,
+      'may2026': 5, 'jun2026': 6, 'jul2026': 7, 'aug2026': 8,
+      'sep2026': 9, 'oct2026': 10, 'nov2026': 11, 'dec2026': 12
+    };
+    
+    const monthNum = monthKeyToNumber[monthKey];
+    if (!monthNum) return true;
+    
+    let startMonth = 1;
+    let endMonth = 12;
+    
+    if (start) {
+      const startDate = new Date(start);
+      startMonth = startDate.getMonth() + 1;
+    }
+    
+    if (end) {
+      const endDate = new Date(end);
+      endMonth = endDate.getMonth() + 1;
+    }
+    
+    return monthNum >= startMonth && monthNum <= endMonth;
+  }, []);
+
+  // Helper to check if a quarter has any visible months
+  const isQuarterInRange = useCallback((quarterKey: string, start: string, end: string): boolean => {
+    if (!start && !end) return true;
+    
+    const quarterMonths: { [key: string]: string[] } = {
+      'q1': ['jan2026', 'feb2026', 'mar2026'],
+      'q2': ['apr2026', 'may2026', 'jun2026'],
+      'q3': ['jul2026', 'aug2026', 'sep2026'],
+      'q4': ['oct2026', 'nov2026', 'dec2026']
+    };
+    
+    const months = quarterMonths[quarterKey];
+    if (!months) return true;
+    
+    return months.some(month => isMonthInRange(month, start, end));
+  }, [isMonthInRange]);
+
+  // Filter time rows by date range
+  const filterRowsByDateRange = useCallback((
+    rows: TransformedRow[],
+    start: string,
+    end: string
+  ): TransformedRow[] => {
+    if (!start && !end) return rows;
+
+    const filterRow = (row: TransformedRow): TransformedRow | null => {
+      if (row.type === 'month') {
+        if (!row.timeKey || !isMonthInRange(row.timeKey, start, end)) {
+          return null;
+        }
+        return row;
+      } else if (row.type === 'quarter') {
+        if (!row.timeKey || !isQuarterInRange(row.timeKey, start, end)) {
+          return null;
+        }
+        const filteredChildren = row.children
+          ? row.children.map(child => filterRow(child)).filter((c): c is TransformedRow => c !== null)
+          : undefined;
+        if (filteredChildren && filteredChildren.length === 0) {
+          return null;
+        }
+        return { ...row, children: filteredChildren };
+      } else if (row.type === 'year') {
+        const filteredChildren = row.children
+          ? row.children.map(child => filterRow(child)).filter((c): c is TransformedRow => c !== null)
+          : undefined;
+        if (filteredChildren && filteredChildren.length === 0) {
+          return null;
+        }
+        return { ...row, children: filteredChildren };
+      } else {
+        // Dimension row
+        const filteredChildren = row.children
+          ? row.children.map(child => filterRow(child)).filter((c): c is TransformedRow => c !== null)
+          : undefined;
+        return { ...row, children: filteredChildren };
+      }
+    };
+
+    return rows.map(row => filterRow(row)).filter((r): r is TransformedRow => r !== null);
+  }, [isMonthInRange, isQuarterInRange]);
+
+  // Apply date range filtering
+  const dateRangeFilteredRows = useMemo(() => {
+    if (showAllPeriods || (!startPeriod && !endPeriod)) {
+      return timeGranularityFilteredRows;
+    }
+    return filterRowsByDateRange(timeGranularityFilteredRows, startPeriod, endPeriod);
+  }, [timeGranularityFilteredRows, showAllPeriods, startPeriod, endPeriod, filterRowsByDateRange]);
+
   // Apply search filtering to rows
   const filteredRows = useMemo(() => {
     try {
       if (!searchTerm || !searchTerm.trim()) {
-        return timeGranularityFilteredRows;
+        return dateRangeFilteredRows;
       }
 
       const searchTerms = extractSearchTerms(searchTerm);
       if (searchTerms.length === 0) {
-        return timeGranularityFilteredRows;
+        return dateRangeFilteredRows;
       }
 
       const { timeTerms, otherTerms } = separateSearchTerms(searchTerms);
@@ -370,7 +475,7 @@ const TimeDimensionsGrid: React.FC<TimeDimensionsGridProps> = ({
       // Filter rows based on search (both time terms and other terms apply to rows in this layout)
       const allSearchTerms = [...timeTerms, ...otherTerms];
       if (allSearchTerms.length === 0) {
-        return timeGranularityFilteredRows;
+        return dateRangeFilteredRows;
       }
 
       // Check if any measure names match the search terms
@@ -449,7 +554,7 @@ const TimeDimensionsGrid: React.FC<TimeDimensionsGridProps> = ({
       };
 
       const filtered: TransformedRow[] = [];
-      for (const row of timeGranularityFilteredRows) {
+      for (const row of dateRangeFilteredRows) {
         try {
           const filteredRowResult = filterRow(row);
           if (filteredRowResult) {
@@ -467,9 +572,9 @@ const TimeDimensionsGrid: React.FC<TimeDimensionsGridProps> = ({
       return filtered;
     } catch (error) {
       console.error('[TimeDimensionsGrid] Error in filteredRows search:', error);
-      return timeGranularityFilteredRows;
+      return dateRangeFilteredRows;
     }
-  }, [timeGranularityFilteredRows, searchTerm]);
+  }, [dateRangeFilteredRows, searchTerm]);
 
   // Auto-expand rows that match search
   useEffect(() => {

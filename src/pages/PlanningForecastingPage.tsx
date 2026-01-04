@@ -273,14 +273,14 @@ const PlanningForecastingPage: React.FC = () => {
                       <div className="grid-config-hierarchy-header">Hierarchy Levels</div>
                       <div className="grid-config-nav-items">
                         <button 
-                          className={`grid-config-nav-item ${selectedHierarchyLevel === 'Parent Account' ? 'active' : ''}`}
-                          onClick={() => setSelectedHierarchyLevel('Parent Account')}
+                          className="grid-config-nav-item disabled"
+                          disabled
                         >
                           Parent Account
                         </button>
                         <button 
-                          className={`grid-config-nav-item ${selectedHierarchyLevel === 'Account' ? 'active' : ''}`}
-                          onClick={() => setSelectedHierarchyLevel('Account')}
+                          className="grid-config-nav-item disabled"
+                          disabled
                         >
                           Account
                         </button>
@@ -291,8 +291,8 @@ const PlanningForecastingPage: React.FC = () => {
                           Category
                         </button>
                         <button 
-                          className={`grid-config-nav-item ${selectedHierarchyLevel === 'Product' ? 'active' : ''}`}
-                          onClick={() => setSelectedHierarchyLevel('Product')}
+                          className="grid-config-nav-item disabled"
+                          disabled
                         >
                           Product
                         </button>

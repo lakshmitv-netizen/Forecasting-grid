@@ -21,6 +21,12 @@ interface FiltersPanelProps {
   selectedDimensionLevels?: Set<string>;
   onDimensionLevelsChange?: (levels: Set<string>) => void;
   data?: MeasureData[];
+  showAllPeriods?: boolean;
+  onShowAllPeriodsChange?: (showAll: boolean) => void;
+  startPeriod?: string;
+  endPeriod?: string;
+  onStartPeriodChange?: (period: string) => void;
+  onEndPeriodChange?: (period: string) => void;
 }
 
 const measureSubgroupOptions = [
@@ -51,7 +57,13 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
   onMeasureSubgroupChange,
   selectedDimensionLevels: propSelectedDimensionLevels,
   onDimensionLevelsChange,
-  data = []
+  data = [],
+  showAllPeriods = true,
+  onShowAllPeriodsChange,
+  startPeriod = '',
+  endPeriod = '',
+  onStartPeriodChange,
+  onEndPeriodChange
 }) => {
   const [selectedMeasureSubgroup, setSelectedMeasureSubgroup] = useState(
     propSelectedMeasureSubgroup || measureSubgroupOptions[0].value
@@ -373,6 +385,58 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
               )}
             </div>
           </div>
+
+          {/* Show all Periods Toggle */}
+          <div className="filters-field">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <label className="filters-field-label">Show all Periods</label>
+              <button
+                className={`filters-toggle ${showAllPeriods ? 'active' : ''}`}
+                onClick={() => onShowAllPeriodsChange?.(!showAllPeriods)}
+                aria-label="Toggle show all periods"
+              >
+                <div className="filters-toggle-track">
+                  <div className="filters-toggle-thumb"></div>
+                  {showAllPeriods && (
+                    <svg className="filters-toggle-check" fill="none" stroke="white" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {/* Start and End Period Inputs */}
+          {!showAllPeriods && (
+            <>
+              <div className="filters-field">
+                <label className="filters-field-label">Start</label>
+                <div className="filters-input-wrapper">
+                  <input
+                    type="date"
+                    className="filters-date-input"
+                    placeholder="Start"
+                    value={startPeriod}
+                    onChange={(e) => onStartPeriodChange?.(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="filters-field">
+                <label className="filters-field-label">End</label>
+                <div className="filters-input-wrapper">
+                  <input
+                    type="date"
+                    className="filters-date-input"
+                    placeholder="End"
+                    value={endPeriod}
+                    onChange={(e) => onEndPeriodChange?.(e.target.value)}
+                  />
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Filter Cards */}

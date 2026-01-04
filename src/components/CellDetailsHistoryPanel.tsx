@@ -800,12 +800,12 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
         {hasFocusedCell && activeTab === 'single' && (
           <div className="cell-details-history-panel-footer">
             <div className="cell-details-history-note-input-section">
-              <label className="cell-details-history-note-label">Notes</label>
+              <label className="cell-details-history-note-label">Comments</label>
               <textarea
                 className="cell-details-history-note-textarea"
                 value={panelNoteText}
                 onChange={(e) => setPanelNoteText(e.target.value)}
-                placeholder="Enter a note or comment"
+                placeholder="Enter a comment"
                 rows={3}
               />
             </div>

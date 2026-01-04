@@ -4,6 +4,9 @@
   flex-direction: column;
   padding: var(--spacing-2) 0 0 0;
   background-color: white;
+  overflow: hidden;
+  min-height: 0; /* Important for flex children to respect container bounds */
+  height: 100%;
 }
 
 .page-header {
@@ -266,8 +269,9 @@
   min-height: 0;
   min-width: 0; /* Allow flex item to shrink below content size */
   gap: 0;
-  overflow: visible; /* Allow shadow to be visible */
+  overflow: hidden; /* Contain children within bounds */
   padding: 0;
+  height: 100%;
 }
 
 .grid-container-wrapper {
@@ -277,23 +281,20 @@
   min-height: 0;
   min-width: 0; /* Allow flex item to shrink below content size */
   position: relative;
-  overflow: visible; /* Allow shadow to be visible */
+  overflow: hidden; /* Contain children within bounds */
   padding: 0;
-  padding-bottom: 58px; /* Add padding at bottom to account for fixed footer + shadow */
+  height: 100%;
 }
 
 .grid-container {
   border: none !important;
   border-radius: 0;
   background-color: var(--color-surface-white) !important;
-  flex: 1;
   min-width: 300px; /* Ensure container is at least as wide as first frozen column */
-  min-height: 0;
   overflow: auto; /* Single overflow property for both directions */
   margin-bottom: 0;
-  display: block;
-  max-height: calc(100vh - 210px); /* Extend grid height closer to footer */
   box-shadow: none !important;
+  height: 100%;
 }
 
 .grid-table {

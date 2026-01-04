@@ -49,6 +49,9 @@ interface HierarchicalGridProps {
   onGetCurrentCellValueReady?: (handler: (rowId: string, monthKey: string) => number) => void; // Callback to expose function to get current cell value
   onEditingCellChange?: (cellKey: string | null) => void; // Callback when editing cell changes (cellKey format: `${rowId}-${monthKey}`)
   onSavedImpactedCellsReady?: (cells: Set<string>) => void; // Callback to expose saved impacted cells
+  showAllPeriods?: boolean; // Whether to show all time periods or filter by date range
+  startPeriod?: string; // Start date for filtering (YYYY-MM-DD format)
+  endPeriod?: string; // End date for filtering (YYYY-MM-DD format)
 }
 
 const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({ 
@@ -78,6 +81,9 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   selectedCells = new Set(),
   onCellSelect,
   onCellChangeHandlerReady,
+  showAllPeriods = true,
+  startPeriod = '',
+  endPeriod = '',
   onGetCurrentCellValueReady,
   onEditingCellChange,
   onSavedImpactedCellsReady
@@ -549,6 +555,55 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     });
   };
 
+  // Helper function to check if a month key falls within the date range
+  const isMonthInRange = useCallback((monthKey: string, start: string, end: string): boolean => {
+    if (!start && !end) return true;
+    
+    // Map month keys to month numbers (1-12)
+    const monthKeyToNumber: { [key: string]: number } = {
+      'jan2026': 1, 'feb2026': 2, 'mar2026': 3, 'apr2026': 4,
+      'may2026': 5, 'jun2026': 6, 'jul2026': 7, 'aug2026': 8,
+      'sep2026': 9, 'oct2026': 10, 'nov2026': 11, 'dec2026': 12
+    };
+    
+    const monthNum = monthKeyToNumber[monthKey];
+    if (!monthNum) return true; // If not a month key, include it
+    
+    // Parse start and end dates to get months
+    let startMonth = 1;
+    let endMonth = 12;
+    
+    if (start) {
+      const startDate = new Date(start);
+      startMonth = startDate.getMonth() + 1; // getMonth() is 0-indexed
+    }
+    
+    if (end) {
+      const endDate = new Date(end);
+      endMonth = endDate.getMonth() + 1;
+    }
+    
+    return monthNum >= startMonth && monthNum <= endMonth;
+  }, []);
+
+  // Helper to check if a quarter has any visible months
+  const isQuarterInRange = useCallback((quarterKey: string, start: string, end: string): boolean => {
+    if (!start && !end) return true;
+    
+    const quarterMonths: { [key: string]: string[] } = {
+      'q1': ['jan2026', 'feb2026', 'mar2026'],
+      'q2': ['apr2026', 'may2026', 'jun2026'],
+      'q3': ['jul2026', 'aug2026', 'sep2026'],
+      'q4': ['oct2026', 'nov2026', 'dec2026']
+    };
+    
+    const months = quarterMonths[quarterKey];
+    if (!months) return true;
+    
+    // Quarter is visible if any of its months are in range
+    return months.some(month => isMonthInRange(month, start, end));
+  }, [isMonthInRange]);
+
   // Get visible time headers with labels (filtered by granularity and search) - memoized
   const visibleTimeHeaders = useMemo(() => {
     const allTimeKeys: { key: keyof GridRowType['values']; granularity: string; label: string }[] = [
@@ -577,6 +632,21 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       filteredKeys = allTimeKeys.filter(tk => selectedTimeGranularities.has(tk.granularity));
     }
 
+    // Apply date range filter if showAllPeriods is false
+    if (!showAllPeriods && (startPeriod || endPeriod)) {
+      filteredKeys = filteredKeys.filter(tk => {
+        if (tk.granularity === 'month') {
+          return isMonthInRange(tk.key as string, startPeriod, endPeriod);
+        } else if (tk.granularity === 'quarter') {
+          return isQuarterInRange(tk.key as string, startPeriod, endPeriod);
+        } else if (tk.granularity === 'year') {
+          // Show year if any months are visible
+          return true;
+        }
+        return true;
+      });
+    }
+
     // Apply search filter if search term exists
     if (searchTerm && searchTerm.trim()) {
       const searchTerms = extractSearchTerms(searchTerm);
@@ -600,7 +670,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       key: tk.key,
       label: tk.label,
     }));
-  }, [selectedTimeGranularities, searchTerm]);
+  }, [selectedTimeGranularities, searchTerm, showAllPeriods, startPeriod, endPeriod, isMonthInRange, isQuarterInRange]);
 
   // Track previous visible headers to detect structural changes
   const previousVisibleHeadersRef = useRef<string>('');

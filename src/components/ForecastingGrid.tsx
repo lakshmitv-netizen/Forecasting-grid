@@ -1306,6 +1306,11 @@ const ForecastingGrid: React.FC = () => {
     new Set(['month'])
   );
   
+  // Show all periods toggle and date range
+  const [showAllPeriods, setShowAllPeriods] = useState<boolean>(true);
+  const [startPeriod, setStartPeriod] = useState<string>('');
+  const [endPeriod, setEndPeriod] = useState<string>('');
+  
   // Default column width based on layout - 50% of slider range
   // "Measures / Dimensions x Time": 50px - 200px range, default = 50 + (200-50)*0.5 = 125px
   // "Dimensions / Time x Measures": 50px - 300px range, default = 50 + (300-50)*0.5 = 175px
@@ -1590,6 +1595,9 @@ const ForecastingGrid: React.FC = () => {
             }}
             searchTerm={gridSearch}
             onEditHistory={addDraftEditHistory}
+            showAllPeriods={showAllPeriods}
+            startPeriod={startPeriod}
+            endPeriod={endPeriod}
           />
         ) : selectedLayoutState === 'Time / Dimensions x Measures' ? (
           <TimeDimensionsGrid 
@@ -1608,6 +1616,9 @@ const ForecastingGrid: React.FC = () => {
             }}
             searchTerm={gridSearch}
             onEditHistory={addDraftEditHistory}
+            showAllPeriods={showAllPeriods}
+            startPeriod={startPeriod}
+            endPeriod={endPeriod}
           />
         ) : (
           <HierarchicalGrid 
@@ -1662,6 +1673,9 @@ const ForecastingGrid: React.FC = () => {
               setSavedImpactedCells(cells);
               savedImpactedCellsRef.current = cells; // Update ref immediately for synchronous access
             }}
+            showAllPeriods={showAllPeriods}
+            startPeriod={startPeriod}
+            endPeriod={endPeriod}
         />
         )}
         <SettingsPanel 
@@ -1682,6 +1696,12 @@ const ForecastingGrid: React.FC = () => {
           measures={data}
           onMeasuresReorder={handleMeasuresReorder}
           visibleMeasureIds={visibleMeasureIds}
+          showAllPeriods={showAllPeriods}
+          onShowAllPeriodsChange={setShowAllPeriods}
+          startPeriod={startPeriod}
+          onStartPeriodChange={setStartPeriod}
+          endPeriod={endPeriod}
+          onEndPeriodChange={setEndPeriod}
         />
         <FiltersPanel 
           isOpen={isFiltersOpen} 
@@ -1691,6 +1711,12 @@ const ForecastingGrid: React.FC = () => {
           selectedDimensionLevels={selectedDimensionLevels}
           onDimensionLevelsChange={handleDimensionLevelsChange}
           data={data}
+          showAllPeriods={showAllPeriods}
+          onShowAllPeriodsChange={setShowAllPeriods}
+          startPeriod={startPeriod}
+          onStartPeriodChange={setStartPeriod}
+          endPeriod={endPeriod}
+          onEndPeriodChange={setEndPeriod}
         />
         <CellDetailsHistoryPanel 
           key={panelKey}
