@@ -1650,6 +1650,15 @@ const ForecastingGrid: React.FC = () => {
             onFocusedCellChange={(focus) => { 
               dimensionsTimeGridFocusRef.current = focus;
               setCurrentFocusedCell(focus);
+              // Sync selectedCells when focus changes (single-click behavior)
+              if (focus) {
+                const cellKey = `${focus.rowId}-${focus.measureId}`;
+                // Only sync if we're in single-select mode (not multi-selecting)
+                if (selectedCellsRef.current.size <= 1) {
+                  setSelectedCells(new Set([cellKey]));
+                  selectedCellsRef.current = new Set([cellKey]);
+                }
+              }
             }}
             searchTerm={gridSearch}
             onEditHistory={addDraftEditHistory}
@@ -1671,6 +1680,15 @@ const ForecastingGrid: React.FC = () => {
             onFocusedCellChange={(focus) => {
               timeDimensionsGridFocusRef.current = focus;
               setCurrentFocusedCell(focus);
+              // Sync selectedCells when focus changes (single-click behavior)
+              if (focus) {
+                const cellKey = `${focus.rowId}-${focus.measureId}`;
+                // Only sync if we're in single-select mode (not multi-selecting)
+                if (selectedCellsRef.current.size <= 1) {
+                  setSelectedCells(new Set([cellKey]));
+                  selectedCellsRef.current = new Set([cellKey]);
+                }
+              }
             }}
             searchTerm={gridSearch}
             onEditHistory={addDraftEditHistory}
@@ -1692,6 +1710,15 @@ const ForecastingGrid: React.FC = () => {
             onFocusedCellChange={(focus) => { 
               hierarchicalGridFocusRef.current = focus;
               setCurrentFocusedCell(focus);
+              // Sync selectedCells when focus changes (single-click behavior)
+              if (focus) {
+                const cellKey = `${focus.rowId}-${focus.monthKey}`;
+                // Only sync if we're in single-select mode (not multi-selecting)
+                if (selectedCellsRef.current.size <= 1) {
+                  setSelectedCells(new Set([cellKey]));
+                  selectedCellsRef.current = new Set([cellKey]);
+                }
+              }
             }}
             searchTerm={gridSearch}
             onEditHistory={addDraftEditHistory}
