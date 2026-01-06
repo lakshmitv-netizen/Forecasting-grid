@@ -52,8 +52,45 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
   const [isHierarchyPopoverOpen, setIsHierarchyPopoverOpen] = useState(false);
   const [_nubbinLeft, _setNubbinLeft] = useState<number | null>(null); // Kept for potential future use
   const [panelNoteText, setPanelNoteText] = useState('');
+  const [genericCommentText, setGenericCommentText] = useState(''); // For comments when no cell selected
   const hierarchyButtonRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+  
+  // Filter state for history
+  const [isFilterPopoverOpen, setIsFilterPopoverOpen] = useState(false);
+  const [filterDateFrom, setFilterDateFrom] = useState<string>('');
+  const [filterDateTo, setFilterDateTo] = useState<string>('');
+  const [filterUser, setFilterUser] = useState<string>('');
+  const filterButtonRef = useRef<HTMLButtonElement>(null);
+  const filterPopoverRef = useRef<HTMLDivElement>(null);
+  
+  // Generic comments state (for no-cell-selected mode)
+  interface GenericComment {
+    id: string;
+    userId: string;
+    userName: string;
+    userInitials: string;
+    message: string;
+    timestamp: Date;
+  }
+  const [genericComments, setGenericComments] = useState<GenericComment[]>([
+    {
+      id: 'gc-1',
+      userId: 'user-1',
+      userName: 'John Carter',
+      userInitials: 'JC',
+      message: 'Q1 forecasts looking solid. Let\'s review before the monthly meeting.',
+      timestamp: new Date('2026-01-05T09:30:00')
+    },
+    {
+      id: 'gc-2',
+      userId: 'user-2',
+      userName: 'Sarah Chen',
+      userInitials: 'SC',
+      message: 'Updated the transmission assembly projections based on supplier feedback.',
+      timestamp: new Date('2026-01-04T14:15:00')
+    }
+  ]);
   
   // Multi-cell form state
   const [selectCells, setSelectCells] = useState<string>('Manually');
@@ -176,6 +213,44 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
     onAddNote(focusedCell.rowId, monthKey, panelNoteText.trim());
     setPanelNoteText('');
   }, [panelNoteText, focusedCell, onAddNote]);
+
+  // Handle posting generic comment (when no cell selected)
+  const handlePostGenericComment = useCallback(() => {
+    if (!genericCommentText.trim()) return;
+    
+    const newComment: GenericComment = {
+      id: `gc-${Date.now()}-${Math.random()}`,
+      userId: 'john-carter',
+      userName: 'John Carter',
+      userInitials: 'JC',
+      message: genericCommentText.trim(),
+      timestamp: new Date()
+    };
+    
+    setGenericComments(prev => [newComment, ...prev]);
+    setGenericCommentText('');
+  }, [genericCommentText]);
+
+  // Close filter popover when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        filterPopoverRef.current &&
+        !filterPopoverRef.current.contains(event.target as Node) &&
+        filterButtonRef.current &&
+        !filterButtonRef.current.contains(event.target as Node)
+      ) {
+        setIsFilterPopoverOpen(false);
+      }
+    };
+
+    if (isFilterPopoverOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [isFilterPopoverOpen]);
 
   // Close popover when focused cell changes
   useEffect(() => {
@@ -700,19 +775,85 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
         ) : activeTab === 'single' && selectedCells.size !== 1 ? (
           /* History > Aggregated History View (No selection = all cells, Multiple = selected cells) */
           <div className="cell-details-history-content">
-            {/* Contextual Header */}
+            {/* Contextual Header with Filter */}
             <div className="cell-details-history-context-header">
               {selectedCells.size === 0 ? (
                 <span className="cell-details-history-context-text">Recent changes across all cells</span>
               ) : (
                 <span className="cell-details-history-context-text">Changes in {selectedCells.size} selected cells</span>
               )}
+              <div className="cell-details-history-filter-wrapper">
+                <button
+                  ref={filterButtonRef}
+                  className={`cell-details-history-filter-btn ${isFilterPopoverOpen ? 'active' : ''}`}
+                  onClick={() => setIsFilterPopoverOpen(!isFilterPopoverOpen)}
+                  aria-label="Filter history"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" />
+                  </svg>
+                </button>
+                {isFilterPopoverOpen && (
+                  <div ref={filterPopoverRef} className="cell-details-history-filter-popover">
+                    <div className="cell-details-history-filter-popover-nubbin"></div>
+                    <div className="cell-details-history-filter-popover-content">
+                      <div className="cell-details-history-filter-field">
+                        <label>Date Range</label>
+                        <div className="cell-details-history-filter-date-row">
+                          <input
+                            type="date"
+                            value={filterDateFrom}
+                            onChange={(e) => setFilterDateFrom(e.target.value)}
+                            placeholder="From"
+                          />
+                          <span>to</span>
+                          <input
+                            type="date"
+                            value={filterDateTo}
+                            onChange={(e) => setFilterDateTo(e.target.value)}
+                            placeholder="To"
+                          />
+                        </div>
+                      </div>
+                      <div className="cell-details-history-filter-field">
+                        <label>User</label>
+                        <select
+                          value={filterUser}
+                          onChange={(e) => setFilterUser(e.target.value)}
+                        >
+                          <option value="">All users</option>
+                          <option value="john-carter">John Carter</option>
+                          <option value="sarah-chen">Sarah Chen</option>
+                          <option value="mike-johnson">Mike Johnson</option>
+                        </select>
+                      </div>
+                      <div className="cell-details-history-filter-actions">
+                        <button
+                          className="cell-details-history-filter-clear-btn"
+                          onClick={() => {
+                            setFilterDateFrom('');
+                            setFilterDateTo('');
+                            setFilterUser('');
+                          }}
+                        >
+                          Clear
+                        </button>
+                        <button
+                          className="cell-details-history-filter-apply-btn"
+                          onClick={() => setIsFilterPopoverOpen(false)}
+                        >
+                          Apply
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
             <div className="cell-details-history-tab-content">
                 <div className="cell-details-history-multi-history">
                   {/* Edit History Thread - Latest edit per cell */}
                   <div className="cell-details-history-multi-history-section">
-                    <h3 className="cell-details-history-notes-title">Cell edit history</h3>
                     <div className="cell-details-history-notes-list">
                       {(() => {
                         // For no selection (size === 0), show all edits; for multiple selection, filter to selected cells
@@ -824,10 +965,69 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                           <p className="cell-details-history-placeholder">{selectedCells.size === 0 ? 'No edit history available yet' : 'No edits found for selected cells'}</p>
                         );
                       })()}
+                      
+                      {/* Generic Comments Section (only when no cell selected) */}
+                      {selectedCells.size === 0 && genericComments.length > 0 && (
+                        <div className="cell-details-history-generic-comments">
+                          <div className="cell-details-history-generic-comments-divider">
+                            <span>General Comments</span>
+                          </div>
+                          {genericComments.map((comment, index) => (
+                            <div key={comment.id} className="cell-details-history-generic-comment-card">
+                              <div className="cell-details-history-generic-comment-bead" style={{ backgroundColor: '#0176D3' }}>
+                                {comment.userInitials}
+                              </div>
+                              <div className="cell-details-history-generic-comment-content">
+                                <div className="cell-details-history-generic-comment-header">
+                                  <span className="cell-details-history-generic-comment-user">{comment.userName}</span>
+                                  <span className="cell-details-history-generic-comment-time">
+                                    {comment.timestamp.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, {comment.timestamp.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                                  </span>
+                                </div>
+                                <p className="cell-details-history-generic-comment-message">{comment.message}</p>
+                              </div>
+                              {index < genericComments.length - 1 && (
+                                <div className="cell-details-history-generic-comment-line"></div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
             </div>
+            
+            {/* Comment Box (only when no cell selected) */}
+            {selectedCells.size === 0 && (
+              <div className="cell-details-history-panel-footer">
+                <div className="cell-details-history-note-input-section">
+                  <label className="cell-details-history-note-label">Comments</label>
+                  <textarea
+                    className="cell-details-history-note-textarea"
+                    value={genericCommentText}
+                    onChange={(e) => setGenericCommentText(e.target.value)}
+                    placeholder="Enter a general comment"
+                    rows={3}
+                  />
+                </div>
+                <div className="cell-details-history-note-actions">
+                  <button className="cell-details-history-attach-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+                    </svg>
+                    Attach File
+                  </button>
+                  <button 
+                    className="cell-details-history-post-btn"
+                    onClick={handlePostGenericComment}
+                    disabled={!genericCommentText.trim()}
+                  >
+                    Post
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         ) : activeTab === 'single' && selectedCells.size === 1 ? (
           /* History > Single Cell - Full History (exactly 1 cell selected) */
@@ -876,11 +1076,9 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
               </div>
             )}
               <div className="cell-details-history-tab-content">
-                {/* Combined Edit History and Notes Section */}
+                {/* Edit History Section */}
                 <div className="cell-details-history-notes-section">
-                  <h3 className="cell-details-history-notes-title">Cell edit history</h3>
-                  
-                  {/* Combined History List */}
+                  {/* History List */}
                   <div className="cell-details-history-notes-list">
                     {cellEditHistory.length > 0 ? (
                       cellEditHistory.map((entry, index) => (
