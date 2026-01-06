@@ -41,8 +41,8 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
   initialTab = 'single',
   onSetFocusedCell,
   onSingleCellUpdate,
-  onToggleCellLock,
-  isCellLocked,
+  onToggleCellLock: _onToggleCellLock,
+  isCellLocked: _isCellLocked,
   getCellValue
 }) => {
   const [activeTab, setActiveTab] = useState<'single' | 'multi'>(initialTab);
@@ -111,7 +111,6 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
   // Single cell update form state
   const [singleCellNewValue, setSingleCellNewValue] = useState<string>('');
   const [singleCellAdjustmentNote, setSingleCellAdjustmentNote] = useState<string>('');
-  const [singleCellLockToggle, setSingleCellLockToggle] = useState<boolean>(false);
   
   // Replies state - keyed by entry ID
   interface CardReply {
@@ -271,16 +270,8 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
       singleCellAdjustmentNote.trim() || undefined
     );
     
-    // Handle lock toggle if changed
-    const cellKey = `${focusedCell.rowId}-${monthKey}`;
-    const currentlyLocked = isCellLocked ? isCellLocked(cellKey) : false;
-    if (singleCellLockToggle !== currentlyLocked && onToggleCellLock) {
-      onToggleCellLock(cellKey);
-    }
-    
-    // Clear the adjustment note after update
-    setSingleCellAdjustmentNote('');
-  }, [focusedCell, singleCellNewValue, singleCellAdjustmentNote, singleCellLockToggle, onSingleCellUpdate, onToggleCellLock, isCellLocked]);
+    // Keep adjustment note - only clear when cell changes or grid saves
+  }, [focusedCell, singleCellNewValue, singleCellAdjustmentNote, onSingleCellUpdate]);
 
   // Handle single cell cancel
   const handleSingleCellCancel = useCallback(() => {
@@ -289,11 +280,8 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
       const currentValue = getCellValue ? getCellValue(focusedCell.rowId, focusedCell.monthKey || '') : undefined;
       setSingleCellNewValue(currentValue !== undefined ? currentValue.toString() : '');
       setSingleCellAdjustmentNote('');
-      const cellKey = `${focusedCell.rowId}-${focusedCell.monthKey || ''}`;
-      const isLocked = isCellLocked ? isCellLocked(cellKey) : false;
-      setSingleCellLockToggle(isLocked);
     }
-  }, [focusedCell, getCellValue, isCellLocked]);
+  }, [focusedCell, getCellValue]);
 
   // Close filter popover when clicking outside
   useEffect(() => {
@@ -330,12 +318,8 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
       const currentValue = getCellValue ? getCellValue(focusedCell.rowId, focusedCell.monthKey || '') : undefined;
       setSingleCellNewValue(currentValue !== undefined ? currentValue.toString() : '');
       setSingleCellAdjustmentNote('');
-      // Get lock status
-      const cellKey = `${focusedCell.rowId}-${focusedCell.monthKey || ''}`;
-      const isLocked = isCellLocked ? isCellLocked(cellKey) : false;
-      setSingleCellLockToggle(isLocked);
     }
-  }, [focusedCell?.rowId, focusedCell?.monthKey, selectedCells.size, getCellValue, isCellLocked]);
+  }, [focusedCell?.rowId, focusedCell?.monthKey, selectedCells.size, getCellValue]);
 
   // Close popover when clicking outside
   useEffect(() => {
@@ -831,19 +815,6 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                       placeholder="Enter adjustment note (optional)"
                       rows={3}
                     />
-                  </div>
-                  
-                  {/* Lock/Unlock Toggle */}
-                  <div className="cell-details-history-multi-field">
-                    <label className="cell-details-history-lock-toggle">
-                      <input 
-                        type="checkbox" 
-                        checked={singleCellLockToggle}
-                        onChange={(e) => setSingleCellLockToggle(e.target.checked)}
-                      />
-                      <span className="cell-details-history-lock-slider"></span>
-                      <span className="cell-details-history-lock-label">Lock this cell</span>
-                    </label>
                   </div>
                   
                 {/* Update Button */}
