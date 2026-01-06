@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Header from './components/Header';
 import ForecastingGrid from './components/ForecastingGrid';
 import PlanningForecastingPage from './pages/PlanningForecastingPage';
+import PlanningForecastingListPage from './pages/PlanningForecastingListPage';
 import './styles/variables.css';
 import './styles/App.css';
 
@@ -10,13 +11,13 @@ function App() {
   return (
     <Router>
       <Routes>
+        <Route path="/planning-forecasting-list" element={<PlanningForecastingListPage />} />
         <Route path="/planning-forecasting" element={<PlanningForecastingPage />} />
         <Route path="/" element={
           <div className="app">
             <Header />
             <div className="main-content">
               <ForecastingGrid />
-              <div style={{ height: '60px' }}></div>
             </div>
           </div>
         } />

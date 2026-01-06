@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Forecasting Grid - Accessibility Audit Report</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #f5f5f5;
+      color: #1a1a1a;
+      line-height: 1.6;
+    }
+    
+    .page {
+      background: white;
+      max-width: 900px;
+      margin: 20px auto;
+      padding: 48px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      page-break-after: always;
+    }
+    
+    .page:last-child {
+      page-break-after: avoid;
+    }
+    
+    /* Cover Page */
+    .cover-page {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      min-height: 700px;
+      text-align: center;
+      background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%);
+      color: white;
+    }
+    
+    .cover-title {
+      font-size: 42px;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+    
+    .cover-subtitle {
+      font-size: 24px;
+      font-weight: 400;
+      opacity: 0.9;
+      margin-bottom: 48px;
+    }
+    
+    .cover-score-box {
+      background: rgba(255,255,255,0.15);
+      border-radius: 16px;
+      padding: 32px 48px;
+      margin-bottom: 48px;
+    }
+    
+    .cover-score-label {
+      font-size: 16px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      opacity: 0.8;
+      margin-bottom: 8px;
+    }
+    
+    .cover-score {
+      font-size: 72px;
+      font-weight: 700;
+    }
+    
+    .cover-meta {
+      font-size: 14px;
+      opacity: 0.7;
+    }
+    
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      color: #7c3aed;
+      margin-bottom: 24px;
+      padding-bottom: 12px;
+      border-bottom: 3px solid #7c3aed;
+    }
+    
+    h2 {
+      font-size: 20px;
+      font-weight: 600;
+      color: #333;
+      margin: 32px 0 16px;
+    }
+    
+    h3 {
+      font-size: 16px;
+      font-weight: 600;
+      color: #444;
+      margin: 16px 0 8px;
+    }
+    
+    .score-summary {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    
+    .score-card {
+      background: #f8f9fa;
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+    }
+    
+    .score-card.critical {
+      background: #fee2e2;
+      border: 2px solid #ef4444;
+    }
+    
+    .score-card.serious {
+      background: #fef3c7;
+      border: 2px solid #f59e0b;
+    }
+    
+    .score-card.moderate {
+      background: #e0f2fe;
+      border: 2px solid #0ea5e9;
+    }
+    
+    .score-card.minor {
+      background: #ecfdf5;
+      border: 2px solid #10b981;
+    }
+    
+    .score-card-label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      opacity: 0.7;
+      margin-bottom: 8px;
+    }
+    
+    .score-card-value {
+      font-size: 32px;
+      font-weight: 700;
+    }
+    
+    .score-card.critical .score-card-value { color: #dc2626; }
+    .score-card.serious .score-card-value { color: #d97706; }
+    .score-card.moderate .score-card-value { color: #0284c7; }
+    .score-card.minor .score-card-value { color: #059669; }
+    
+    .eval-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0 32px;
+      font-size: 13px;
+    }
+    
+    .eval-table th {
+      background: #f1f5f9;
+      padding: 12px 16px;
+      text-align: left;
+      font-weight: 600;
+      border-bottom: 2px solid #e2e8f0;
+    }
+    
+    .eval-table td {
+      padding: 12px 16px;
+      border-bottom: 1px solid #e2e8f0;
+      vertical-align: top;
+    }
+    
+    .eval-table tr:hover {
+      background: #f8fafc;
+    }
+    
+    .severity-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    
+    .severity-critical {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+    
+    .severity-serious {
+      background: #fef3c7;
+      color: #92400e;
+    }
+    
+    .severity-moderate {
+      background: #e0f2fe;
+      color: #075985;
+    }
+    
+    .severity-minor {
+      background: #ecfdf5;
+      color: #065f46;
+    }
+    
+    .wcag-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      background: #f1f5f9;
+      border-radius: 4px;
+      font-size: 11px;
+      font-family: monospace;
+      color: #64748b;
+      margin-left: 8px;
+    }
+    
+    .issue-box {
+      background: #fef2f2;
+      border-left: 4px solid #ef4444;
+      padding: 16px 20px;
+      margin: 16px 0;
+      border-radius: 0 8px 8px 0;
+    }
+    
+    .issue-box.warning {
+      background: #fffbeb;
+      border-left-color: #f59e0b;
+    }
+    
+    .issue-box.info {
+      background: #eff6ff;
+      border-left-color: #3b82f6;
+    }
+    
+    .issue-box.success {
+      background: #ecfdf5;
+      border-left-color: #10b981;
+    }
+    
+    .issue-box h3 {
+      margin-top: 0;
+    }
+    
+    .code-block {
+      background: #1e293b;
+      color: #e2e8f0;
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-family: 'Monaco', 'Consolas', monospace;
+      font-size: 12px;
+      overflow-x: auto;
+      margin: 12px 0;
+    }
+    
+    .checklist {
+      list-style: none;
+      margin: 16px 0;
+    }
+    
+    .checklist li {
+      padding: 8px 0;
+      padding-left: 32px;
+      position: relative;
+    }
+    
+    .checklist li::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 10px;
+      width: 20px;
+      height: 20px;
+      border-radius: 4px;
+    }
+    
+    .checklist li.pass::before {
+      background: #10b981;
+      content: '✓';
+      color: white;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .checklist li.fail::before {
+      background: #ef4444;
+      content: '✗';
+      color: white;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .checklist li.partial::before {
+      background: #f59e0b;
+      content: '~';
+      color: white;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .page-footer {
+      margin-top: 48px;
+      padding-top: 16px;
+      border-top: 1px solid #e2e8f0;
+      font-size: 12px;
+      color: #64748b;
+      display: flex;
+      justify-content: space-between;
+    }
+    
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+      margin: 24px 0;
+    }
+    
+    .stat-item {
+      background: #f8f9fa;
+      padding: 16px;
+      border-radius: 8px;
+    }
+    
+    .stat-label {
+      font-size: 12px;
+      color: #64748b;
+      margin-bottom: 4px;
+    }
+    
+    .stat-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: #333;
+    }
+    
+    @media print {
+      body { background: white; }
+      .page { margin: 0; box-shadow: none; padding: 32px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Cover Page -->
+<div class="page cover-page">
+  <div class="cover-title">Accessibility Audit</div>
+  <div class="cover-subtitle">Forecasting Grid Prototype</div>
+  
+  <div class="cover-score-box">
+    <div class="cover-score-label">Total Issues Found</div>
+    <div class="cover-score">23</div>
+  </div>
+  
+  <div class="cover-meta">
+    WCAG 2.1 AA Compliance Check<br>
+    Generated: January 5, 2026
+  </div>
+</div>
+
+<!-- Executive Summary -->
+<div class="page">
+  <h1>Executive Summary</h1>
+  
+  <div class="score-summary">
+    <div class="score-card critical">
+      <div class="score-card-label">Critical</div>
+      <div class="score-card-value">3</div>
+    </div>
+    <div class="score-card serious">
+      <div class="score-card-label">Serious</div>
+      <div class="score-card-value">7</div>
+    </div>
+    <div class="score-card moderate">
+      <div class="score-card-label">Moderate</div>
+      <div class="score-card-value">8</div>
+    </div>
+    <div class="score-card minor">
+      <div class="score-card-label">Minor</div>
+      <div class="score-card-value">5</div>
+    </div>
+  </div>
+  
+  <h2>Audit Statistics</h2>
+  
+  <div class="stats-grid">
+    <div class="stat-item">
+      <div class="stat-label">Components Analyzed</div>
+      <div class="stat-value">27</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">Interactive Elements</div>
+      <div class="stat-value">93</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">ARIA Attributes Found</div>
+      <div class="stat-value">32</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">Keyboard Handlers</div>
+      <div class="stat-value">14</div>
+    </div>
+  </div>
+  
+  <h2>WCAG 2.1 AA Compliance</h2>
+  
+  <ul class="checklist">
+    <li class="fail"><strong>1.1 Text Alternatives</strong> — SVG icons missing accessible names</li>
+    <li class="partial"><strong>1.3 Adaptable</strong> — Some semantic structure, missing landmarks</li>
+    <li class="fail"><strong>1.4 Distinguishable</strong> — Color contrast issues in some areas</li>
+    <li class="partial"><strong>2.1 Keyboard Accessible</strong> — Partial keyboard support (14/93 handlers)</li>
+    <li class="fail"><strong>2.4 Navigable</strong> — Missing skip links, focus not always visible</li>
+    <li class="partial"><strong>3.1 Readable</strong> — Lang attribute present, some text issues</li>
+    <li class="fail"><strong>4.1 Compatible</strong> — Missing ARIA roles on custom components</li>
+  </ul>
+  
+  <div class="page-footer">
+    <span>Forecasting Grid A11y Audit</span>
+    <span>Page 2</span>
+  </div>
+</div>
+
+<!-- Critical Issues -->
+<div class="page">
+  <h1>Critical Issues (3)</h1>
+  <p style="margin-bottom: 24px; color: #64748b;">Issues that block access for users with disabilities. Must fix before release.</p>
+  
+  <div class="issue-box">
+    <h3>1. Grid Cells Not Accessible via Keyboard</h3>
+    <p><span class="severity-badge severity-critical">Critical</span> <span class="wcag-badge">WCAG 2.1.1</span></p>
+    <p style="margin-top: 12px;">Grid data cells lack proper keyboard navigation. Users cannot Tab through cells or use arrow keys to navigate the grid.</p>
+    <p style="margin-top: 8px;"><strong>Affected:</strong> HierarchicalGrid, DimensionsTimeGrid, TimeDimensionsGrid</p>
+    <p style="margin-top: 8px;"><strong>Impact:</strong> Screen reader and keyboard-only users cannot access forecast data</p>
+    <div class="code-block">
+// Current: No keyboard navigation
+&lt;div className="grid-cell" onClick={handleClick}&gt;
+
+// Required: Add tabIndex and keyboard handlers
+&lt;div 
+  className="grid-cell" 
+  role="gridcell"
+  tabIndex={0}
+  onClick={handleClick}
+  onKeyDown={handleKeyDown}
+  aria-label={`${measure} for ${product} in ${month}: ${value}`}
+&gt;
+    </div>
+  </div>
+  
+  <div class="issue-box">
+    <h3>2. SVG Icons Missing Accessible Names</h3>
+    <p><span class="severity-badge severity-critical">Critical</span> <span class="wcag-badge">WCAG 1.1.1</span></p>
+    <p style="margin-top: 12px;">125 SVG icons found without accessible text. Screen readers announce nothing or "image" for these icons.</p>
+    <p style="margin-top: 8px;"><strong>Affected:</strong> All icon buttons throughout the application</p>
+    <div class="code-block">
+// Current: No accessible name
+&lt;button&gt;&lt;svg&gt;...&lt;/svg&gt;&lt;/button&gt;
+
+// Required: Add aria-label or title
+&lt;button aria-label="Settings"&gt;
+  &lt;svg aria-hidden="true"&gt;...&lt;/svg&gt;
+&lt;/button&gt;
+    </div>
+  </div>
+  
+  <div class="issue-box">
+    <h3>3. Context Menu Not Keyboard Accessible</h3>
+    <p><span class="severity-badge severity-critical">Critical</span> <span class="wcag-badge">WCAG 2.1.1</span></p>
+    <p style="margin-top: 12px;">Right-click context menu cannot be accessed via keyboard. No keyboard shortcut or alternative method provided.</p>
+    <p style="margin-top: 8px;"><strong>Affected:</strong> CellContextMenu.tsx</p>
+    <p style="margin-top: 8px;"><strong>Fix:</strong> Add Shift+F10 or dedicated menu button for keyboard access</p>
+  </div>
+  
+  <div class="page-footer">
+    <span>Forecasting Grid A11y Audit</span>
+    <span>Page 3</span>
+  </div>
+</div>
+
+<!-- Serious Issues -->
+<div class="page">
+  <h1>Serious Issues (7)</h1>
+  <p style="margin-bottom: 24px; color: #64748b;">Issues that significantly impact usability. Should fix before release.</p>
+  
+  <table class="eval-table">
+    <thead>
+      <tr>
+        <th style="width: 5%">#</th>
+        <th style="width: 30%">Issue</th>
+        <th style="width: 15%">WCAG</th>
+        <th style="width: 50%">Description & Fix</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>4</td>
+        <td><strong>Missing Focus Indicators</strong></td>
+        <td><span class="wcag-badge">2.4.7</span></td>
+        <td>Many interactive elements lack visible focus states. Only 33 :focus styles found for 93 interactive elements. Add outline or box-shadow on :focus.</td>
+      </tr>
+      <tr>
+        <td>5</td>
+        <td><strong>No Skip Link</strong></td>
+        <td><span class="wcag-badge">2.4.1</span></td>
+        <td>No "Skip to main content" link. Users must Tab through entire header/nav to reach grid. Add skip link as first focusable element.</td>
+      </tr>
+      <tr>
+        <td>6</td>
+        <td><strong>Missing Landmark Roles</strong></td>
+        <td><span class="wcag-badge">1.3.1</span></td>
+        <td>No &lt;main&gt;, &lt;nav&gt;, &lt;aside&gt; landmarks. Side panels should be &lt;aside&gt;, grid area should be &lt;main&gt;.</td>
+      </tr>
+      <tr>
+        <td>7</td>
+        <td><strong>Form Labels Not Associated</strong></td>
+        <td><span class="wcag-badge">1.3.1</span></td>
+        <td>59 &lt;label&gt; elements found but not all properly associated with inputs via htmlFor/id. Screen readers may not announce labels.</td>
+      </tr>
+      <tr>
+        <td>8</td>
+        <td><strong>Modal Focus Trap Missing</strong></td>
+        <td><span class="wcag-badge">2.4.3</span></td>
+        <td>ReorderMeasuresModal doesn't trap focus. Users can Tab outside modal while it's open. Implement focus trap.</td>
+      </tr>
+      <tr>
+        <td>9</td>
+        <td><strong>No Live Regions</strong></td>
+        <td><span class="wcag-badge">4.1.3</span></td>
+        <td>Status updates (e.g., "Last refreshed", cell edit confirmations) not announced. Add aria-live regions for dynamic content.</td>
+      </tr>
+      <tr>
+        <td>10</td>
+        <td><strong>Color-Only Information</strong></td>
+        <td><span class="wcag-badge">1.4.1</span></td>
+        <td>Edit history indicators, selection states use color alone. Add icons or text patterns for colorblind users.</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  <div class="page-footer">
+    <span>Forecasting Grid A11y Audit</span>
+    <span>Page 4</span>
+  </div>
+</div>
+
+<!-- Moderate & Minor Issues -->
+<div class="page">
+  <h1>Moderate Issues (8)</h1>
+  
+  <table class="eval-table">
+    <thead>
+      <tr>
+        <th style="width: 5%">#</th>
+        <th style="width: 35%">Issue</th>
+        <th style="width: 15%">WCAG</th>
+        <th style="width: 45%">Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>11</td>
+        <td>Color contrast below 4.5:1 in some text</td>
+        <td><span class="wcag-badge">1.4.3</span></td>
+        <td>Placeholder text (#999 on white) has ~2.8:1 ratio. Need #767676 or darker.</td>
+      </tr>
+      <tr>
+        <td>12</td>
+        <td>No error identification for invalid inputs</td>
+        <td><span class="wcag-badge">3.3.1</span></td>
+        <td>Input validation errors not announced to screen readers.</td>
+      </tr>
+      <tr>
+        <td>13</td>
+        <td>Heading hierarchy skipped</td>
+        <td><span class="wcag-badge">1.3.1</span></td>
+        <td>Some pages jump from h1 to h3, skipping h2.</td>
+      </tr>
+      <tr>
+        <td>14</td>
+        <td>Expandable rows missing aria-expanded</td>
+        <td><span class="wcag-badge">4.1.2</span></td>
+        <td>Hierarchy expand/collapse buttons don't indicate state.</td>
+      </tr>
+      <tr>
+        <td>15</td>
+        <td>Dropdown menus missing role="menu"</td>
+        <td><span class="wcag-badge">4.1.2</span></td>
+        <td>Custom dropdown components lack proper ARIA roles.</td>
+      </tr>
+      <tr>
+        <td>16</td>
+        <td>Tables missing scope attributes</td>
+        <td><span class="wcag-badge">1.3.1</span></td>
+        <td>Grid headers need scope="col" and scope="row".</td>
+      </tr>
+      <tr>
+        <td>17</td>
+        <td>Touch targets below 44x44px</td>
+        <td><span class="wcag-badge">2.5.5</span></td>
+        <td>Some icon buttons are 24x24px or 32x32px.</td>
+      </tr>
+      <tr>
+        <td>18</td>
+        <td>No visible current page indicator</td>
+        <td><span class="wcag-badge">2.4.8</span></td>
+        <td>Navigation doesn't clearly show current location.</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  <h1 style="margin-top: 40px;">Minor Issues (5)</h1>
+  
+  <table class="eval-table">
+    <thead>
+      <tr>
+        <th style="width: 5%">#</th>
+        <th style="width: 35%">Issue</th>
+        <th style="width: 15%">WCAG</th>
+        <th style="width: 45%">Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>19</td>
+        <td>Redundant link text "Click here"</td>
+        <td><span class="wcag-badge">2.4.4</span></td>
+        <td>Some links have non-descriptive text.</td>
+      </tr>
+      <tr>
+        <td>20</td>
+        <td>Missing autocomplete on form fields</td>
+        <td><span class="wcag-badge">1.3.5</span></td>
+        <td>Form fields could benefit from autocomplete attributes.</td>
+      </tr>
+      <tr>
+        <td>21</td>
+        <td>Animation without prefers-reduced-motion</td>
+        <td><span class="wcag-badge">2.3.3</span></td>
+        <td>Transitions don't respect motion preferences.</td>
+      </tr>
+      <tr>
+        <td>22</td>
+        <td>Missing page titles on route changes</td>
+        <td><span class="wcag-badge">2.4.2</span></td>
+        <td>Document title doesn't update on navigation.</td>
+      </tr>
+      <tr>
+        <td>23</td>
+        <td>Inconsistent button text casing</td>
+        <td><span class="wcag-badge">3.2.4</span></td>
+        <td>Mix of sentence case and title case in buttons.</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  <div class="page-footer">
+    <span>Forecasting Grid A11y Audit</span>
+    <span>Page 5</span>
+  </div>
+</div>
+
+<!-- Recommendations -->
+<div class="page">
+  <h1>Remediation Roadmap</h1>
+  
+  <h2>Phase 1: Critical Fixes (1-2 weeks)</h2>
+  <div class="issue-box success">
+    <ul style="margin-left: 16px;">
+      <li>Add keyboard navigation to grid (arrow keys, Enter to edit)</li>
+      <li>Add aria-label to all icon buttons</li>
+      <li>Implement keyboard access for context menu (Shift+F10)</li>
+      <li>Add role="grid", role="row", role="gridcell" to data grid</li>
+    </ul>
+  </div>
+  
+  <h2>Phase 2: Serious Fixes (2-3 weeks)</h2>
+  <div class="issue-box warning">
+    <ul style="margin-left: 16px;">
+      <li>Add visible focus indicators to all interactive elements</li>
+      <li>Implement skip link navigation</li>
+      <li>Add landmark roles (main, nav, aside)</li>
+      <li>Associate all labels with form controls</li>
+      <li>Implement focus trap in modals</li>
+      <li>Add aria-live regions for status updates</li>
+      <li>Add secondary indicators beyond color</li>
+    </ul>
+  </div>
+  
+  <h2>Phase 3: Moderate & Minor Fixes (1-2 weeks)</h2>
+  <div class="issue-box info">
+    <ul style="margin-left: 16px;">
+      <li>Fix color contrast issues</li>
+      <li>Add aria-expanded to expandable elements</li>
+      <li>Add proper ARIA roles to dropdowns</li>
+      <li>Increase touch target sizes to 44x44px minimum</li>
+      <li>Respect prefers-reduced-motion</li>
+      <li>Update page titles on route changes</li>
+    </ul>
+  </div>
+  
+  <h2>Testing Recommendations</h2>
+  <table class="eval-table">
+    <thead>
+      <tr>
+        <th>Tool/Method</th>
+        <th>Purpose</th>
+        <th>Frequency</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>axe DevTools</strong></td>
+        <td>Automated accessibility testing</td>
+        <td>Every PR</td>
+      </tr>
+      <tr>
+        <td><strong>VoiceOver/NVDA</strong></td>
+        <td>Screen reader testing</td>
+        <td>Weekly during development</td>
+      </tr>
+      <tr>
+        <td><strong>Keyboard-only testing</strong></td>
+        <td>Verify Tab/Enter/Escape flows</td>
+        <td>Every feature</td>
+      </tr>
+      <tr>
+        <td><strong>WAVE browser extension</strong></td>
+        <td>Visual accessibility checking</td>
+        <td>Every page</td>
+      </tr>
+      <tr>
+        <td><strong>User testing with disabilities</strong></td>
+        <td>Real-world validation</td>
+        <td>Pre-release</td>
+      </tr>
+    </tbody>
+  </table>
+  
+  <div class="page-footer">
+    <span>Forecasting Grid A11y Audit</span>
+    <span>Page 6</span>
+  </div>
+</div>
+
+</body>
+</html>
+

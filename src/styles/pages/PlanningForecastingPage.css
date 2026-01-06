@@ -66,9 +66,15 @@
 
 .planning-page-subtitle {
   font-size: 13px !important;
-  color: var(--color-neutral-text) !important;
+  color: #066AFE !important;
   margin: 0 !important;
   line-height: 18px !important;
+  text-decoration: none !important;
+  cursor: pointer !important;
+}
+
+.planning-page-subtitle:hover {
+  text-decoration: underline !important;
 }
 
 .planning-page-header-right {
@@ -162,16 +168,17 @@
 
 /* Information Section */
 .planning-information-section {
-  display: flex !important;
-  flex-direction: column !important;
-  gap: var(--spacing-5) !important;
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: var(--spacing-4) var(--spacing-6) !important;
 }
 
 .planning-section-title {
   font-size: 16px !important;
   font-weight: 590 !important;
   color: var(--color-on-surface-3) !important;
-  margin: 0 0 var(--spacing-4) 0 !important;
+  margin: 0 !important;
+  grid-column: 1 / -1 !important; /* Span across all columns */
   background-color: #F3F3F3 !important;
   padding: var(--spacing-3) var(--spacing-4) !important;
   border-radius: 8px !important;
@@ -187,8 +194,6 @@
   font-size: 12px !important;
   color: var(--color-neutral-text) !important;
   font-weight: 400 !important;
-  text-transform: uppercase !important;
-  letter-spacing: 0.5px !important;
 }
 
 .planning-info-value {
@@ -202,6 +207,49 @@
   color: var(--color-primary-blue) !important;
   text-decoration: none !important;
   font-weight: 400 !important;
+}
+
+.planning-info-dropdown-wrapper {
+  position: relative !important;
+}
+
+.planning-info-dropdown {
+  font-size: 13px !important;
+  color: var(--color-on-surface-3) !important;
+  font-weight: 400 !important;
+  padding: 6px 28px 6px 10px !important;
+  border: 1px solid var(--color-border) !important;
+  border-radius: 4px !important;
+  background-color: white !important;
+  cursor: pointer !important;
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23706e6b' d='M3.5 4.5L6 7l2.5-2.5z'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 8px center !important;
+  min-width: 200px !important;
+}
+
+.planning-info-dropdown:hover {
+  border-color: var(--color-primary-blue) !important;
+}
+
+.planning-info-dropdown:focus {
+  outline: none !important;
+  border-color: var(--color-primary-blue) !important;
+  box-shadow: 0 0 0 2px rgba(1, 118, 211, 0.2) !important;
+}
+
+.planning-info-dropdown-readonly {
+  background-color: #f9f9f9 !important;
+  cursor: default !important;
+  opacity: 1 !important;
+  color: var(--color-on-surface-3) !important;
+}
+
+.planning-info-dropdown-readonly:hover {
+  border-color: var(--color-border) !important;
 }
 
 .planning-info-link:hover {

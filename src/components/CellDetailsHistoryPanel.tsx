@@ -18,6 +18,7 @@ interface CellDetailsHistoryPanelProps {
   onClearSelection?: () => void; // Callback to clear selection
   onMassUpdate?: (cellKeys: string[], rule: string, value: string, note?: string) => void; // Callback for mass update
   initialTab?: 'single' | 'multi'; // Initial tab to show when panel opens
+  onSetFocusedCell?: (cell: { rowId: string; monthKey?: string; measureId?: string }) => void; // Callback to set focused cell
 }
 
 const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({ 
@@ -32,7 +33,8 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
   selectedCells = new Set(),
   onClearSelection,
   onMassUpdate,
-  initialTab = 'single'
+  initialTab = 'single',
+  onSetFocusedCell
 }) => {
   const [activeTab, setActiveTab] = useState<'single' | 'multi'>(initialTab);
   
@@ -46,8 +48,9 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
       setActiveTab('single');
     }
   }, [isOpen, initialTab]);
+  
   const [isHierarchyPopoverOpen, setIsHierarchyPopoverOpen] = useState(false);
-  const [nubbinLeft, setNubbinLeft] = useState<number | null>(null);
+  const [_nubbinLeft, _setNubbinLeft] = useState<number | null>(null); // Kept for potential future use
   const [panelNoteText, setPanelNoteText] = useState('');
   const hierarchyButtonRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -83,6 +86,8 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
   }, [focusedCell, data, layout]);
   
   const hasFocusedCell = focusedCell !== null && focusedCell !== undefined;
+
+  // Selection state now derived directly from selectedCells.size in render logic
 
   // Filter edit history for the current focused cell
   const cellEditHistory = useMemo(() => {
@@ -296,7 +301,7 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
               <path fillRule="evenodd" clipRule="evenodd" d="M12.7383 12.216L12.4614 12.4929C12.1537 12.8006 11.7537 12.9544 11.3229 12.9544H10.5229C9.78444 12.9544 8.98444 12.3698 8.98444 11.3544V10.5852C8.98444 9.96983 9.26137 9.6006 9.41521 9.38522L12.7383 6.0006C12.8306 5.90829 12.9229 5.69291 12.9229 5.56983V3.01599C12.9229 2.21599 12.246 1.53906 11.446 1.53906H3.56907C2.76908 1.53906 2.09215 2.27752 2.09215 3.01599H1.59985C1.046 3.01599 0.615234 3.47752 0.615234 4.03137C0.615234 4.58522 1.046 5.01599 1.59985 5.01599H2.09215V7.01599H1.59985C1.046 7.01599 0.615234 7.44676 0.615234 8.0006C0.615234 8.55445 1.046 8.98522 1.59985 8.98522H2.09215V10.9852H1.59985C1.046 10.9852 0.615234 11.4468 0.615234 11.9698C0.615234 12.5237 1.046 12.9544 1.59985 12.9544H2.09215C2.09215 13.9391 2.76908 14.4314 3.56907 14.4314H11.446C12.246 14.4314 12.9229 13.7544 12.9229 12.9544V12.3083C12.9229 12.1544 12.8614 12.1237 12.7383 12.216V12.216ZM10.2153 5.262C10.2153 5.53892 9.99987 5.75431 9.72295 5.75431H4.79988C4.52296 5.75431 4.30758 5.53892 4.30758 5.262V4.76969C4.30758 4.49277 4.52296 4.27738 4.79988 4.27738H9.72295C9.99987 4.27738 10.2153 4.49277 10.2153 4.76969V5.262ZM7.99988 11.2317C7.99988 11.5086 7.78449 11.724 7.50757 11.724H4.79988C4.52296 11.724 4.30758 11.5086 4.30758 11.2317V10.7394C4.30758 10.4624 4.52296 10.2471 4.79988 10.2471H7.50757C7.78449 10.2471 7.99988 10.4624 7.99988 10.7394V11.2317ZM8.73834 8.24728C8.73834 8.5242 8.52295 8.73959 8.24603 8.73959H4.79988C4.52296 8.73959 4.30758 8.5242 4.30758 8.24728V7.75497C4.30758 7.47805 4.52296 7.26267 4.79988 7.26267H8.24603C8.52295 7.26267 8.73834 7.47805 8.73834 7.75497V8.24728ZM15.2306 6.89245L14.9229 6.58476C14.7383 6.40014 14.4306 6.40014 14.246 6.58476L10.4922 10.4617C10.4614 10.4617 10.4614 10.5232 10.4614 10.5232V11.354C10.4614 11.4155 10.4614 11.4771 10.523 11.4771H11.323C11.3537 11.4771 11.3845 11.4463 11.4153 11.4463L15.1999 7.63091C15.446 7.41553 15.446 7.10784 15.2306 6.89245V6.89245Z" fill="#0250D9"/>
             </svg>
           </div>
-          <p className="cell-details-history-panel-title">Cell Details & Updates</p>
+          <p className="cell-details-history-panel-title">History & Updates</p>
         </div>
         <div className="cell-details-history-panel-actions">
           <button className="cell-details-history-panel-close" onClick={onClose} aria-label="Close">
@@ -313,19 +318,21 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
           className={`cell-details-history-tab ${activeTab === 'single' ? 'active' : ''}`}
           onClick={() => setActiveTab('single')}
         >
-          Single Cell
+          History
         </button>
         <button
           className={`cell-details-history-tab ${activeTab === 'multi' ? 'active' : ''}`}
           onClick={() => setActiveTab('multi')}
         >
-          Multi-cell
+          Update
         </button>
       </div>
 
       {/* Panel Body */}
       <div className="cell-details-history-panel-body">
-        {activeTab === 'multi' ? (
+        {/* UPDATE TAB */}
+        {activeTab === 'multi' && selectedCells.size !== 1 ? (
+          /* Update > Mass Update UI (No selection or multiple cells) */
           <div className="cell-details-history-content">
             <div className="cell-details-history-tab-content">
               <div className="cell-details-history-multi-cell-form">
@@ -631,22 +638,200 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
               </div>
             </div>
           </div>
-        ) : !hasFocusedCell ? (
-          <div className="cell-details-history-empty-state">
-            <div className="cell-details-history-empty-image">
-              <div className="empty-state-illustration">
-                <div className="empty-state-polygon-1"></div>
-                <div className="empty-state-polygon-2"></div>
-                <div className="empty-state-polygon-3"></div>
+        ) : activeTab === 'multi' && selectedCells.size === 1 ? (
+          /* Update > Single Cell Update UI (exactly 1 cell selected) */
+          <div className="cell-details-history-content">
+            {/* Cell Info Header */}
+            {cellInfo && (
+              <div className="cell-details-history-header-compact">
+                <span className="cell-details-history-header-value">{cellInfo.measureName || 'N/A'}</span>
+                <span className="cell-details-history-header-separator">·</span>
+                <span className="cell-details-history-header-value">{cellInfo.timePeriod || 'N/A'}</span>
+                <span className="cell-details-history-header-separator">·</span>
+                <span className="cell-details-history-header-value">
+                  {cellInfo.dimensionPath.length > 0 ? cellInfo.dimensionPath[cellInfo.dimensionPath.length - 1] : 'N/A'}
+                </span>
+              </div>
+            )}
+            <div className="cell-details-history-tab-content">
+              <div className="cell-details-history-single-update-form">
+                  
+                  {/* Value Field */}
+                  <div className="cell-details-history-multi-field">
+                    <label className="cell-details-history-multi-label">New Value</label>
+                    <input
+                      type="text"
+                      className="cell-details-history-multi-input"
+                      placeholder="Enter new value"
+                    />
+                  </div>
+                  
+                  {/* Adjustment Note */}
+                  <div className="cell-details-history-multi-field">
+                    <label className="cell-details-history-multi-label">Adjustment Note</label>
+                    <textarea
+                      className="cell-details-history-multi-textarea"
+                      placeholder="Enter adjustment note (optional)"
+                      rows={3}
+                    />
+                  </div>
+                  
+                  {/* Lock/Unlock Toggle */}
+                  <div className="cell-details-history-multi-field">
+                    <label className="cell-details-history-lock-toggle">
+                      <input type="checkbox" />
+                      <span className="cell-details-history-lock-slider"></span>
+                      <span className="cell-details-history-lock-label">Lock this cell</span>
+                    </label>
+                  </div>
+                  
+                {/* Update Button */}
+                <div className="cell-details-history-multi-actions">
+                  <button className="cell-details-history-multi-cancel-btn">
+                    Cancel
+                  </button>
+                  <button className="cell-details-history-multi-update-btn">
+                    Update
+                  </button>
+                </div>
               </div>
             </div>
-            <p className="cell-details-history-empty-text">Select a cell with an indicator to know more</p>
           </div>
-        ) : (
-        <div className="cell-details-history-content">
-            {/* Tab Content */}
-            {activeTab === 'single' ? (
-              <>
+        ) : activeTab === 'single' && selectedCells.size !== 1 ? (
+          /* History > Aggregated History View (No selection = all cells, Multiple = selected cells) */
+          <div className="cell-details-history-content">
+            {/* Contextual Header */}
+            <div className="cell-details-history-context-header">
+              {selectedCells.size === 0 ? (
+                <span className="cell-details-history-context-text">Recent changes across all cells</span>
+              ) : (
+                <span className="cell-details-history-context-text">Changes in {selectedCells.size} selected cells</span>
+              )}
+            </div>
+            <div className="cell-details-history-tab-content">
+                <div className="cell-details-history-multi-history">
+                  {/* Edit History Thread - Latest edit per cell */}
+                  <div className="cell-details-history-multi-history-section">
+                    <h3 className="cell-details-history-notes-title">Cell edit history</h3>
+                    <div className="cell-details-history-notes-list">
+                      {(() => {
+                        // For no selection (size === 0), show all edits; for multiple selection, filter to selected cells
+                        const relevantEdits = selectedCells.size === 0 
+                          ? editHistory.slice().sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+                          : editHistory
+                              .filter(e => Array.from(selectedCells).some(cellKey => e.cellKey === cellKey))
+                              .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+                        
+                        // Helper to generate cell context from entry (Row · Column · Header)
+                        const getCellContext = (entry: CellEditHistoryEntry): string => {
+                          const cellInfo = extractCellInfo(
+                            { rowId: entry.rowId, monthKey: entry.timeKey, measureId: entry.measureId },
+                            data,
+                            layout
+                          );
+                          if (!cellInfo) return entry.cellKey;
+                          
+                          const parts = [];
+                          // Row context first (dimension)
+                          if (cellInfo.dimensionPath.length > 0) {
+                            parts.push(cellInfo.dimensionPath[cellInfo.dimensionPath.length - 1]);
+                          }
+                          // Column context second (time)
+                          if (cellInfo.timePeriod) parts.push(cellInfo.timePeriod);
+                          // Header context third (measure)
+                          if (cellInfo.measureName) parts.push(cellInfo.measureName);
+                          return parts.join(' · ') || entry.cellKey;
+                        };
+                        
+                        // Helper to get full hierarchy path for tooltip
+                        const getFullHierarchyPath = (entry: CellEditHistoryEntry): string => {
+                          const cellInfo = extractCellInfo(
+                            { rowId: entry.rowId, monthKey: entry.timeKey, measureId: entry.measureId },
+                            data,
+                            layout
+                          );
+                          if (!cellInfo || cellInfo.dimensionPath.length === 0) return '';
+                          return cellInfo.dimensionPath.join(' > ');
+                        };
+                        
+                        // Helper to get dimension type from entry
+                        const getDimensionType = (entry: CellEditHistoryEntry): 'account' | 'category' | 'product' | undefined => {
+                          const rowId = entry.rowId.toLowerCase();
+                          if (rowId.includes('account') || rowId.includes('magnadrive')) return 'account';
+                          if (rowId.includes('category') || rowId.includes('chassis') || rowId.includes('transmission') || rowId.includes('powertrain')) return 'category';
+                          if (rowId.includes('product') || rowId.includes('trn-') || rowId.includes('chs-') || rowId.includes('pwr-')) return 'product';
+                          return 'product'; // default to product
+                        };
+                        
+                        // Get thread color based on dimension type
+                        const getThreadColor = (dimType: 'account' | 'category' | 'product' | undefined): string => {
+                          switch (dimType) {
+                            case 'account': return '#5867E8';
+                            case 'category': return '#396547';
+                            case 'product': return '#9050E9';
+                            default: return '#9050E9';
+                          }
+                        };
+                        
+                        // Group edits by cell and get latest per cell
+                        const editsByCell = relevantEdits.reduce((acc, edit) => {
+                          if (!acc[edit.cellKey]) {
+                            acc[edit.cellKey] = [];
+                          }
+                          acc[edit.cellKey].push(edit);
+                          return acc;
+                        }, {} as Record<string, CellEditHistoryEntry[]>);
+                        
+                        // Get only the latest edit per cell, sorted by timestamp
+                        const latestEditsPerCell = Object.values(editsByCell)
+                          .map(edits => edits[0]) // First one is latest (already sorted)
+                          .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+                        
+                        // Handler for "View all changes" - sets focused cell, UI automatically adapts
+                        const handleViewAllChanges = (entry: CellEditHistoryEntry) => {
+                          // Set the focused cell - this will trigger hasSingleSelection to become true
+                          if (onSetFocusedCell) {
+                            onSetFocusedCell({
+                              rowId: entry.rowId,
+                              monthKey: entry.timeKey,
+                              measureId: entry.measureId
+                            });
+                          }
+                        };
+                        
+                        return latestEditsPerCell.length > 0 ? (
+                          latestEditsPerCell.map((entry, index) => {
+                            const dimType = getDimensionType(entry);
+                            return (
+                              <CellEditHistoryCard 
+                                key={entry.id} 
+                                entry={entry}
+                                replies={cardReplies[entry.id] || []}
+                                onAddReply={handleAddCardReply}
+                                isLast={index === latestEditsPerCell.length - 1}
+                                isFirst={index === 0}
+                                cellContext={getCellContext(entry)}
+                                cellContextAsHeader={true}
+                                threadColor={getThreadColor(dimType)}
+                                dimensionType={dimType}
+                                editCountForCell={editsByCell[entry.cellKey].length}
+                                onViewAllChanges={() => handleViewAllChanges(entry)}
+                                fullHierarchyPath={getFullHierarchyPath(entry)}
+                              />
+                            );
+                          })
+                        ) : (
+                          <p className="cell-details-history-placeholder">{selectedCells.size === 0 ? 'No edit history available yet' : 'No edits found for selected cells'}</p>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                </div>
+            </div>
+          </div>
+        ) : activeTab === 'single' && selectedCells.size === 1 ? (
+          /* History > Single Cell - Full History (exactly 1 cell selected) */
+          <div className="cell-details-history-content">
             {/* Cell Info Header - Compact single line: Measure · Time · Dimension */}
             {cellInfo && (
               <div className="cell-details-history-header-compact">
@@ -657,48 +842,37 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                 <span className="cell-details-history-header-value">
                   {cellInfo.dimensionPath.length > 0 ? cellInfo.dimensionPath[cellInfo.dimensionPath.length - 1] : 'N/A'}
                 </span>
-                <button
-                  ref={hierarchyButtonRef}
-                  className="cell-details-history-hierarchy-button-compact"
-                  onClick={() => {
-                    setIsHierarchyPopoverOpen(!isHierarchyPopoverOpen);
-                    // Calculate nubbin position when opening
-                    if (!isHierarchyPopoverOpen && hierarchyButtonRef.current && popoverRef.current) {
-                      setTimeout(() => {
-                        if (hierarchyButtonRef.current && popoverRef.current) {
-                          const buttonRect = hierarchyButtonRef.current.getBoundingClientRect();
-                          const popoverRect = popoverRef.current.getBoundingClientRect();
-                          // Calculate button center relative to popover
-                          const buttonCenterX = buttonRect.left + buttonRect.width / 2;
-                          const nubbinPosition = buttonCenterX - popoverRect.left;
-                          setNubbinLeft(nubbinPosition);
-                        }
-                      }, 0);
-                    }
-                  }}
-                  aria-label="Show hierarchy"
+                <div 
+                  className="cell-details-history-hierarchy-info-wrapper"
+                  onMouseEnter={() => setIsHierarchyPopoverOpen(true)}
+                  onMouseLeave={() => setIsHierarchyPopoverOpen(false)}
                 >
-                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </button>
-                {isHierarchyPopoverOpen && (
-                  <div ref={popoverRef} className="cell-details-history-hierarchy-popover">
-                    <div 
-                      className="cell-details-history-hierarchy-popover-nubbin"
-                      style={nubbinLeft !== null ? { left: `${nubbinLeft}px`, transform: 'translateX(-50%) rotate(45deg)' } : undefined}
-                    ></div>
-                    <div className="cell-details-history-hierarchy-popover-content">
-                      {cellInfo.dimensionPath.length > 0 ? (
-                        <span className="cell-details-history-hierarchy-path">
-                          {cellInfo.dimensionPath.join(' > ')}
-                        </span>
-                      ) : (
-                        <span className="cell-details-history-hierarchy-path">No hierarchy available</span>
-                      )}
+                  <button
+                    ref={hierarchyButtonRef}
+                    className="cell-details-history-hierarchy-button-compact"
+                    onFocus={() => setIsHierarchyPopoverOpen(true)}
+                    onBlur={() => setIsHierarchyPopoverOpen(false)}
+                    aria-label="Show hierarchy"
+                  >
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </button>
+                  {isHierarchyPopoverOpen && (
+                    <div ref={popoverRef} className="cell-details-history-hierarchy-popover">
+                      <div className="cell-details-history-hierarchy-popover-nubbin"></div>
+                      <div className="cell-details-history-hierarchy-popover-content">
+                        {cellInfo.dimensionPath.length > 0 ? (
+                          <span className="cell-details-history-hierarchy-path">
+                            {cellInfo.dimensionPath.join(' > ')}
+                          </span>
+                        ) : (
+                          <span className="cell-details-history-hierarchy-path">No hierarchy available</span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             )}
               <div className="cell-details-history-tab-content">
@@ -782,22 +956,18 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                           </div>
                         )}
                         <p className="cell-details-history-placeholder">
-                          {hasFocusedCell 
-                            ? 'No cell edit history available for this cell. Edit the value or add a note to see the changes logged here.' 
-                            : 'Select a cell to view edit history.'}
+                          No cell edit history available for this cell. Edit the value or add a note to see the changes logged here.
                         </p>
                       </div>
                     )}
                   </div>
                 </div>
               </div>
-              </>
-            ) : null}
-        </div>
-        )}
+          </div>
+        ) : null}
         
-        {/* Panel Footer - Note Input */}
-        {hasFocusedCell && activeTab === 'single' && (
+        {/* Panel Footer - Note Input (only for single cell selection in History tab) */}
+        {selectedCells.size === 1 && activeTab === 'single' && (
           <div className="cell-details-history-panel-footer">
             <div className="cell-details-history-note-input-section">
               <label className="cell-details-history-note-label">Comments</label>

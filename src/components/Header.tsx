@@ -1,14 +1,17 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import '../styles/components/Header.css';
 
 const Header: React.FC = () => {
+  const navigate = useNavigate();
+  
   const tabs = [
     'Home',
     'Analytics',
     'Opportunities',
     'Leads',
     'Tasks',
-    'Forecasting & Planning',
+    'Planning & Forecasting',
     'Accounts',
     'Contacts',
     'Dashboards',
@@ -100,7 +103,12 @@ const Header: React.FC = () => {
           {tabs.map((tab, index) => (
             <button
               key={index}
-              className={`header-nav-tab ${tab === 'Forecasting & Planning' ? 'active' : ''}`}
+              className={`header-nav-tab ${tab === 'Planning & Forecasting' ? 'active' : ''}`}
+              onClick={() => {
+                if (tab === 'Planning & Forecasting') {
+                  navigate('/planning-forecasting-list');
+                }
+              }}
             >
               {tab}
               {['Opportunities', 'Leads', 'Tasks', 'Accounts', 'Contacts', 'Dashboards', 'More'].includes(tab) && (

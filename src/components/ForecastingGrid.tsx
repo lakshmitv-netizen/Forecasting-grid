@@ -1735,6 +1735,7 @@ const ForecastingGrid: React.FC = () => {
           onClearSelection={handleClearSelection}
           onMassUpdate={handleMassUpdate}
           initialTab={cellDetailsInitialTab}
+          onSetFocusedCell={setCurrentFocusedCell}
         />
         
         {/* Cell Edit Info Popover - shown when a cell with edit history is focused */}

@@ -6,7 +6,7 @@ import '../styles/pages/PlanningForecastingPage.css';
 const PlanningForecastingPage: React.FC = () => {
   const [leftTab, setLeftTab] = useState<'details' | 'grid-config'>('details');
   const [rightTab, setRightTab] = useState<'activity' | 'chatter'>('activity');
-  const [gridConfigTab, setGridConfigTab] = useState<'mvp' | 'post-mvp'>('mvp');
+  const [gridConfigTab] = useState<'mvp' | 'post-mvp'>('mvp');
   const [criteriaRowCount, setCriteriaRowCount] = useState<number>(2);
   const [postMvpCriteriaRowCount, setPostMvpCriteriaRowCount] = useState<number>(4);
   const [selectedHierarchyLevel, setSelectedHierarchyLevel] = useState<string>('Category');
@@ -94,13 +94,13 @@ const PlanningForecastingPage: React.FC = () => {
               <span className="planning-page-icon-letter">P</span>
             </div>
             <div className="planning-page-title-section">
+              <Link to="/planning-forecasting-list" className="planning-page-subtitle">Planning & Forecasting</Link>
               <div className="planning-page-title-row">
                 <h1 className="planning-page-title">Planning & Forecasting FY26</h1>
                 <svg className="planning-page-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
               </div>
-              <p className="planning-page-subtitle">Planning & Forecasting FY26 • Created: 10:10am 20/11/2025</p>
             </div>
           </div>
           <div className="planning-page-header-right">
@@ -148,34 +148,22 @@ const PlanningForecastingPage: React.FC = () => {
                     <label className="planning-info-label">End Period</label>
                     <div className="planning-info-value">Dec 31st 2026</div>
                   </div>
+                  <div className="planning-info-field">
+                    <label className="planning-info-label">Default Measure Subgroup</label>
+                    <div className="planning-info-value">Revenue and Quantity Measures</div>
+                  </div>
+                  <div className="planning-info-field">
+                    <label className="planning-info-label">Default Time Granularity</label>
+                    <div className="planning-info-value">Months</div>
+                  </div>
                 </div>
               )}
               {leftTab === 'grid-config' && (
                 <div className="planning-grid-config-section">
-                  <p className="planning-wip-text">
-                    <span className="planning-wip-label">WIP</span>
-                    From here the users will select the specific dimension values that the grid needs to show
-                  </p>
+                  {/* WIP text and version tabs hidden for video - will be restored later */}
                   
-                  {/* Grid Config Version Tabs */}
-                  <div className="grid-config-version-tabs">
-                    <button 
-                      className={`grid-config-version-tab ${gridConfigTab === 'mvp' ? 'active' : ''}`}
-                      onClick={() => setGridConfigTab('mvp')}
-                    >
-                      MVP version
-                    </button>
-                    <button 
-                      className={`grid-config-version-tab ${gridConfigTab === 'post-mvp' ? 'active' : ''}`}
-                      onClick={() => setGridConfigTab('post-mvp')}
-                    >
-                      Post MVP version
-                    </button>
-                  </div>
-
-                  {/* MVP Version Tab */}
-                  {gridConfigTab === 'mvp' && (
-                    <div className="grid-config-tab-content">
+                  {/* MVP Version Content */}
+                  <div className="grid-config-tab-content">
                       <div className="mvp-account-selection">
                         <label className="grid-config-label">Select Account</label>
                         <div className="mvp-account-search-wrapper">
@@ -191,7 +179,7 @@ const PlanningForecastingPage: React.FC = () => {
                         </div>
                       </div>
                       <div className="mvp-category-selection">
-                        <label className="grid-config-label">Select Category</label>
+                        <label className="grid-config-label">Select Categories</label>
                         <p className="mvp-criteria-subtext">Describe Criteria for selecting Categories</p>
                         <div className="mvp-formula-logic-field">
                           <label className="mvp-criteria-field-label">Criteria Logic</label>
@@ -204,24 +192,40 @@ const PlanningForecastingPage: React.FC = () => {
                         </div>
                         <div className="mvp-criteria-section">
                           <div className="mvp-criteria-rows">
-                            {Array.from({ length: criteriaRowCount }, (_, index) => (
+                            {Array.from({ length: criteriaRowCount }, (_, index) => {
+                              // Prefilled default values for first 2 rows
+                              const defaultFields = ['Category Type', 'Category Status'];
+                              const defaultOperators = ['Equals', 'Equals'];
+                              const defaultValues = ['Powertrain', 'Active'];
+                              
+                              return (
                               <div key={index} className="mvp-criteria-row">
                                 <div className="mvp-criteria-row-number">{index + 1}</div>
                                 <div className="mvp-criteria-field">
                                   <label className="mvp-criteria-field-label">Category Field</label>
-                                  <select className="grid-config-dropdown">
-                                    <option>Select...</option>
+                                  <select className="grid-config-dropdown" defaultValue={defaultFields[index] || ''}>
+                                    <option value="">Select...</option>
+                                    <option value="Category Name">Category Name</option>
+                                    <option value="Category Status">Category Status</option>
+                                    <option value="Category Type">Category Type</option>
+                                    <option value="Parent Category">Parent Category</option>
+                                    <option value="Category Code">Category Code</option>
                                   </select>
                                 </div>
                                 <div className="mvp-criteria-field">
                                   <label className="mvp-criteria-field-label">Operator</label>
-                                  <select className="grid-config-dropdown">
-                                    <option>Select...</option>
+                                  <select className="grid-config-dropdown" defaultValue={defaultOperators[index] || ''}>
+                                    <option value="">Select...</option>
+                                    <option value="Equals">Equals</option>
+                                    <option value="Not Equals">Not Equals</option>
+                                    <option value="Contains">Contains</option>
+                                    <option value="Starts With">Starts With</option>
+                                    <option value="Ends With">Ends With</option>
                                   </select>
                                 </div>
                                 <div className="mvp-criteria-field">
                                   <label className="mvp-criteria-field-label">Value</label>
-                                  <input type="text" className="grid-config-input" placeholder="" disabled />
+                                  <input type="text" className="grid-config-input" defaultValue={defaultValues[index] || ''} />
                                 </div>
                                 <button 
                                   className="grid-config-delete-btn"
@@ -236,7 +240,8 @@ const PlanningForecastingPage: React.FC = () => {
                                   </svg>
                                 </button>
                               </div>
-                            ))}
+                              );
+                            })}
                           </div>
                           <div className="mvp-criteria-actions">
                             <button 
@@ -251,14 +256,13 @@ const PlanningForecastingPage: React.FC = () => {
                       <div className="mvp-product-selection">
                         <label className="grid-config-label">Select Products</label>
                         <p className="mvp-product-note">
-                          Users will not be able to select products in MVP as per engg comment - Reference - "In the scope definition mock, there are "Products" and "Categories". Both these picklists define the scope on the product dimension. We'll be defining the scope on the higher level (Category) only. Please remove the product picklist from the mock"
+                          All the products belonging to the above categories will be shown on the grid
                         </p>
                       </div>
                     </div>
-                  )}
 
-                  {/* Post MVP Version Tab */}
-                  {gridConfigTab === 'post-mvp' && (
+                  {/* Post MVP Version Tab - Hidden for video, will be restored later */}
+                  {false && gridConfigTab === 'post-mvp' && (
                     <div className="grid-config-tab-content">
                       
                       <div className="grid-config-layout">
@@ -540,27 +544,6 @@ const PlanningForecastingPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="planning-page-footer">
-          <Link to="/" className="planning-footer-item">
-            <svg className="planning-footer-icon" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
-            </svg>
-            <span>To Do List</span>
-          </Link>
-          <Link to="/" className="planning-footer-item">
-            <svg className="planning-footer-icon" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
-            </svg>
-            <span>Notes</span>
-          </Link>
-          <Link to="/" className="planning-footer-item">
-            <svg className="planning-footer-icon" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/>
-            </svg>
-            <span>Rewind</span>
-          </Link>
-        </div>
       </div>
     </div>
   );
