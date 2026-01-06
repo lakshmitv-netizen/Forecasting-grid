@@ -1322,6 +1322,14 @@ const ForecastingGrid: React.FC = () => {
     return findRowValue(data);
   }, [data]);
 
+  // Select a single cell (used by View All Changes in the panel)
+  const handleSelectSingleCell = useCallback((cellKey: string) => {
+    const newSet = new Set<string>([cellKey]);
+    setSelectedCells(newSet);
+    selectedCellsRef.current = newSet;
+    setLastSelectedCell(cellKey);
+  }, []);
+
   // Close popover on outside click and scroll
   useEffect(() => {
     if (!editInfoPopover) return;
@@ -1790,6 +1798,7 @@ const ForecastingGrid: React.FC = () => {
           onToggleCellLock={handleToggleCellLock}
           isCellLocked={isCellLocked}
           getCellValue={getCellValue}
+          onSelectSingleCell={handleSelectSingleCell}
         />
         
         {/* Cell Edit Info Popover - shown when a cell with edit history is focused */}

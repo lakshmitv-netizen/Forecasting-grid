@@ -24,6 +24,7 @@ interface CellDetailsHistoryPanelProps {
   onToggleCellLock?: (cellKey: string) => void; // Callback to toggle cell lock
   isCellLocked?: (cellKey: string) => boolean; // Function to check if cell is locked
   getCellValue?: (rowId: string, monthKey: string) => number | undefined; // Function to get current cell value
+  onSelectSingleCell?: (cellKey: string) => void; // Callback to select a single cell (for View All Changes)
 }
 
 const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({ 
@@ -43,7 +44,8 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
   onSingleCellUpdate,
   onToggleCellLock: _onToggleCellLock,
   isCellLocked: _isCellLocked,
-  getCellValue
+  getCellValue,
+  onSelectSingleCell
 }) => {
   const [activeTab, setActiveTab] = useState<'single' | 'multi'>(initialTab);
   
@@ -1147,15 +1149,19 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                           .map(edits => edits[0]) // First one is latest (already sorted)
                           .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
                         
-                        // Handler for "View all changes" - sets focused cell, UI automatically adapts
+                        // Handler for "View all changes" - sets focused cell and selects it
                         const handleViewAllChanges = (entry: CellEditHistoryEntry) => {
-                          // Set the focused cell - this will trigger hasSingleSelection to become true
+                          // Set the focused cell
                           if (onSetFocusedCell) {
                             onSetFocusedCell({
                               rowId: entry.rowId,
                               monthKey: entry.timeKey,
                               measureId: entry.measureId
                             });
+                          }
+                          // Also select the cell so the panel switches to single-cell view
+                          if (onSelectSingleCell) {
+                            onSelectSingleCell(entry.cellKey);
                           }
                         };
                         
