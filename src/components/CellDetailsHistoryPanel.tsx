@@ -3,6 +3,7 @@ import { MeasureData } from '../types';
 import { extractCellInfo, CellInfo } from '../utils/cellInfoUtils';
 import { CellEditHistoryEntry } from '../types/editHistory';
 import CellEditHistoryCard from './CellEditHistoryCard';
+import GenericCommentCard from './GenericCommentCard';
 import '../styles/components/CellDetailsHistoryPanel.css';
 
 interface CellDetailsHistoryPanelProps {
@@ -73,24 +74,17 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
     message: string;
     timestamp: Date;
   }
-  const [genericComments, setGenericComments] = useState<GenericComment[]>([
-    {
-      id: 'gc-1',
-      userId: 'user-1',
-      userName: 'John Carter',
-      userInitials: 'JC',
-      message: 'Q1 forecasts looking solid. Let\'s review before the monthly meeting.',
-      timestamp: new Date('2026-01-05T09:30:00')
-    },
-    {
-      id: 'gc-2',
-      userId: 'user-2',
-      userName: 'Sarah Chen',
-      userInitials: 'SC',
-      message: 'Updated the transmission assembly projections based on supplier feedback.',
-      timestamp: new Date('2026-01-04T14:15:00')
-    }
-  ]);
+  const [genericComments, setGenericComments] = useState<GenericComment[]>([]);
+  
+  // Generic comment replies state
+  interface GenericCommentReply {
+    id: string;
+    userId: string;
+    userName: string;
+    message: string;
+    timestamp: Date;
+  }
+  const [genericCommentReplies, setGenericCommentReplies] = useState<Record<string, GenericCommentReply[]>>({});
   
   // Multi-cell form state
   const [selectCells, setSelectCells] = useState<string>('Manually');
@@ -230,6 +224,22 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
     setGenericComments(prev => [newComment, ...prev]);
     setGenericCommentText('');
   }, [genericCommentText]);
+  
+  // Handle adding reply to generic comment
+  const handleAddGenericCommentReply = useCallback((commentId: string, message: string) => {
+    const newReply: GenericCommentReply = {
+      id: `gcr-${Date.now()}-${Math.random()}`,
+      userId: 'john-carter',
+      userName: 'John Carter',
+      message,
+      timestamp: new Date()
+    };
+    
+    setGenericCommentReplies(prev => ({
+      ...prev,
+      [commentId]: [...(prev[commentId] || []), newReply]
+    }));
+  }, []);
 
   // Close filter popover when clicking outside
   useEffect(() => {
@@ -852,10 +862,58 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
             </div>
             <div className="cell-details-history-tab-content">
                 <div className="cell-details-history-multi-history">
-                  {/* Edit History Thread - Latest edit per cell */}
+                  {/* History Thread - Generic comments + Edit history */}
                   <div className="cell-details-history-multi-history-section">
                     <div className="cell-details-history-notes-list">
+                      {/* Generic Comments at the top (only when no cell selected) */}
+                      {selectedCells.size === 0 && genericComments.map((comment, index) => (
+                        <GenericCommentCard
+                          key={comment.id}
+                          id={comment.id}
+                          userName={comment.userName}
+                          userInitials={comment.userInitials}
+                          message={comment.message}
+                          timestamp={comment.timestamp}
+                          replies={genericCommentReplies[comment.id] || []}
+                          onAddReply={handleAddGenericCommentReply}
+                          isFirst={index === 0}
+                          isLast={index === genericComments.length - 1 && editHistory.length === 0}
+                        />
+                      ))}
+                      
+                      {/* Cell Edit History */}
                       {(() => {
+                        // Direct mapping for dimension names from rowId prefixes
+                        // These should match what's displayed in the grid's first frozen column
+                        const dimensionNameMap: Record<string, string> = {
+                          // Account level
+                          'account': 'MagnaDrive - Michigan Plant',
+                          // Categories
+                          'category-transmission': 'Transmission Assembly',
+                          'category-chassis': 'Chassis Components',
+                          'category-engine': 'Engine Assembly',
+                          'category-powertrain': 'Powertrain Systems',
+                          // Transmission products (TRN 750 series)
+                          'product-trn-a': 'TRN 750 - A',
+                          'product-trn-b': 'TRN 750 - B',
+                          'product-trn-c': 'TRN 750 - C',
+                          'product-trn-d': 'TRN 750 - D',
+                          'product-trn-e': 'TRN 750 - E',
+                          // Chassis products (matching actual data names)
+                          'product-chs-a': 'Chassis Product 1',
+                          'product-chs-b': 'Chassis Product 2',
+                          'product-chs-c': 'Chassis Product 1',
+                          'product-chs-d': 'Chassis Product 2',
+                          'product-chassis-1': 'Chassis Product 1',
+                          'product-chassis-2': 'Chassis Product 2',
+                          // Engine products
+                          'product-eng-a': 'Engine Product 1',
+                          'product-eng-b': 'Engine Product 2',
+                          // Powertrain products
+                          'product-pwr-a': 'Powertrain Product 1',
+                          'product-pwr-b': 'Powertrain Product 2',
+                        };
+                        
                         // For no selection (size === 0), show all edits; for multiple selection, filter to selected cells
                         const relevantEdits = selectedCells.size === 0 
                           ? editHistory.slice().sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
@@ -870,17 +928,95 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                             data,
                             layout
                           );
-                          if (!cellInfo) return entry.cellKey;
                           
                           const parts = [];
-                          // Row context first (dimension)
-                          if (cellInfo.dimensionPath.length > 0) {
+                          
+                          // Row context first (dimension) - try multiple sources
+                          if (cellInfo && cellInfo.dimensionPath.length > 0) {
                             parts.push(cellInfo.dimensionPath[cellInfo.dimensionPath.length - 1]);
+                          } else if (entry.rowId) {
+                            // Extract dimension prefix and look up in map
+                            const measureIndex = entry.rowId.indexOf('-measure-');
+                            const dimensionPrefix = measureIndex > 0 ? entry.rowId.substring(0, measureIndex) : entry.rowId;
+                            
+                            if (dimensionNameMap[dimensionPrefix]) {
+                              parts.push(dimensionNameMap[dimensionPrefix]);
+                            } else {
+                              // Fallback: Try to find in data by searching for matching ID
+                              let foundName: string | null = null;
+                              for (const measure of data) {
+                                if (measure.children) {
+                                  for (const account of measure.children) {
+                                    if (account.id === entry.rowId || account.id.startsWith(dimensionPrefix)) {
+                                      foundName = account.name;
+                                      break;
+                                    }
+                                    if (account.children) {
+                                      for (const category of account.children) {
+                                        if (category.id === entry.rowId || category.id.startsWith(dimensionPrefix)) {
+                                          foundName = category.name;
+                                          break;
+                                        }
+                                        if (category.children) {
+                                          for (const product of category.children) {
+                                            if (product.id === entry.rowId || product.id.startsWith(dimensionPrefix)) {
+                                              foundName = product.name;
+                                              break;
+                                            }
+                                          }
+                                        }
+                                        if (foundName) break;
+                                      }
+                                    }
+                                    if (foundName) break;
+                                  }
+                                }
+                                if (foundName) break;
+                              }
+                              if (foundName) {
+                                parts.push(foundName);
+                              }
+                            }
                           }
+                          
                           // Column context second (time)
-                          if (cellInfo.timePeriod) parts.push(cellInfo.timePeriod);
+                          if (cellInfo?.timePeriod) {
+                            parts.push(cellInfo.timePeriod);
+                          } else if (entry.timeKey) {
+                            // Fallback: format the timeKey directly
+                            const timeMap: Record<string, string> = {
+                              'jan2026': 'Jan 2026', 'feb2026': 'Feb 2026', 'mar2026': 'Mar 2026',
+                              'apr2026': 'Apr 2026', 'may2026': 'May 2026', 'jun2026': 'Jun 2026',
+                              'jul2026': 'Jul 2026', 'aug2026': 'Aug 2026', 'sep2026': 'Sep 2026',
+                              'oct2026': 'Oct 2026', 'nov2026': 'Nov 2026', 'dec2026': 'Dec 2026',
+                            };
+                            parts.push(timeMap[entry.timeKey] || entry.timeKey);
+                          }
+                          
                           // Header context third (measure)
-                          if (cellInfo.measureName) parts.push(cellInfo.measureName);
+                          if (cellInfo?.measureName) {
+                            parts.push(cellInfo.measureName);
+                          } else if (entry.measureId) {
+                            // Fallback: find measure name directly
+                            const measure = data.find(m => m.id === entry.measureId);
+                            if (measure) parts.push(measure.name);
+                          } else if (entry.rowId) {
+                            // Try to extract measure from rowId (format: ...-measure-{measureId})
+                            const measureMatch = entry.rowId.match(/-measure-(.+)$/);
+                            if (measureMatch) {
+                              const measureId = measureMatch[1];
+                              const measureNames: Record<string, string> = {
+                                'sa-rev': 'Sales Agreement Revenue',
+                                'sa-qty': 'Sales Agreement Quantity',
+                                'opp-rev': 'Opportunity Revenue',
+                                'opp-qty': 'Opportunity Quantity',
+                              };
+                              if (measureNames[measureId]) {
+                                parts.push(measureNames[measureId]);
+                              }
+                            }
+                          }
+                          
                           return parts.join(' · ') || entry.cellKey;
                         };
                         
@@ -891,8 +1027,37 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                             data,
                             layout
                           );
-                          if (!cellInfo || cellInfo.dimensionPath.length === 0) return '';
-                          return cellInfo.dimensionPath.join(' > ');
+                          if (cellInfo && cellInfo.dimensionPath.length > 0) {
+                            return cellInfo.dimensionPath.join(' > ');
+                          }
+                          
+                          // Fallback: Build hierarchy path from rowId
+                          const measureIndex = entry.rowId.indexOf('-measure-');
+                          const dimensionPrefix = measureIndex > 0 ? entry.rowId.substring(0, measureIndex) : entry.rowId;
+                          
+                          // Build path based on prefix type
+                          if (dimensionPrefix === 'account') {
+                            return 'MagnaDrive - Michigan Plant';
+                          } else if (dimensionPrefix.startsWith('category-')) {
+                            const catName = dimensionNameMap[dimensionPrefix] || dimensionPrefix;
+                            return `MagnaDrive - Michigan Plant > ${catName}`;
+                          } else if (dimensionPrefix.startsWith('product-')) {
+                            // Determine parent category from product prefix
+                            let category = 'Unknown Category';
+                            if (dimensionPrefix.includes('trn')) {
+                              category = 'Transmission Assembly';
+                            } else if (dimensionPrefix.includes('chs') || dimensionPrefix.includes('chassis')) {
+                              category = 'Chassis Components';
+                            } else if (dimensionPrefix.includes('eng')) {
+                              category = 'Engine Assembly';
+                            } else if (dimensionPrefix.includes('pwr')) {
+                              category = 'Powertrain Systems';
+                            }
+                            const prodName = dimensionNameMap[dimensionPrefix] || dimensionPrefix;
+                            return `MagnaDrive - Michigan Plant > ${category} > ${prodName}`;
+                          }
+                          
+                          return '';
                         };
                         
                         // Helper to get dimension type from entry
@@ -962,37 +1127,12 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                             );
                           })
                         ) : (
-                          <p className="cell-details-history-placeholder">{selectedCells.size === 0 ? 'No edit history available yet' : 'No edits found for selected cells'}</p>
+                          // Only show placeholder if no generic comments either
+                          (selectedCells.size === 0 && genericComments.length > 0) ? null : (
+                            <p className="cell-details-history-placeholder">{selectedCells.size === 0 ? 'No edit history available yet' : 'No edits found for selected cells'}</p>
+                          )
                         );
                       })()}
-                      
-                      {/* Generic Comments Section (only when no cell selected) */}
-                      {selectedCells.size === 0 && genericComments.length > 0 && (
-                        <div className="cell-details-history-generic-comments">
-                          <div className="cell-details-history-generic-comments-divider">
-                            <span>General Comments</span>
-                          </div>
-                          {genericComments.map((comment, index) => (
-                            <div key={comment.id} className="cell-details-history-generic-comment-card">
-                              <div className="cell-details-history-generic-comment-bead" style={{ backgroundColor: '#0176D3' }}>
-                                {comment.userInitials}
-                              </div>
-                              <div className="cell-details-history-generic-comment-content">
-                                <div className="cell-details-history-generic-comment-header">
-                                  <span className="cell-details-history-generic-comment-user">{comment.userName}</span>
-                                  <span className="cell-details-history-generic-comment-time">
-                                    {comment.timestamp.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, {comment.timestamp.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
-                                  </span>
-                                </div>
-                                <p className="cell-details-history-generic-comment-message">{comment.message}</p>
-                              </div>
-                              {index < genericComments.length - 1 && (
-                                <div className="cell-details-history-generic-comment-line"></div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
                     </div>
                   </div>
                 </div>

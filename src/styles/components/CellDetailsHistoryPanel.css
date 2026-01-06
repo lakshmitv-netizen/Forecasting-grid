@@ -1664,7 +1664,7 @@
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  width: 280px;
+  width: 300px;
   background: white;
   border: 1px solid #c9c9c9;
   border-radius: 8px;
@@ -1710,12 +1710,23 @@
 .cell-details-history-filter-date-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
-.cell-details-history-filter-date-row input,
+.cell-details-history-filter-date-row input {
+  width: 100px;
+  min-width: 100px;
+  padding: 8px 6px;
+  border: 1px solid #c9c9c9;
+  border-radius: 4px;
+  font-family: var(--font-family-base);
+  font-size: 12px;
+  color: #181818;
+  background: white;
+}
+
 .cell-details-history-filter-field select {
-  flex: 1;
+  width: 100%;
   padding: 8px 10px;
   border: 1px solid #c9c9c9;
   border-radius: 4px;
@@ -1777,95 +1788,5 @@
   background: #014486;
 }
 
-/* Generic Comments Section */
-.cell-details-history-generic-comments {
-  margin-top: 16px;
-}
-
-.cell-details-history-generic-comments-divider {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.cell-details-history-generic-comments-divider::before,
-.cell-details-history-generic-comments-divider::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: #e5e7eb;
-}
-
-.cell-details-history-generic-comments-divider span {
-  font-family: var(--font-family-base);
-  font-size: 11px;
-  font-weight: 600;
-  color: #5c5c5c;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.cell-details-history-generic-comment-card {
-  position: relative;
-  display: flex;
-  gap: 12px;
-  padding-bottom: 16px;
-}
-
-.cell-details-history-generic-comment-bead {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-family-base);
-  font-size: 11px;
-  font-weight: 600;
-  color: white;
-  flex-shrink: 0;
-}
-
-.cell-details-history-generic-comment-content {
-  flex: 1;
-  min-width: 0;
-}
-
-.cell-details-history-generic-comment-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-.cell-details-history-generic-comment-user {
-  font-family: var(--font-family-base);
-  font-size: 13px;
-  font-weight: 600;
-  color: #181818;
-}
-
-.cell-details-history-generic-comment-time {
-  font-family: var(--font-family-base);
-  font-size: 12px;
-  color: #706e6b;
-}
-
-.cell-details-history-generic-comment-message {
-  font-family: var(--font-family-base);
-  font-size: 13px;
-  color: #3e3e3c;
-  line-height: 1.4;
-  margin: 0;
-}
-
-.cell-details-history-generic-comment-line {
-  position: absolute;
-  left: 15px;
-  top: 40px;
-  bottom: 0;
-  width: 2px;
-  background: #e5e7eb;
-}
+/* Generic Comments - uses same styling as CellEditHistoryCard */
 

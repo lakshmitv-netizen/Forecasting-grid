@@ -94,37 +94,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     onEditHistoryRef.current = onEditHistory;
   }, [onEditHistory]);
   
-  // Debug: Log when onEditHistory prop changes
-  useEffect(() => {
-    const logMessage = `[HierarchicalGrid] Component mounted/updated, onEditHistory exists: ${!!onEditHistory}`;
-    console.error('========================================');
-    console.error(logMessage);
-    console.error('onEditHistory type:', typeof onEditHistory);
-    console.error('========================================');
-    console.log(logMessage);
-    console.warn(logMessage);
-    // Store on window for debugging
-    if (typeof window !== 'undefined') {
-      (window as any).hierarchicalGridOnEditHistory = onEditHistory;
-    }
-    if (onEditHistory) {
-      console.error('[HierarchicalGrid] Testing onEditHistory callback...');
-      try {
-        onEditHistory({
-          cellKey: 'test-cell-key',
-          rowId: 'test-row-id',
-          timeKey: 'jan2026',
-          oldValue: 100,
-          newValue: 200,
-        });
-        console.error('[HierarchicalGrid] ✓ Test callback succeeded');
-      } catch (error) {
-        console.error('[HierarchicalGrid] ✗ Test callback failed:', error);
-      }
-    } else {
-      console.error('[HierarchicalGrid] ⚠⚠⚠ onEditHistory is NOT available! ⚠⚠⚠');
-    }
-  }, [onEditHistory]);
+  // Note: Debug logging for onEditHistory removed
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [gridData, setGridData] = useState<MeasureData[]>(data);
   
