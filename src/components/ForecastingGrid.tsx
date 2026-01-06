@@ -1272,6 +1272,56 @@ const ForecastingGrid: React.FC = () => {
     setIsFiltersOpen(false);
   }, []);
 
+  // Handler for single cell update from the panel
+  const handleSingleCellUpdate = useCallback((rowId: string, monthKey: string, newValue: number, adjustmentNote?: string) => {
+    if (selectedLayoutState === 'Measures / Dimensions x Time') {
+      // Use HierarchicalGrid's cell change handler
+      if (cellChangeHandlerRef.current) {
+        cellChangeHandlerRef.current(rowId, monthKey as any, newValue, adjustmentNote);
+      }
+    } else {
+      // For other layouts, would need to call appropriate handlers
+      // For now, log it
+      console.log('[ForecastingGrid] Single cell update:', { rowId, monthKey, newValue, adjustmentNote });
+    }
+  }, [selectedLayoutState]);
+
+  // Handler for toggling cell lock from the panel
+  const handleToggleCellLock = useCallback((cellKey: string) => {
+    setLockedCells((prev: Set<string>) => {
+      const newSet = new Set(prev);
+      if (newSet.has(cellKey)) {
+        newSet.delete(cellKey);
+      } else {
+        newSet.add(cellKey);
+      }
+      return newSet;
+    });
+  }, []);
+
+  // Check if a cell is locked
+  const isCellLocked = useCallback((cellKey: string) => {
+    return lockedCells.has(cellKey);
+  }, [lockedCells]);
+
+  // Get current cell value from data
+  const getCellValue = useCallback((rowId: string, monthKey: string): number | undefined => {
+    // Find the row in the data structure
+    const findRowValue = (items: any[]): number | undefined => {
+      for (const item of items) {
+        if (item.id === rowId) {
+          return item.values?.[monthKey as keyof typeof item.values];
+        }
+        if (item.children) {
+          const found = findRowValue(item.children);
+          if (found !== undefined) return found;
+        }
+      }
+      return undefined;
+    };
+    return findRowValue(data);
+  }, [data]);
+
   // Close popover on outside click and scroll
   useEffect(() => {
     if (!editInfoPopover) return;
@@ -1736,6 +1786,10 @@ const ForecastingGrid: React.FC = () => {
           onMassUpdate={handleMassUpdate}
           initialTab={cellDetailsInitialTab}
           onSetFocusedCell={setCurrentFocusedCell}
+          onSingleCellUpdate={handleSingleCellUpdate}
+          onToggleCellLock={handleToggleCellLock}
+          isCellLocked={isCellLocked}
+          getCellValue={getCellValue}
         />
         
         {/* Cell Edit Info Popover - shown when a cell with edit history is focused */}

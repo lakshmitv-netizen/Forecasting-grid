@@ -20,6 +20,10 @@ interface CellDetailsHistoryPanelProps {
   onMassUpdate?: (cellKeys: string[], rule: string, value: string, note?: string) => void; // Callback for mass update
   initialTab?: 'single' | 'multi'; // Initial tab to show when panel opens
   onSetFocusedCell?: (cell: { rowId: string; monthKey?: string; measureId?: string }) => void; // Callback to set focused cell
+  onSingleCellUpdate?: (rowId: string, monthKey: string, newValue: number, adjustmentNote?: string) => void; // Callback for single cell update
+  onToggleCellLock?: (cellKey: string) => void; // Callback to toggle cell lock
+  isCellLocked?: (cellKey: string) => boolean; // Function to check if cell is locked
+  getCellValue?: (rowId: string, monthKey: string) => number | undefined; // Function to get current cell value
 }
 
 const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({ 
@@ -35,7 +39,11 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
   onClearSelection,
   onMassUpdate,
   initialTab = 'single',
-  onSetFocusedCell
+  onSetFocusedCell,
+  onSingleCellUpdate,
+  onToggleCellLock,
+  isCellLocked,
+  getCellValue
 }) => {
   const [activeTab, setActiveTab] = useState<'single' | 'multi'>(initialTab);
   
@@ -99,6 +107,11 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
   const selectCellsDropdownRef = useRef<HTMLDivElement>(null);
   const selectActionDropdownRef = useRef<HTMLDivElement>(null);
   const ruleDropdownRef = useRef<HTMLDivElement>(null);
+  
+  // Single cell update form state
+  const [singleCellNewValue, setSingleCellNewValue] = useState<string>('');
+  const [singleCellAdjustmentNote, setSingleCellAdjustmentNote] = useState<string>('');
+  const [singleCellLockToggle, setSingleCellLockToggle] = useState<boolean>(false);
   
   // Replies state - keyed by entry ID
   interface CardReply {
@@ -241,6 +254,47 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
     }));
   }, []);
 
+  // Handle single cell update
+  const handleSingleCellUpdate = useCallback(() => {
+    if (!focusedCell || !onSingleCellUpdate) return;
+    
+    const numericValue = parseFloat(singleCellNewValue);
+    if (isNaN(numericValue)) return;
+    
+    const monthKey = focusedCell.monthKey || '';
+    
+    // Call the update callback
+    onSingleCellUpdate(
+      focusedCell.rowId, 
+      monthKey, 
+      numericValue, 
+      singleCellAdjustmentNote.trim() || undefined
+    );
+    
+    // Handle lock toggle if changed
+    const cellKey = `${focusedCell.rowId}-${monthKey}`;
+    const currentlyLocked = isCellLocked ? isCellLocked(cellKey) : false;
+    if (singleCellLockToggle !== currentlyLocked && onToggleCellLock) {
+      onToggleCellLock(cellKey);
+    }
+    
+    // Clear the adjustment note after update
+    setSingleCellAdjustmentNote('');
+  }, [focusedCell, singleCellNewValue, singleCellAdjustmentNote, singleCellLockToggle, onSingleCellUpdate, onToggleCellLock, isCellLocked]);
+
+  // Handle single cell cancel
+  const handleSingleCellCancel = useCallback(() => {
+    if (focusedCell) {
+      // Reset form to current values
+      const currentValue = getCellValue ? getCellValue(focusedCell.rowId, focusedCell.monthKey || '') : undefined;
+      setSingleCellNewValue(currentValue !== undefined ? currentValue.toString() : '');
+      setSingleCellAdjustmentNote('');
+      const cellKey = `${focusedCell.rowId}-${focusedCell.monthKey || ''}`;
+      const isLocked = isCellLocked ? isCellLocked(cellKey) : false;
+      setSingleCellLockToggle(isLocked);
+    }
+  }, [focusedCell, getCellValue, isCellLocked]);
+
   // Close filter popover when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -268,6 +322,20 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
       setIsHierarchyPopoverOpen(false);
     }
   }, [focusedCell?.rowId, focusedCell?.monthKey, focusedCell?.measureId]);
+
+  // Populate single cell update form when focusedCell changes
+  useEffect(() => {
+    if (focusedCell && selectedCells.size === 1) {
+      // Get current cell value
+      const currentValue = getCellValue ? getCellValue(focusedCell.rowId, focusedCell.monthKey || '') : undefined;
+      setSingleCellNewValue(currentValue !== undefined ? currentValue.toString() : '');
+      setSingleCellAdjustmentNote('');
+      // Get lock status
+      const cellKey = `${focusedCell.rowId}-${focusedCell.monthKey || ''}`;
+      const isLocked = isCellLocked ? isCellLocked(cellKey) : false;
+      setSingleCellLockToggle(isLocked);
+    }
+  }, [focusedCell?.rowId, focusedCell?.monthKey, selectedCells.size, getCellValue, isCellLocked]);
 
   // Close popover when clicking outside
   useEffect(() => {
@@ -747,6 +815,8 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                     <input
                       type="text"
                       className="cell-details-history-multi-input"
+                      value={singleCellNewValue}
+                      onChange={(e) => setSingleCellNewValue(e.target.value)}
                       placeholder="Enter new value"
                     />
                   </div>
@@ -756,6 +826,8 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                     <label className="cell-details-history-multi-label">Adjustment Note</label>
                     <textarea
                       className="cell-details-history-multi-textarea"
+                      value={singleCellAdjustmentNote}
+                      onChange={(e) => setSingleCellAdjustmentNote(e.target.value)}
                       placeholder="Enter adjustment note (optional)"
                       rows={3}
                     />
@@ -764,7 +836,11 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                   {/* Lock/Unlock Toggle */}
                   <div className="cell-details-history-multi-field">
                     <label className="cell-details-history-lock-toggle">
-                      <input type="checkbox" />
+                      <input 
+                        type="checkbox" 
+                        checked={singleCellLockToggle}
+                        onChange={(e) => setSingleCellLockToggle(e.target.checked)}
+                      />
                       <span className="cell-details-history-lock-slider"></span>
                       <span className="cell-details-history-lock-label">Lock this cell</span>
                     </label>
@@ -772,10 +848,17 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                   
                 {/* Update Button */}
                 <div className="cell-details-history-multi-actions">
-                  <button className="cell-details-history-multi-cancel-btn">
+                  <button 
+                    className="cell-details-history-multi-cancel-btn"
+                    onClick={handleSingleCellCancel}
+                  >
                     Cancel
                   </button>
-                  <button className="cell-details-history-multi-update-btn">
+                  <button 
+                    className="cell-details-history-multi-update-btn"
+                    onClick={handleSingleCellUpdate}
+                    disabled={!singleCellNewValue.trim() || isNaN(parseFloat(singleCellNewValue))}
+                  >
                     Update
                   </button>
                 </div>
