@@ -914,11 +914,6 @@ const ForecastingGrid: React.FC = () => {
       processUpdates();
     } else {
       // Fallback: Update data directly for other layouts
-      // Use selection order if available
-      const orderedCellKeys = selectedCellsOrderRef.current.length > 0 
-        ? selectedCellsOrderRef.current.filter(key => cellKeys.includes(key))
-        : cellKeys;
-      
       // IMPORTANT: Use the order from cellKeys directly (it's already ordered from selectedCellsOrder)
       const finalOrderedKeys = cellKeys;
       
