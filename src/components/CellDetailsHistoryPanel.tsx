@@ -492,8 +492,8 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                       </span>
                       <svg className="cell-details-history-dropdown-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </div>
+              </svg>
+            </div>
                     {isSelectCellsDropdownOpen && (
                       <div className="cell-details-history-dropdown-list">
                         {selectCellsOptions.map((option, index) => (
@@ -506,7 +506,7 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                             }}
                           >
                             {option}
-                          </div>
+          </div>
                         ))}
                         {selectedCells.size > 0 && onClearSelection && (
                           <div
@@ -1259,7 +1259,7 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
           </div>
         ) : activeTab === 'single' && selectedCells.size === 1 ? (
           /* History > Single Cell - Full History (exactly 1 cell selected) */
-          <div className="cell-details-history-content">
+        <div className="cell-details-history-content">
             {/* Cell Info Header - Compact single line: Measure · Time · Dimension */}
             {cellInfo && (
               <div className="cell-details-history-header-compact">
@@ -1275,31 +1275,31 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                   onMouseEnter={() => setIsHierarchyPopoverOpen(true)}
                   onMouseLeave={() => setIsHierarchyPopoverOpen(false)}
                 >
-                  <button
-                    ref={hierarchyButtonRef}
-                    className="cell-details-history-hierarchy-button-compact"
+                <button
+                  ref={hierarchyButtonRef}
+                  className="cell-details-history-hierarchy-button-compact"
                     onFocus={() => setIsHierarchyPopoverOpen(true)}
                     onBlur={() => setIsHierarchyPopoverOpen(false)}
-                    aria-label="Show hierarchy"
-                  >
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </button>
-                  {isHierarchyPopoverOpen && (
-                    <div ref={popoverRef} className="cell-details-history-hierarchy-popover">
-                      <div className="cell-details-history-hierarchy-popover-nubbin"></div>
-                      <div className="cell-details-history-hierarchy-popover-content">
-                        {cellInfo.dimensionPath.length > 0 ? (
-                          <span className="cell-details-history-hierarchy-path">
-                            {cellInfo.dimensionPath.join(' > ')}
-                          </span>
-                        ) : (
-                          <span className="cell-details-history-hierarchy-path">No hierarchy available</span>
-                        )}
-                      </div>
+                  aria-label="Show hierarchy"
+                >
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </button>
+                {isHierarchyPopoverOpen && (
+                  <div ref={popoverRef} className="cell-details-history-hierarchy-popover">
+                    <div className="cell-details-history-hierarchy-popover-nubbin"></div>
+                    <div className="cell-details-history-hierarchy-popover-content">
+                      {cellInfo.dimensionPath.length > 0 ? (
+                        <span className="cell-details-history-hierarchy-path">
+                          {cellInfo.dimensionPath.join(' > ')}
+                        </span>
+                      ) : (
+                        <span className="cell-details-history-hierarchy-path">No hierarchy available</span>
+                      )}
                     </div>
-                  )}
+                  </div>
+                )}
                 </div>
               </div>
             )}
@@ -1389,7 +1389,7 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                   </div>
                 </div>
               </div>
-          </div>
+              </div>
         ) : null}
         
         {/* Panel Footer - Note Input (only for single cell selection in History tab) */}

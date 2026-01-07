@@ -70,6 +70,24 @@ const GridRowComponent: React.FC<GridRowProps> = ({
   const savedByEnterRef = useRef<boolean>(false);
   const isMovingToNoteInputRef = useRef<boolean>(false); // Track if we're intentionally moving focus to note input
   const shiftKeyPressedRef = useRef<boolean>(false); // Track if Shift key is pressed during selection
+  
+  // Convert savedImpactedCells Set to array so React can detect changes
+  // Use state to force re-render when savedImpactedCells changes
+  const [savedImpactedCellsArray, setSavedImpactedCellsArray] = useState<string[]>([]);
+  
+  // Update array whenever savedImpactedCells Set changes
+  // Convert Set to string for dependency tracking - React will detect string changes
+  useEffect(() => {
+    if (savedImpactedCells) {
+      const newArray = Array.from(savedImpactedCells);
+      // Always update to ensure we have the latest values
+      setSavedImpactedCellsArray(newArray);
+    } else {
+      setSavedImpactedCellsArray([]);
+    }
+    // Use Set size and a string representation to detect changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedImpactedCells ? Array.from(savedImpactedCells).sort().join('|') : '']);
 
   // Track Shift key state globally to prevent popover when Shift is pressed
   useEffect(() => {
@@ -732,40 +750,70 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     // For impacted cells: only show note indicator if there's an unsaved note (new note added after impact)
     // For saved impacted cells (were impacted but now saved): don't show old notes
     // For non-impacted cells: show note indicator if there's a note in editHistory (saved notes)
-    const wasImpactedAndSaved = savedImpactedCells.has(cellKey);
+    // CRITICAL: Check savedImpactedCells FIRST - if cell was impacted and saved, NEVER show note indicator
+    // This handles the case where a cell had a note, then got impacted, then was saved
+    // Check both cellKey formats to ensure we catch it regardless of format differences
+    // IMPORTANT: savedImpactedCells is a Set<string>, check it directly and also use the memoized array
+    const cellKeyAlt = `${row.id}-${monthKey}`;
+    // Use savedImpactedCellsArray from useMemo (defined at component level) to ensure React detects changes
+    // Check if cell is in savedImpactedCells using multiple methods to be absolutely sure
+    const wasImpactedAndSaved = savedImpactedCells && (
+      savedImpactedCells.has(cellKey) || 
+      savedImpactedCells.has(cellKeyAlt) ||
+      savedImpactedCellsArray.includes(cellKey) ||
+      savedImpactedCellsArray.includes(cellKeyAlt)
+    );
+    
     // Calculate hasNote - explicitly exclude saved impacted cells
     // IMPORTANT: If cell is saved impacted, NEVER show note indicator, regardless of other conditions
     let hasNote = false;
-    if (wasImpactedAndSaved || savedImpactedCells.has(cellKey)) {
-      // Cell is saved impacted - don't show any notes
+    
+    // SCENARIO CHECK: If cell is saved impacted, it means it was impacted (not directly edited) and then saved
+    // In this case, suppress ALL notes (even if there was a note in editHistory before it got impacted)
+    if (wasImpactedAndSaved) {
+      // Cell is saved impacted - don't show any notes (even if there's a note in editHistory)
+      // This handles: cell had note -> got impacted -> saved -> triangle should NOT show
       hasNote = false;
     } else if (isImpacted) {
-      // For impacted cells: only show note if there's an unsaved note (added after impact)
+      // For currently impacted cells (not yet saved): only show note if there's an unsaved note (added after impact)
       hasNote = !!(unsavedNotes?.get(cellKey) && unsavedNotes.get(cellKey)!.trim() !== '');
     } else {
-      // For non-impacted cells: only show note if there's a note in editHistory
-      if (editHistory && editHistory.length > 0) {
-        hasNote = editHistory.some(entry => {
+      // For non-impacted cells: check editHistory for saved notes
+      // BUT: Only if cell is NOT saved impacted (double-check to be absolutely sure)
+      if (!wasImpactedAndSaved && editHistory && editHistory.length > 0) {
+        const matchingEntries = editHistory.filter(entry => {
           // Match by cellKey exactly
           if (entry.cellKey === cellKey) {
-            return !!(entry.note && entry.note.trim() !== '');
+            return true;
           }
           // Also check if rowId and timeKey match (for compatibility)
           if (entry.rowId === row.id && entry.timeKey === monthKey) {
-            return !!(entry.note && entry.note.trim() !== '');
+            return true;
           }
           return false;
+        });
+        
+        hasNote = matchingEntries.some(entry => {
+          return !!(entry.note && entry.note.trim() !== '');
         });
       }
     }
     
-    // Force hasNote to false if cell is saved impacted (safety check in renderCellValue)
-    // Also double-check savedImpactedCells directly to be absolutely sure
-    const isDefinitelySavedImpactedRender = savedImpactedCells.has(cellKey);
-    // CRITICAL: If cell is saved impacted OR currently impacted, NEVER show note indicator
-    // ROOT CAUSE FIX: Check savedImpactedCells FIRST before checking editHistory
-    // If a cell was impacted and saved, it should NEVER show old notes from editHistory
-    const finalHasNoteForRender = (wasImpactedAndSaved || isDefinitelySavedImpactedRender || isImpacted) ? false : hasNote;
+    // CRITICAL: Final check - if cell is saved impacted OR currently impacted, NEVER show note indicator
+    // This ensures that saved impacted cells (cells that had notes but then got impacted) don't show the triangle
+    // Double-check savedImpactedCells one more time to be absolutely sure
+    // IMPORTANT: Re-check savedImpactedCells here to catch any updates that might have happened
+    const isDefinitelySavedImpacted = savedImpactedCells && (
+      savedImpactedCells.has(cellKey) || 
+      savedImpactedCells.has(cellKeyAlt) ||
+      savedImpactedCellsArray.includes(cellKey) ||
+      savedImpactedCellsArray.includes(cellKeyAlt)
+    );
+    
+    // CRITICAL: If cell is saved impacted, force hasNote to false regardless of what we calculated above
+    // This is the final gate to prevent showing the triangle
+    // EXTRA SAFETY: Even if hasNote was set to true above, if cell is saved impacted, suppress it
+    const finalHasNoteForRender = (isDefinitelySavedImpacted || isImpacted) ? false : hasNote;
     
     // Check if this is a readonly measure (Last Year data)
     const isReadonlyMeasure = row.id.includes('measure-ly-order') || 
@@ -832,8 +880,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               </span>
             </div>
           </div>
-          {/* Dog ear triangle indicator for cells with notes - but not for saved impacted cells */}
-          {/* ROOT CAUSE FIX: Only show if finalHasNoteForRender is true (which already checks savedImpactedCells) */}
+          {/* Dog ear triangle indicator for cells with notes */}
+          {/* Show note indicator if cell has a note (from editHistory for saved notes, or unsavedNotes for unsaved notes) */}
           {finalHasNoteForRender && (
             <div className="cell-note-indicator"></div>
           )}
@@ -894,10 +942,6 @@ const GridRowComponent: React.FC<GridRowProps> = ({
       // Use saved icon color to determine arrow direction (orange = increase, blue = decrease)
       const isIncrease = iconColor === '#ff5d2d' || iconColor === '#FF5D2D';
       
-      // For saved edited cells, only show note if it wasn't impacted and saved
-      // (if it was impacted and saved, don't show old notes)
-      const shouldShowNote = hasNote && !wasImpactedAndSaved;
-      
       return (
         <>
           <div className="cell-value-wrapper-saved-container">
@@ -929,9 +973,9 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               )}
             </span>
           </div>
-          {/* Dog ear triangle indicator for cells with notes - but not for saved impacted cells */}
-          {/* CRITICAL: Double-check savedImpactedCells - if cell was impacted and saved, NEVER show note indicator */}
-          {finalHasNoteForRender && shouldShowNote && !savedImpactedCells.has(cellKey) && !wasImpactedAndSaved && (
+          {/* Dog ear triangle indicator for cells with notes */}
+          {/* finalHasNoteForRender already checks savedImpactedCells, so no need for redundant checks */}
+          {finalHasNoteForRender && (
             <div className="cell-note-indicator"></div>
           )}
         </>
@@ -976,9 +1020,9 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               </span>
             </div>
           </div>
-          {/* Dog ear triangle indicator - only show unsaved notes for impacted cells, not for saved impacted cells */}
-          {/* CRITICAL: Double-check savedImpactedCells - if cell was impacted and saved, NEVER show note indicator */}
-          {finalHasNoteForRender && !savedImpactedCells.has(cellKey) && !wasImpactedAndSaved && (
+          {/* Dog ear triangle indicator for cells with notes */}
+          {/* finalHasNoteForRender already checks savedImpactedCells, so no need for redundant checks */}
+          {finalHasNoteForRender && (
             <div className="cell-note-indicator"></div>
           )}
         </>
@@ -989,29 +1033,53 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     const cellValueMatchesSearch = otherTerms.length > 0 && matchesNumber(cellValue, otherTerms);
     
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-        <div className="cell-value-left-icon">
-          {isCellLocked ? (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
-              <rect x="5" y="11" width="14" height="9" rx="1" fill="#6b7280"/>
-              <path d="M9 11V7c0-1.66 1.34-3 3-3s3 1.34 3 3v4" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" fill="none"/>
-            </svg>
-          ) : (
-            <div style={{ width: '18px', height: '18px' }}></div>
-          )}
+      <>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+          <div className="cell-value-left-icon">
+            {isCellLocked ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
+                <rect x="5" y="11" width="14" height="9" rx="1" fill="#6b7280"/>
+                <path d="M9 11V7c0-1.66 1.34-3 3-3s3 1.34 3 3v4" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" fill="none"/>
+              </svg>
+            ) : (
+              <div style={{ width: '18px', height: '18px' }}></div>
+            )}
+          </div>
+          <span 
+            className={`cell-value ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
+            style={{ cursor: isEditable ? 'pointer' : 'default' }}
+            onDoubleClick={isEditable ? (e) => handleCellValueDoubleClick(monthKey, e) : undefined}
+          >
+            {cellValueMatchesSearch ? (
+              <SearchHighlight text={formatValue(cellValue, row.name?.toLowerCase().includes('quantity'))} searchTerms={otherTerms} />
+            ) : (
+              formatValue(cellValue)
+            )}
+          </span>
         </div>
-        <span 
-          className={`cell-value ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
-          style={{ cursor: isEditable ? 'pointer' : 'default' }}
-          onDoubleClick={isEditable ? (e) => handleCellValueDoubleClick(monthKey, e) : undefined}
-        >
-          {cellValueMatchesSearch ? (
-            <SearchHighlight text={formatValue(cellValue, row.name?.toLowerCase().includes('quantity'))} searchTerms={otherTerms} />
-          ) : (
-            formatValue(cellValue)
-          )}
-        </span>
-      </div>
+        {/* Dog ear triangle indicator for cells with saved notes (normal cells, not edited/impacted) */}
+        {/* CRITICAL: Double-check savedImpactedCells here to ensure triangle doesn't show for saved impacted cells */}
+        {/* Check savedImpactedCells directly at render time - convert to array fresh each time to ensure we get latest values */}
+        {(() => {
+          // Re-check savedImpactedCells at render time to catch any updates
+          const cellKeyForCheck = `${row.id}-${monthKey}`;
+          // Convert Set to array fresh each render to ensure we get the latest values
+          const currentSavedImpactedArray = savedImpactedCells ? Array.from(savedImpactedCells) : [];
+          // Check both Set and array to be absolutely sure
+          const isInSavedImpacted = (
+            (savedImpactedCells && (savedImpactedCells.has(cellKeyForCheck) || savedImpactedCells.has(cellKey))) ||
+            currentSavedImpactedArray.includes(cellKeyForCheck) ||
+            currentSavedImpactedArray.includes(cellKey) ||
+            savedImpactedCellsArray.includes(cellKeyForCheck) ||
+            savedImpactedCellsArray.includes(cellKey)
+          );
+          // If cell is saved impacted, NEVER show triangle, regardless of finalHasNoteForRender
+          if (isInSavedImpacted) {
+            return null;
+          }
+          return finalHasNoteForRender ? <div className="cell-note-indicator"></div> : null;
+        })()}
+      </>
     );
   };
 
@@ -1112,17 +1180,15 @@ const GridRowComponent: React.FC<GridRowProps> = ({
           const editedOriginalValueForNote = editedCells?.get(cellKeyForNoteCheck);
           const impactedOriginalValueForNote = impactedCells?.get(cellKeyForNoteCheck);
           const isImpactedForNote = !editedOriginalValueForNote && impactedOriginalValueForNote !== undefined;
-          // Check if cell is saved impacted - use multiple checks to be absolutely sure
-          const wasImpactedAndSavedForNote = savedImpactedCells.has(cellKeyForNoteCheck);
-          // Also check with rowId-timeKey format in case cellKey format differs
-          const wasImpactedAndSavedAlt = savedImpactedCells.has(`${row.id}-${key}`);
-          const isSavedImpacted = wasImpactedAndSavedForNote || wasImpactedAndSavedAlt;
+          // Check if cell is saved impacted - check both cell key formats to be absolutely sure
+          const isSavedImpacted = savedImpactedCells.has(cellKeyForNoteCheck) || savedImpactedCells.has(`${row.id}-${key}`);
           
           // Calculate hasNote - explicitly exclude saved impacted cells
           // IMPORTANT: If cell is saved impacted, NEVER show note indicator, regardless of other conditions
           let hasNote = false;
           if (isSavedImpacted) {
             // Cell is saved impacted - don't show any notes, period
+            // This handles: cell had note -> got impacted -> saved -> triangle should NOT show
             hasNote = false;
           } else if (isImpactedForNote) {
             // For impacted cells: only show note if there's an unsaved note (added after impact)

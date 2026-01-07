@@ -141,10 +141,10 @@
   gap: var(--spacing-2);
   background-color: #f0f0f0;
   padding-top: var(--spacing-4);
-  padding-bottom: var(--spacing-4);
+  padding-bottom: 0;
   padding-left: var(--spacing-3);
   padding-right: var(--spacing-3);
-  margin: calc(-1 * var(--spacing-3)) calc(-1 * var(--spacing-3)) var(--spacing-3) calc(-1 * var(--spacing-3));
+  margin: calc(-1 * var(--spacing-3)) calc(-1 * var(--spacing-3)) 0 calc(-1 * var(--spacing-3));
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -156,6 +156,14 @@
 
 .filters-field:not(:last-child) {
   margin-bottom: var(--spacing-2);
+}
+
+.filters-field-show-periods {
+  margin-bottom: var(--spacing-4) !important;
+}
+
+.filters-field-end-period {
+  margin-bottom: var(--spacing-4) !important;
 }
 
 .filters-field-label {
@@ -438,15 +446,15 @@
   margin-left: auto;
 }
 
-/* Panel Footer */
+/* Panel Footer - Keep for potential future use */
 .filters-panel-footer {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  min-height: 64px;
+  justify-content: center;
   padding: var(--spacing-3);
   border-top: 1px solid var(--color-border);
   flex-shrink: 0;
+  background-color: var(--color-surface-white);
 }
 
 .filters-footer-buttons {
@@ -574,5 +582,77 @@
 
 .filters-date-input::-webkit-calendar-picker-indicator:hover {
   opacity: 1;
+}
+
+/* AND Logic Info */
+.filters-and-logic-info {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  padding: var(--spacing-2) var(--spacing-3);
+  margin-top: 0;
+  background-color: #F3F2F2;
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-xs);
+  color: var(--color-on-surface-2);
+}
+
+.filters-info-icon {
+  flex-shrink: 0;
+}
+
+.filters-and-logic-text {
+  line-height: 1.4;
+}
+
+/* Cancel and Apply Buttons Header */
+.filters-apply-actions-header {
+  display: flex;
+  gap: var(--spacing-4);
+  width: 100%;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: var(--spacing-2) 0;
+  margin: 0;
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.filters-cancel-button,
+.filters-apply-button {
+  flex: 0 1 auto;
+  min-width: 80px;
+  max-width: 120px;
+  padding: var(--spacing-2) var(--spacing-4);
+  height: 36px;
+  border-radius: 20px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.filters-cancel-button {
+  background-color: var(--color-surface-white) !important;
+  color: #0050D9 !important;
+  border: 1px solid #0050D9 !important;
+}
+
+.filters-cancel-button:hover {
+  background-color: #F0F7FF !important;
+}
+
+.filters-apply-button {
+  background-color: #0050D9 !important;
+  color: white !important;
+  border: 1px solid #0050D9 !important;
+}
+
+.filters-apply-button:hover {
+  background-color: #0040B3 !important;
+  border-color: #0040B3 !important;
 }
 

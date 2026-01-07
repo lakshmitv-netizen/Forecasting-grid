@@ -1082,6 +1082,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
         // Always call callback if we have a note OR a delta change
         if (delta === 0 && hasNote) {
           // Note-only entry (no value change) - ensure note is passed
+          // CRITICAL: Always include oldValue and newValue even if they're the same
           callbackToCall({
             cellKey,
             rowId,
@@ -1604,26 +1605,42 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
         if (lockedCells.has(key)) {
           return;
         }
-        // Only add if not already tracked as edited (edited cells take precedence)
-        if (!editedCells.has(key)) {
-          // If already exists, keep the original value (first edit's original)
-          if (!newMap.has(key)) {
-            newMap.set(key, value);
-            console.log('[GRID] Adding impacted cell:', key, 'original value:', value);
-          } else {
-            console.log('[GRID] Impacted cell already exists, keeping original:', key);
-          }
-          
-          // If this cell was previously saved edited (has arrow), remove it from savedEditedCells
-          // so it shows as impacted instead of showing the old arrow
-          if (savedEditedCells.has(key)) {
-            setSavedEditedCells(prevSaved => {
-              const newSavedMap = new Map(prevSaved);
-              newSavedMap.delete(key);
-              console.log('[GRID] Removed cell from savedEditedCells (now impacted):', key);
-              return newSavedMap;
-            });
-          }
+        // CRITICAL FIX: If cell was previously edited (had a note), remove it from editedCells
+        // and add it to impactedCells instead. This ensures that when saved, it goes to savedImpactedCells
+        // and the triangle indicator is suppressed (as per user requirement: "if a cell had a note and then it got impacted, then after save the triangle should not exist")
+        if (editedCells.has(key)) {
+          // Remove from editedCells - this cell is now impacted, not directly edited
+          setEditedCells(prevEdited => {
+            const newEditedMap = new Map(prevEdited);
+            newEditedMap.delete(key);
+            console.log('[GRID] Removed cell from editedCells (now impacted):', key);
+            return newEditedMap;
+          });
+          // Also remove from unsavedNotes if present (impacted cells don't show old notes)
+          setUnsavedNotes(prevNotes => {
+            const newNotesMap = new Map(prevNotes);
+            newNotesMap.delete(key);
+            return newNotesMap;
+          });
+        }
+        // Add to impactedCells (even if it was previously edited)
+        // If already exists, keep the original value (first edit's original)
+        if (!newMap.has(key)) {
+          newMap.set(key, value);
+          console.log('[GRID] Adding impacted cell:', key, 'original value:', value);
+        } else {
+          console.log('[GRID] Impacted cell already exists, keeping original:', key);
+        }
+        
+        // If this cell was previously saved edited (has arrow), remove it from savedEditedCells
+        // so it shows as impacted instead of showing the old arrow
+        if (savedEditedCells.has(key)) {
+          setSavedEditedCells(prevSaved => {
+            const newSavedMap = new Map(prevSaved);
+            newSavedMap.delete(key);
+            console.log('[GRID] Removed cell from savedEditedCells (now impacted):', key);
+            return newSavedMap;
+          });
         }
       });
       console.log('[GRID] Total impacted cells after update:', newMap.size);
@@ -2427,19 +2444,21 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       const newSet = new Set(prev);
       impactedCellKeys.forEach(key => {
         // Only add if it wasn't directly edited (directly edited cells go to savedEditedCells)
+        // CRITICAL: This includes cells that had notes but then got impacted
+        // When a cell with a saved note gets impacted, it's removed from editedCells and added to impactedCells
+        // So on save, it should be added to savedImpactedCells to suppress the old note indicator
         if (!editedCells.has(key)) {
           newSet.add(key);
-          console.log('[SAVE] Adding to savedImpactedCells:', key);
-        } else {
-          console.log('[SAVE] Skipping savedImpactedCells (was directly edited):', key);
         }
       });
-      console.log('[SAVE] Total saved impacted cells:', newSet.size);
+      // CRITICAL: Always create a new Set reference to ensure React detects the change
+      // Even if no new cells are added, create a new Set to trigger re-render
+      const finalSet = new Set(newSet);
       // Notify parent of saved impacted cells
       if (onSavedImpactedCellsReady) {
-        onSavedImpactedCellsReady(newSet);
+        onSavedImpactedCellsReady(finalSet);
       }
-      return newSet;
+      return finalSet;
     });
     
     // Clear impacted cells (they're now saved)

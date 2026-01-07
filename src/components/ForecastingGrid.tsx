@@ -26,6 +26,8 @@ const ForecastingGrid: React.FC = () => {
   const [selectedMeasureSubgroup, setSelectedMeasureSubgroup] = useState<string>('Revenue and Quantity Measures');
   const [selectedLayoutState, setSelectedLayoutState] = useState<string>('Measures / Dimensions x Time');
   const [data, setData] = useState<MeasureData[]>(mockData);
+  // Store original/unfiltered data separately so filters always work on base data
+  const [originalData, setOriginalData] = useState<MeasureData[]>(mockData);
   const [visibleMeasureIds, setVisibleMeasureIds] = useState<Set<string>>(new Set());
   
   // Store focused cell for each layout
@@ -775,13 +777,15 @@ const ForecastingGrid: React.FC = () => {
       if (existingDraft) {
         // Update existing draft - merge value and note changes
         // Keep the original oldValue from first edit, update newValue and note
-        newMap.set(entry.cellKey, {
+        // CRITICAL: For note-only entries, preserve the note even if oldValue === newValue
+        const updatedDraft = {
           ...existingDraft,
           oldValue: existingDraft.oldValue ?? entry.oldValue,
           newValue: entry.newValue ?? existingDraft.newValue,
           note: entry.note !== undefined ? (entry.note.trim() || undefined) : existingDraft.note,
           timestamp: new Date(), // Update timestamp to latest edit
-        });
+        };
+        newMap.set(entry.cellKey, updatedDraft);
       } else {
         // Create new draft entry
         const newDraft: CellEditHistoryEntry = {
@@ -982,13 +986,24 @@ const ForecastingGrid: React.FC = () => {
   }, [data, addDraftEditHistory, handleClearSelection, selectedLayoutState]);
 
   // Function to commit drafts to saved edit history (called on Save)
+  // CRITICAL: Use functional updates to avoid stale closures and ensure correct order
   const commitDraftsToHistory = useCallback(() => {
-    const draftsArray = Array.from(draftEditHistory.values());
-    if (draftsArray.length > 0) {
-      setEditHistory(prev => [...draftsArray, ...prev]);
-      setDraftEditHistory(new Map()); // Clear drafts after committing
-    }
-  }, [draftEditHistory]);
+    setDraftEditHistory(prevDrafts => {
+      const draftsArray = Array.from(prevDrafts.values());
+      if (draftsArray.length > 0) {
+        // CRITICAL: Preserve ALL entries including note-only entries (oldValue === newValue but has note)
+        // Update editHistory first, then clear drafts
+        setEditHistory(prevHistory => {
+          const newHistory = [...draftsArray, ...prevHistory];
+          // Force a re-render by returning a new array reference
+          return newHistory;
+        });
+        // Return empty map to clear drafts - this happens after editHistory update
+        return new Map();
+      }
+      return prevDrafts; // No change if no drafts
+    });
+  }, []);
 
   // Function to clear draft edits (called on Cancel)
   const clearDrafts = useCallback(() => {
@@ -1224,12 +1239,14 @@ const ForecastingGrid: React.FC = () => {
   // Update data when measure subgroup changes
   useEffect(() => {
     if (selectedMeasureSubgroup === 'Adjustment Measures') {
+      setOriginalData(adjustmentMeasuresData);
       setData(adjustmentMeasuresData);
       // Initialize all measures as visible
       setVisibleMeasureIds(new Set(adjustmentMeasuresData.map(m => m.id)));
     } else {
       // Always apply initial edit history to mockData for Revenue and Quantity Measures
       const dataWithHistory = applyInitialEditHistoryToData(mockData);
+      setOriginalData(dataWithHistory);
       setData(dataWithHistory);
       // Initialize all measures as visible
       setVisibleMeasureIds(new Set(mockData.map(m => m.id)));
@@ -1880,13 +1897,16 @@ const ForecastingGrid: React.FC = () => {
           onMeasureSubgroupChange={setSelectedMeasureSubgroup}
           selectedDimensionLevels={selectedDimensionLevels}
           onDimensionLevelsChange={handleDimensionLevelsChange}
-          data={data}
+          data={originalData}
           showAllPeriods={showAllPeriods}
           onShowAllPeriodsChange={setShowAllPeriods}
           startPeriod={startPeriod}
           onStartPeriodChange={setStartPeriod}
           endPeriod={endPeriod}
           onEndPeriodChange={setEndPeriod}
+          onApplyFilters={(filteredData) => {
+            setData(filteredData);
+          }}
         />
         <CellDetailsHistoryPanel 
           key={panelKey}

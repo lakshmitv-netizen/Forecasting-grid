@@ -16,16 +16,6 @@
 
 ---
 
-## Table of Contents
-
-1. [Pre-Testing Setup](#pre-testing-setup)
-2. [Test Tasks](#test-tasks)
-3. [Experience Rating Questions](#experience-rating-questions)
-4. [Post-Testing Questionnaire](#post-testing-questionnaire)
-5. [Success Criteria](#success-criteria)
-
----
-
 ## Pre-Testing Setup
 
 ### Environment Preparation
