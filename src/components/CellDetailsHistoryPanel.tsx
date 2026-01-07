@@ -844,7 +844,7 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
             {/* Contextual Header with Filter */}
             <div className="cell-details-history-context-header">
               {selectedCells.size === 0 ? (
-                <span className="cell-details-history-context-text">Recent changes across all cells</span>
+                <span className="cell-details-history-context-text">Complete cell edit history</span>
               ) : (
                 <span className="cell-details-history-context-text">Changes in {selectedCells.size} selected cells</span>
               )}
