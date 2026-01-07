@@ -41,6 +41,9 @@ const ForecastingGrid: React.FC = () => {
   const [lastSelectedCell, setLastSelectedCell] = useState<string | null>(null);
   // Ref to track selectedCells for synchronous access
   const selectedCellsRef = useRef<Set<string>>(new Set());
+  // Track selection order for mass update (preserve order) - use state so it triggers re-renders
+  const [selectedCellsOrder, setSelectedCellsOrder] = useState<string[]>([]);
+  const selectedCellsOrderRef = useRef<string[]>([]);
   
   // Track which cell is currently being edited globally
   const [editingCellKey, setEditingCellKey] = useState<string | null>(null);
@@ -57,6 +60,11 @@ const ForecastingGrid: React.FC = () => {
   useEffect(() => {
     savedImpactedCellsRef.current = savedImpactedCells;
   }, [savedImpactedCells]);
+  
+  // ROOT CAUSE FIX: Keep ref in sync with state for selectedCellsOrder
+  useEffect(() => {
+    selectedCellsOrderRef.current = selectedCellsOrder;
+  }, [selectedCellsOrder]);
   
   // Handler for cell selection
   const handleCellSelect = useCallback((cellKey: string, event: React.MouseEvent) => {
@@ -76,37 +84,67 @@ const ForecastingGrid: React.FC = () => {
       // Clear selection and select only the new cell in one operation
       setSelectedCells(new Set([cellKey]));
       setLastSelectedCell(cellKey);
+      selectedCellsOrderRef.current = [cellKey];
+      setSelectedCellsOrder([cellKey]);
       return; // Early return to prevent double-processing
     }
     
+    // ROOT CAUSE FIX: Read current order from ref (always synced via useEffect)
+    // This ensures we always have the latest order value
+    const currentOrder = selectedCellsOrderRef.current;
+    let newOrder: string[] = [];
+    
     setSelectedCells(prev => {
       const newSelection = new Set<string>();
+      newOrder = []; // Reset for this selection
       
       if (isCtrlOrCmd) {
         // Toggle selection - keep previous selection and toggle this cell
         prev.forEach(cell => newSelection.add(cell));
+        // Preserve order from ref - only include cells that are still selected
+        currentOrder.forEach(cell => {
+          if (newSelection.has(cell)) {
+            newOrder.push(cell);
+          }
+        });
         if (prev.has(cellKey)) {
           newSelection.delete(cellKey);
+          // Remove from order
+          const index = newOrder.indexOf(cellKey);
+          if (index > -1) newOrder.splice(index, 1);
         } else {
           newSelection.add(cellKey);
+          // Add to end of order
+          newOrder.push(cellKey);
         }
         setLastSelectedCell(cellKey);
       } else if (isShift) {
         // Shift key pressed - range selection
         if (lastSelectedCell && lastSelectedCell !== cellKey) {
-          // Range selection - keep previous selection and add range from lastSelectedCell to cellKey
           // First, keep all previously selected cells
           prev.forEach(cell => newSelection.add(cell));
-          // Then add the range endpoints
+          // Preserve order from ref - only include cells that are still selected
+          currentOrder.forEach(cell => {
+            if (newSelection.has(cell)) {
+              newOrder.push(cell);
+            }
+          });
+          // Add range endpoints in order: lastSelectedCell first, then cellKey
+          // Only add if not already in order
+          if (!newOrder.includes(lastSelectedCell)) {
+            newOrder.push(lastSelectedCell);
+          }
+          if (!newOrder.includes(cellKey)) {
+            newOrder.push(cellKey);
+          }
           newSelection.add(cellKey);
           newSelection.add(lastSelectedCell);
-          // Add all cells in between (simplified - would need grid structure knowledge)
-          // For now, just select the two endpoints
           setLastSelectedCell(cellKey);
         } else {
           // Shift clicked but no lastSelectedCell or same cell - treat as single selection and set it for next Shift click
           newSelection.clear();
           newSelection.add(cellKey);
+          newOrder.push(cellKey);
           setLastSelectedCell(cellKey);
         }
       } else {
@@ -115,17 +153,30 @@ const ForecastingGrid: React.FC = () => {
         // This ensures that when clicking a cell while another is editing, we clear the old selection
         newSelection.clear();
         newSelection.add(cellKey);
+        newOrder.push(cellKey);
         setLastSelectedCell(cellKey);
       }
       
+      console.log('[handleCellSelect] New order calculated:', newOrder);
+      console.log('[handleCellSelect] Cell key:', cellKey);
+      console.log('[handleCellSelect] Is Ctrl/Cmd:', isCtrlOrCmd);
+      console.log('[handleCellSelect] Previous order (from ref):', currentOrder);
+      
       return newSelection;
     });
+    
+    // ROOT CAUSE FIX: Update ref and state AFTER setSelectedCells completes
+    // This ensures both are updated atomically with the correct order
+    selectedCellsOrderRef.current = newOrder;
+    setSelectedCellsOrder(newOrder);
   }, [lastSelectedCell, editingCellKey]);
   
   // Clear selection handler
   const handleClearSelection = useCallback(() => {
     setSelectedCells(new Set());
     setLastSelectedCell(null);
+    selectedCellsOrderRef.current = [];
+    setSelectedCellsOrder([]);
   }, []);
   
   // Clear selection when clicking outside the grid
@@ -757,6 +808,17 @@ const ForecastingGrid: React.FC = () => {
   const handleMassUpdate = useCallback((cellKeys: string[], rule: string, valueStr: string, note?: string) => {
     if (cellKeys.length === 0) return;
     
+    // ROOT CAUSE FIX: Remove duplicates while preserving order
+    // This ensures each cell is only updated once, in the correct order
+    const seen = new Set<string>();
+    const finalOrderedKeys: string[] = [];
+    for (const key of cellKeys) {
+      if (!seen.has(key)) {
+        seen.add(key);
+        finalOrderedKeys.push(key);
+      }
+    }
+    
     // Parse value - support percentage (e.g., "20%") or absolute number
     const isPercentage = valueStr.trim().endsWith('%');
     const numericValue = parseFloat(valueStr.replace('%', '').trim());
@@ -766,14 +828,19 @@ const ForecastingGrid: React.FC = () => {
       return;
     }
     
-    console.log('[MassUpdate] Starting update for', cellKeys.length, 'cells, rule:', rule, 'value:', numericValue, isPercentage ? '%' : '');
+    console.log('[MassUpdate] Starting update for', finalOrderedKeys.length, 'cells, rule:', rule, 'value:', numericValue, isPercentage ? '%' : '');
+    console.log('[MassUpdate] FINAL ordered cell keys (deduplicated, preserving order):', finalOrderedKeys);
+    console.log('[MassUpdate] Input cellKeys (before deduplication):', cellKeys);
     
     // Use the grid's handler directly - it handles edited cells, impacted cells, and propagation
     if (cellChangeHandlerRef.current && getCurrentCellValueRef.current && selectedLayoutState === 'Measures / Dimensions x Time') {
       // Process each cell sequentially to ensure each reads the latest state after previous updates
       const processUpdates = async () => {
-        for (let i = 0; i < cellKeys.length; i++) {
-          const cellKey = cellKeys[i];
+        console.log('[MassUpdate] Processing cells in order:', finalOrderedKeys);
+        console.log('[MassUpdate] Total cells to process:', finalOrderedKeys.length);
+        for (let i = 0; i < finalOrderedKeys.length; i++) {
+          const cellKey = finalOrderedKeys[i];
+          console.log(`[MassUpdate] Processing cell ${i + 1}/${finalOrderedKeys.length}:`, cellKey);
           
           // Parse cellKey: format is `${rowId}-${monthKey}` where rowId can contain dashes
           // monthKey is always the last part (e.g., 'feb2026', 'jan2026', 'year', 'q1', etc.)
@@ -825,6 +892,8 @@ const ForecastingGrid: React.FC = () => {
           // Round to nearest integer
           newValue = Math.round(newValue);
           
+          console.log(`[MassUpdate] Updating cell ${cellKey}: ${currentValue} -> ${newValue}`);
+          
           // Call the grid's handler - it will:
           // 1. Mark cell as edited
           // 2. Mark impacted cells
@@ -838,16 +907,25 @@ const ForecastingGrid: React.FC = () => {
             await new Promise(resolve => setTimeout(resolve, 100));
           }
         }
+        console.log('[MassUpdate] Finished processing all cells');
       };
       
       // Start processing updates (don't await - let it run in background)
       processUpdates();
     } else {
       // Fallback: Update data directly for other layouts
+      // Use selection order if available
+      const orderedCellKeys = selectedCellsOrderRef.current.length > 0 
+        ? selectedCellsOrderRef.current.filter(key => cellKeys.includes(key))
+        : cellKeys;
+      
+      // IMPORTANT: Use the order from cellKeys directly (it's already ordered from selectedCellsOrder)
+      const finalOrderedKeys = cellKeys;
+      
       setData(prevData => {
         const updatedData = JSON.parse(JSON.stringify(prevData)) as MeasureData[];
         
-        cellKeys.forEach(cellKey => {
+        finalOrderedKeys.forEach(cellKey => {
           // Parse cellKey: format is `${rowId}-${monthKey}` where rowId can contain dashes
           const parts = cellKey.split('-');
           if (parts.length < 2) return;
@@ -986,14 +1064,6 @@ const ForecastingGrid: React.FC = () => {
       return;
     }
     
-    // If cell is impacted, don't show old edit history popover - impacted cells show their own state
-    // Also don't show popover for cells that were impacted but are now saved (no direct change in current session)
-    if (isImpacted) {
-      console.log('[handleCellFocusWithHistory] Cell is impacted, closing popover:', cellKey);
-      setEditInfoPopover(null);
-      return;
-    }
-    
     // Check if this cell was impacted but is now saved (shouldn't show popover)
     // These cells were impacted in a previous session but are now saved, so they shouldn't show old popovers
     // Use ref for synchronous access to latest value
@@ -1003,10 +1073,22 @@ const ForecastingGrid: React.FC = () => {
       return;
     }
     
+    // If cell is impacted, don't show old edit history popover - impacted cells show their own state
+    // IMPORTANT: If a cell has edit history but becomes impacted, hide the old indicators
+    if (isImpacted) {
+      console.log('[handleCellFocusWithHistory] Cell is impacted, closing popover:', cellKey);
+      setEditInfoPopover(null);
+      return;
+    }
+    
     // Check draft first (most recent), then saved history
-    const draftEntry = draftEditHistory.get(cellKey);
+    // Check all draft entries (they use unique IDs as keys)
+    const draftEntries = Array.from(draftEditHistory.values()).filter(entry => entry.cellKey === cellKey);
     const savedEntry = editHistory.find(entry => entry.cellKey === cellKey);
-    const latestEntry = draftEntry || savedEntry;
+    const latestEntry = draftEntries.length > 0 ? draftEntries[0] : savedEntry;
+    
+    // IMPORTANT: If cell is impacted, don't show popover even if it has edit history
+    // Impacted cells should not show old edit history indicators
     
     // Show popover if there's edit history OR if cell is locked
     // But don't show if cell was impacted and saved (no direct change in current session)
@@ -1328,6 +1410,8 @@ const ForecastingGrid: React.FC = () => {
     setSelectedCells(newSet);
     selectedCellsRef.current = newSet;
     setLastSelectedCell(cellKey);
+    selectedCellsOrderRef.current = [cellKey];
+    setSelectedCellsOrder([cellKey]);
   }, []);
 
   // Close popover on outside click and scroll
@@ -1657,6 +1741,8 @@ const ForecastingGrid: React.FC = () => {
                 if (selectedCellsRef.current.size <= 1) {
                   setSelectedCells(new Set([cellKey]));
                   selectedCellsRef.current = new Set([cellKey]);
+                  selectedCellsOrderRef.current = [cellKey];
+                  setSelectedCellsOrder([cellKey]);
                 }
               }
             }}
@@ -1687,6 +1773,8 @@ const ForecastingGrid: React.FC = () => {
                 if (selectedCellsRef.current.size <= 1) {
                   setSelectedCells(new Set([cellKey]));
                   selectedCellsRef.current = new Set([cellKey]);
+                  selectedCellsOrderRef.current = [cellKey];
+                  setSelectedCellsOrder([cellKey]);
                 }
               }
             }}
@@ -1717,6 +1805,8 @@ const ForecastingGrid: React.FC = () => {
                 if (selectedCellsRef.current.size <= 1) {
                   setSelectedCells(new Set([cellKey]));
                   selectedCellsRef.current = new Set([cellKey]);
+                  selectedCellsOrderRef.current = [cellKey];
+                  setSelectedCellsOrder([cellKey]);
                 }
               }
             }}
@@ -1826,6 +1916,8 @@ const ForecastingGrid: React.FC = () => {
           isCellLocked={isCellLocked}
           getCellValue={getCellValue}
           onSelectSingleCell={handleSelectSingleCell}
+          selectedCellsOrder={selectedCellsOrder}
+          getSelectedCellsOrder={() => selectedCellsOrderRef.current}
         />
         
         {/* Cell Edit Info Popover - shown when a cell with edit history is focused */}

@@ -1117,6 +1117,22 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
         }
         return newMap;
       });
+      
+      // ROOT CAUSE FIX: If a cell was saved impacted but is now being edited again,
+      // remove it from savedImpactedCells because it's now directly edited
+      // This ensures old note indicators don't show for cells that are being edited again
+      if (savedImpactedCells.has(cellKey)) {
+        setSavedImpactedCells(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(cellKey);
+          console.log('[GRID] Removed cell from savedImpactedCells (now directly edited):', cellKey);
+          // Notify parent
+          if (onSavedImpactedCellsReady) {
+            onSavedImpactedCellsReady(newSet);
+          }
+          return newSet;
+        });
+      }
     } else {
       // If delta is 0 and no note, ensure cell is not in editedCells
       setEditedCells(prev => {

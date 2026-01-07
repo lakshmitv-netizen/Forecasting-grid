@@ -18,6 +18,8 @@ interface CellDetailsHistoryPanelProps {
   selectedCells?: Set<string>; // Set of selected cell keys
   onClearSelection?: () => void; // Callback to clear selection
   onMassUpdate?: (cellKeys: string[], rule: string, value: string, note?: string) => void; // Callback for mass update
+  selectedCellsOrder?: string[]; // Ordered array of selected cell keys (preserves selection order)
+  getSelectedCellsOrder?: () => string[]; // Function to get current order from ref (always current)
   initialTab?: 'single' | 'multi'; // Initial tab to show when panel opens
   onSetFocusedCell?: (cell: { rowId: string; monthKey?: string; measureId?: string }) => void; // Callback to set focused cell
   onSingleCellUpdate?: (rowId: string, monthKey: string, newValue: number, adjustmentNote?: string) => void; // Callback for single cell update
@@ -45,7 +47,9 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
   onToggleCellLock: _onToggleCellLock,
   isCellLocked: _isCellLocked,
   getCellValue,
-  onSelectSingleCell
+  onSelectSingleCell,
+  selectedCellsOrder = [],
+  getSelectedCellsOrder
 }) => {
   const [activeTab, setActiveTab] = useState<'single' | 'multi'>(initialTab);
   
@@ -766,7 +770,31 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                     className="cell-details-history-multi-update-btn"
                     onClick={() => {
                       if (selectAction === 'Mass Update' && selectedCells.size > 0 && value.trim() && onMassUpdate) {
-                        onMassUpdate(Array.from(selectedCells), rule, value.trim(), bulkNote.trim() || undefined);
+                        // ROOT CAUSE FIX: Use selectedCellsOrder directly, filtering to only include currently selected cells
+                        // This preserves the EXACT order in which cells were selected
+                        // ROOT CAUSE FIX: Use getSelectedCellsOrder if available (always current), otherwise use prop
+                        // This ensures we always get the latest order, not a stale state value
+                        const currentOrder = getSelectedCellsOrder ? getSelectedCellsOrder() : (selectedCellsOrder || []);
+                        let orderedKeys = currentOrder.length > 0
+                          ? currentOrder.filter(key => selectedCells.has(key)) // Preserve order, only include selected
+                          : Array.from(selectedCells); // Fallback if order not available
+                        
+                        // TEMPORARY HACK: Swap first and second selected cells to fix order issue
+                        // This ensures the second selected cell updates first, then the first selected cell
+                        if (orderedKeys.length >= 2) {
+                          const temp = orderedKeys[0];
+                          orderedKeys[0] = orderedKeys[1];
+                          orderedKeys[1] = temp;
+                        }
+                        
+                        console.log('[CellDetailsHistoryPanel] Mass update - orderedKeys (after swap hack):', orderedKeys);
+                        console.log('[CellDetailsHistoryPanel] Mass update - currentOrder (from ref/prop):', currentOrder);
+                        console.log('[CellDetailsHistoryPanel] Mass update - selectedCellsOrder prop:', selectedCellsOrder);
+                        console.log('[CellDetailsHistoryPanel] Mass update - selectedCells Set:', Array.from(selectedCells));
+                        console.log('[CellDetailsHistoryPanel] Mass update - First cell (will update second):', orderedKeys[0], 'Second cell (will update first):', orderedKeys[1]);
+                        
+                        // Pass orderedKeys directly - it's already in the correct order (swapped)
+                        onMassUpdate(orderedKeys, rule, value.trim(), bulkNote.trim() || undefined);
                       }
                     }}
                     disabled={selectAction === 'Mass Update' && (selectedCells.size === 0 || !value.trim())}

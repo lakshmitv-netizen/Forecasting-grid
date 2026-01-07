@@ -725,6 +725,9 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     // Check if impacted (changed due to editing another cell) - if in map, consider it impacted
     const isImpacted = !isDirectlyEdited && impactedOriginalValue !== undefined;
     
+    // IMPORTANT: If a cell is impacted, it should NOT show old edit history indicators (arrow and note triangle)
+    // Even if it has edit history from editHistory prop, impacted cells take precedence
+    
     // Check if this cell has a note
     // For impacted cells: only show note indicator if there's an unsaved note (new note added after impact)
     // For saved impacted cells (were impacted but now saved): don't show old notes
@@ -759,7 +762,10 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     // Force hasNote to false if cell is saved impacted (safety check in renderCellValue)
     // Also double-check savedImpactedCells directly to be absolutely sure
     const isDefinitelySavedImpactedRender = savedImpactedCells.has(cellKey);
-    const finalHasNoteForRender = (wasImpactedAndSaved || isDefinitelySavedImpactedRender) ? false : hasNote;
+    // CRITICAL: If cell is saved impacted OR currently impacted, NEVER show note indicator
+    // ROOT CAUSE FIX: Check savedImpactedCells FIRST before checking editHistory
+    // If a cell was impacted and saved, it should NEVER show old notes from editHistory
+    const finalHasNoteForRender = (wasImpactedAndSaved || isDefinitelySavedImpactedRender || isImpacted) ? false : hasNote;
     
     // Check if this is a readonly measure (Last Year data)
     const isReadonlyMeasure = row.id.includes('measure-ly-order') || 
@@ -827,7 +833,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
             </div>
           </div>
           {/* Dog ear triangle indicator for cells with notes - but not for saved impacted cells */}
-          {finalHasNoteForRender && !savedImpactedCells.has(cellKey) && (
+          {/* ROOT CAUSE FIX: Only show if finalHasNoteForRender is true (which already checks savedImpactedCells) */}
+          {finalHasNoteForRender && (
             <div className="cell-note-indicator"></div>
           )}
         </>
@@ -878,8 +885,11 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     
     // Saved edited cell: show only icon, no badge, normal value positioning
     // Only show if NOT impacted (impacted cells take precedence)
+    // IMPORTANT: If a cell is impacted, it should NOT show old edit history indicators (arrow and note triangle)
+    // Even if it has edit history from editHistory prop, impacted cells should not show old indicators
     // Also check if this cell was impacted and saved - if so, don't show old notes
-    if (isSavedEdited && !isImpacted) {
+    // CRITICAL: Check isImpacted FIRST - if impacted, never show old indicators
+    if (isSavedEdited && !isImpacted && !wasImpactedAndSaved) {
       const iconColor = savedIconColor || '#2E76E1'; // Use stored color or default blue
       // Use saved icon color to determine arrow direction (orange = increase, blue = decrease)
       const isIncrease = iconColor === '#ff5d2d' || iconColor === '#FF5D2D';
@@ -920,7 +930,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
             </span>
           </div>
           {/* Dog ear triangle indicator for cells with notes - but not for saved impacted cells */}
-          {finalHasNoteForRender && shouldShowNote && !savedImpactedCells.has(cellKey) && (
+          {/* CRITICAL: Double-check savedImpactedCells - if cell was impacted and saved, NEVER show note indicator */}
+          {finalHasNoteForRender && shouldShowNote && !savedImpactedCells.has(cellKey) && !wasImpactedAndSaved && (
             <div className="cell-note-indicator"></div>
           )}
         </>
@@ -966,7 +977,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
             </div>
           </div>
           {/* Dog ear triangle indicator - only show unsaved notes for impacted cells, not for saved impacted cells */}
-          {finalHasNoteForRender && !savedImpactedCells.has(cellKey) && (
+          {/* CRITICAL: Double-check savedImpactedCells - if cell was impacted and saved, NEVER show note indicator */}
+          {finalHasNoteForRender && !savedImpactedCells.has(cellKey) && !wasImpactedAndSaved && (
             <div className="cell-note-indicator"></div>
           )}
         </>
@@ -1221,6 +1233,28 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                     onCellSelect(cellKey, e);
                   }
                 }
+                // Also trigger popover on click (not just focus) for cells with indicators
+                // This ensures popover shows even if focus doesn't fire
+                // Only show popover if cell has edit history (check editHistory prop)
+                if (onCellFocusWithHistory && (isEditable || isCellLocked) && !editingCell && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+                  const focusCellKey = `${row.id}-${key}`;
+                  const isDirty = editedCells?.has(focusCellKey) && !savedEditedCells?.has(focusCellKey);
+                  const isImpactedCell = impactedCells?.has(focusCellKey);
+                  const wasImpactedAndSaved = savedImpactedCells.has(focusCellKey);
+                  
+                  // Check if cell has edit history before showing popover
+                  const hasEditHistory = editHistory && editHistory.some(entry => 
+                    entry.cellKey === focusCellKey || (entry.rowId === row.id && entry.timeKey === key)
+                  );
+                  
+                  // Only show popover if cell has edit history AND is not impacted/saved impacted
+                  if (hasEditHistory && (!isDirty || isCellLocked) && !isImpactedCell && !wasImpactedAndSaved) {
+                    const cellElement = e.currentTarget;
+                    const cellRect = cellElement.getBoundingClientRect();
+                    const cellValue = row.values[key];
+                    onCellFocusWithHistory(focusCellKey, cellRect, cellValue, isCellLocked, isImpactedCell || wasImpactedAndSaved);
+                  }
+                }
               }}
               onDoubleClick={(e) => {
                 // Don't enter edit mode if Shift key is pressed - just select the cell
@@ -1281,12 +1315,12 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 }
               }}
             >
-              {renderCellValue(key)}
-              {/* Dog ear triangle indicator for cells with notes - but not for saved impacted cells */}
-              {/* Force check: don't show if saved impacted - check savedImpactedCells directly with multiple formats */}
-              {!isSavedImpacted && !savedImpactedCells.has(cellKeyForNoteCheck) && !savedImpactedCells.has(`${row.id}-${key}`) && finalHasNote && (
-                <div className="cell-note-indicator"></div>
-              )}
+              {(() => {
+                // ROOT CAUSE FIX: renderCellValue already handles note indicators internally
+                // It checks savedImpactedCells and impactedCells correctly
+                // We should NOT add note indicators here - let renderCellValue handle everything
+                return renderCellValue(key);
+              })()}
             </td>
           );
         })}
