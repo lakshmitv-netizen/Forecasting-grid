@@ -1140,7 +1140,7 @@ const ForecastingGrid: React.FC = () => {
       cellValue: cellValue ?? 0,
       isLocked: isLocked || false,
       position: {
-        top: cellRect.bottom + window.scrollY + 8,
+        top: cellRect.bottom + window.scrollY + 2,
         left: leftPos
       }
     });
@@ -1151,17 +1151,6 @@ const ForecastingGrid: React.FC = () => {
     setEditInfoPopover(null);
   }, []);
 
-  // Open edit history panel from popover
-  const handleViewEditHistory = useCallback(() => {
-    setEditInfoPopover(null);
-    // Switch to single cell tab when opening from popover
-    // Force panel remount by changing key to ensure tab switches
-    setCellDetailsInitialTab('single');
-    setPanelKey(prev => prev + 1); // Change key to force remount
-    setIsCellDetailsHistoryOpen(true);
-    setIsSettingsOpen(false);
-    setIsFiltersOpen(false);
-  }, []);
   
   // Debug: Log when editHistory changes
   useEffect(() => {
@@ -1350,6 +1339,10 @@ const ForecastingGrid: React.FC = () => {
           newSet.delete(contextMenu.cellKey);
         } else {
           newSet.add(contextMenu.cellKey);
+          // Close side panels when locking a cell
+          setIsCellDetailsHistoryOpen(false);
+          setIsSettingsOpen(false);
+          setIsFiltersOpen(false);
         }
         return newSet;
       });
@@ -1388,6 +1381,10 @@ const ForecastingGrid: React.FC = () => {
         newSet.delete(cellKey);
       } else {
         newSet.add(cellKey);
+        // Close side panels when locking a cell
+        setIsCellDetailsHistoryOpen(false);
+        setIsSettingsOpen(false);
+        setIsFiltersOpen(false);
       }
       return newSet;
     });
@@ -1426,6 +1423,44 @@ const ForecastingGrid: React.FC = () => {
     setSelectedCellsOrder([cellKey]);
   }, []);
 
+  // Open edit history panel from popover
+  const handleViewEditHistory = useCallback((cellKey?: string) => {
+    // If cellKey is provided, use it; otherwise get it from editInfoPopover state
+    const targetCellKey = cellKey || editInfoPopover?.cellKey;
+    if (!targetCellKey || !editInfoPopover?.entry) return;
+    
+    // Select the specific cell whose history we want to view
+    handleSelectSingleCell(targetCellKey);
+    
+    // Set focusedCell so the panel can filter history correctly
+    // Use the entry's rowId, timeKey, and measureId to construct focusedCell
+    const entry = editInfoPopover.entry;
+    if (selectedLayoutState === 'Dimensions / Time x Measures' || selectedLayoutState === 'Time / Dimensions x Measures') {
+      // For these layouts, focusedCell needs rowId and measureId
+      setCurrentFocusedCell({
+        rowId: entry.rowId,
+        measureId: entry.measureId || entry.timeKey, // timeKey might be measureId in some cases
+      });
+    } else {
+      // For HierarchicalGrid, focusedCell needs rowId and monthKey
+      setCurrentFocusedCell({
+        rowId: entry.rowId,
+        monthKey: entry.timeKey,
+      });
+    }
+    
+    // Close the popover
+    setEditInfoPopover(null);
+    
+    // Switch to single cell tab when opening from popover
+    // Force panel remount by changing key to ensure tab switches
+    setCellDetailsInitialTab('single');
+    setPanelKey(prev => prev + 1); // Change key to force remount
+    setIsCellDetailsHistoryOpen(true);
+    setIsSettingsOpen(false);
+    setIsFiltersOpen(false);
+  }, [handleSelectSingleCell, editInfoPopover, selectedLayoutState]);
+
   // Close popover on outside click and scroll
   useEffect(() => {
     if (!editInfoPopover) return;
@@ -1439,15 +1474,24 @@ const ForecastingGrid: React.FC = () => {
       setEditInfoPopover(null);
     };
     
+    const handleMouseLeave = (e: MouseEvent) => {
+      const relatedTarget = e.relatedTarget as HTMLElement;
+      // Don't close if moving to popover or cell
+      if (relatedTarget && (relatedTarget.closest('.cell-edit-info-popover') || relatedTarget.closest('.editable-cell'))) return;
+      setEditInfoPopover(null);
+    };
+    
     const handleScroll = () => {
       // Close popover when scrolling
       setEditInfoPopover(null);
     };
     
     document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('mouseleave', handleMouseLeave);
     window.addEventListener('scroll', handleScroll, true); // Use capture phase to catch all scroll events
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('mouseleave', handleMouseLeave);
       window.removeEventListener('scroll', handleScroll, true);
     };
   }, [editInfoPopover]);
@@ -1506,59 +1550,6 @@ const ForecastingGrid: React.FC = () => {
     return `${time}, ${date}`;
   });
 
-  // Format dimension levels for display
-  const formatDimensionLevels = (levels: Set<string>): string => {
-    const hasCategory = levels.has('category');
-    const hasProduct = levels.has('product');
-    const hasAccount = levels.has('account');
-    
-    const parts: string[] = [];
-    
-    // Add Account if selected
-    if (hasAccount) {
-      parts.push('Account');
-    }
-    
-    // If both category and product are selected, treat as Product Dimensions
-    if (hasCategory && hasProduct) {
-      parts.push('Product Dimensions');
-    } else {
-      // Otherwise, add them individually if selected
-      if (hasCategory) {
-        parts.push('Category');
-      }
-      if (hasProduct) {
-        parts.push('Product');
-      }
-    }
-    
-    if (parts.length === 0) return '';
-    if (parts.length === 1) return parts[0];
-    if (parts.length === 2) return parts.join(' & ');
-    return parts.slice(0, -1).join(', ') + ' & ' + parts[parts.length - 1];
-  };
-
-  // Format status text based on layout
-  const formatStatusText = (layout: string, measureSubgroup: string, dimensions: string): string => {
-    const dimensionsText = dimensions.includes('Dimensions') ? dimensions : `${dimensions} Dimensions`;
-    
-    switch (layout) {
-      case 'Measures / Dimensions x Time':
-        // Header: Measures, Inner: Dimensions, Columns: Time
-        return `${measureSubgroup} over ${dimensionsText} across Time`;
-      
-      case 'Dimensions / Time x Measures':
-        // Header: Dimensions, Inner: Time, Columns: Measures
-        return `${dimensionsText} over Time across ${measureSubgroup}`;
-      
-      case 'Time / Dimensions x Measures':
-        // Header: Time, Inner: Dimensions, Columns: Measures
-        return `Time over ${dimensionsText} across ${measureSubgroup}`;
-      
-      default:
-        return `${measureSubgroup} over ${dimensionsText} across Time`;
-    }
-  };
 
   const handleDimensionLevelsChange = (levels: Set<string>) => {
     setSelectedDimensionLevels(levels);
@@ -1675,60 +1666,55 @@ const ForecastingGrid: React.FC = () => {
               Grid
             </div>
           </div>
-          <div className="last-refreshed-row">
-            <div className="last-refreshed">
-              {(() => {
-                const statusText = formatStatusText(selectedLayoutState, selectedMeasureSubgroup, formatDimensionLevels(selectedDimensionLevels));
-                const parts = statusText.split(' over ');
-                const secondPart = parts[1]?.split(' across ') || [];
-                
-                return (
-                  <>
-                    Showing {parts[0]} over {secondPart[0]} across {secondPart[1]} • Last refreshed {lastRefreshed}
-                  </>
-                );
-              })()}
-            </div>
+          <div className="page-header-title">
+            Planning & Forecasting FY26 - Grid View
           </div>
         </div>
         <div className="page-header-right">
-          <button className="refresh-button" type="button" title="Refresh">
-            <svg className="refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 2v6h-6"/>
-              <path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
-              <path d="M3 22v-6h6"/>
-              <path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
-            </svg>
-          </button>
-          <GridToolbar 
-            onSettingsClick={() => {
-              setIsSettingsOpen(true);
-              setIsFiltersOpen(false); // Close filters if settings opens
-              setIsCellDetailsHistoryOpen(false); // Close cell details if settings opens
-            }}
-            onFilterClick={() => {
-              setIsFiltersOpen(true);
-              setIsSettingsOpen(false); // Close settings if filters opens
-              setIsCellDetailsHistoryOpen(false); // Close cell details if filters opens
-            }}
-            onNotesClick={() => {
-              // Capture selectedCells size from ref BEFORE any state changes or click handlers run
-              // This ensures we get the value before click-outside handler potentially clears it
-              const hasMultipleSelection = selectedCellsRef.current.size > 1;
-              
-              // Set the initial tab and open panel
-              // The useEffect in CellDetailsHistoryPanel will handle updating the active tab
-              setCellDetailsInitialTab(hasMultipleSelection ? 'multi' : 'single');
-              setIsCellDetailsHistoryOpen(true);
-              setIsSettingsOpen(false); // Close settings if cell details opens
-              setIsFiltersOpen(false); // Close filters if cell details opens
-            }}
-            searchValue={gridSearch}
-            onSearchChange={setGridSearch}
-            isSettingsActive={isSettingsOpen}
-            isFilterActive={isFiltersOpen}
-            isNotesActive={isCellDetailsHistoryOpen}
-          />
+          <div className="last-refreshed-row">
+            <div className="last-refreshed">
+              Last refreshed {lastRefreshed}
+            </div>
+            <button className="refresh-button" type="button" title="Refresh">
+              <svg className="refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 2v6h-6"/>
+                <path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+                <path d="M3 22v-6h6"/>
+                <path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+              </svg>
+            </button>
+          </div>
+          <div className="page-header-right-top">
+            <GridToolbar 
+              onSettingsClick={() => {
+                setIsSettingsOpen(true);
+                setIsFiltersOpen(false); // Close filters if settings opens
+                setIsCellDetailsHistoryOpen(false); // Close cell details if settings opens
+              }}
+              onFilterClick={() => {
+                setIsFiltersOpen(true);
+                setIsSettingsOpen(false); // Close settings if filters opens
+                setIsCellDetailsHistoryOpen(false); // Close cell details if filters opens
+              }}
+              onNotesClick={() => {
+                // Capture selectedCells size from ref BEFORE any state changes or click handlers run
+                // This ensures we get the value before click-outside handler potentially clears it
+                const hasMultipleSelection = selectedCellsRef.current.size > 1;
+                
+                // Set the initial tab and open panel
+                // The useEffect in CellDetailsHistoryPanel will handle updating the active tab
+                setCellDetailsInitialTab(hasMultipleSelection ? 'multi' : 'single');
+                setIsCellDetailsHistoryOpen(true);
+                setIsSettingsOpen(false); // Close settings if cell details opens
+                setIsFiltersOpen(false); // Close filters if cell details opens
+              }}
+              searchValue={gridSearch}
+              onSearchChange={setGridSearch}
+              isSettingsActive={isSettingsOpen}
+              isFilterActive={isFiltersOpen}
+              isNotesActive={isCellDetailsHistoryOpen}
+            />
+          </div>
         </div>
       </div>
       <div className="grid-wrapper">
@@ -1826,6 +1812,12 @@ const ForecastingGrid: React.FC = () => {
             onEditHistory={addDraftEditHistory}
             onCommitDrafts={commitDraftsToHistory}
             onClearDrafts={clearDrafts}
+            onAfterSave={() => {
+              // Close all side panels after save
+              setIsCellDetailsHistoryOpen(false);
+              setIsSettingsOpen(false);
+              setIsFiltersOpen(false);
+            }}
             onAddAdjustmentNote={addAdjustmentNote}
             cellEditHistory={mergedEditHistory}
             onCellFocusWithHistory={handleCellFocusWithHistory}
@@ -1859,6 +1851,15 @@ const ForecastingGrid: React.FC = () => {
               console.log('[ForecastingGrid] Received savedImpactedCells update:', Array.from(cells.keys()));
               setSavedImpactedCells(cells);
               savedImpactedCellsRef.current = cells; // Update ref immediately for synchronous access
+            }}
+            visibleMeasureIds={visibleMeasureIds}
+            onToggleShowOnlyImpactedKPIChange={(checked) => {
+              if (checked) {
+                // Close all side panels when "Show Only Impacted Measures" is checked
+                setIsCellDetailsHistoryOpen(false);
+                setIsSettingsOpen(false);
+                setIsFiltersOpen(false);
+              }
             }}
             showAllPeriods={showAllPeriods}
             startPeriod={startPeriod}
@@ -1942,7 +1943,7 @@ const ForecastingGrid: React.FC = () => {
             position={editInfoPopover.position}
             isLocked={editInfoPopover.isLocked || false}
             lockedValue={editInfoPopover.isLocked ? editInfoPopover.cellValue : undefined}
-            onViewHistory={handleViewEditHistory}
+            onViewHistory={() => handleViewEditHistory(editInfoPopover.cellKey)}
             onClose={handleCloseEditInfoPopover}
           />
         )}

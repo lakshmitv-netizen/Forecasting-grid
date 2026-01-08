@@ -74,6 +74,7 @@ const CellEditInfoPopover: React.FC<CellEditInfoPopoverProps> = ({
       style={{ top: position.top, left: position.left }}
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
+      onMouseEnter={(e) => e.stopPropagation()}
     >
       <div className="cell-edit-info-popover-nubbin"></div>
       

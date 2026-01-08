@@ -1299,10 +1299,10 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                     onCellSelect(cellKey, e);
                   }
                 }
-                // Also trigger popover on click (not just focus) for cells with indicators
-                // This ensures popover shows even if focus doesn't fire
-                // Only show popover if cell has edit history (check editHistory prop)
-                if (onCellFocusWithHistory && (isEditable || isCellLocked) && !editingCell && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+              }}
+              onMouseEnter={(e) => {
+                // Show popover on hover for cells with indicators
+                if (onCellFocusWithHistory && (isEditable || isCellLocked) && !editingCell) {
                   const focusCellKey = `${row.id}-${key}`;
                   const isDirty = editedCells?.has(focusCellKey) && !savedEditedCells?.has(focusCellKey);
                   const isImpactedCell = impactedCells?.has(focusCellKey);
@@ -1322,6 +1322,16 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                   }
                 }
               }}
+              onMouseLeave={(e) => {
+                // Close popover when mouse leaves (unless moving to popover itself)
+                if (onCellFocusWithHistory) {
+                  const relatedTarget = e.relatedTarget as HTMLElement;
+                  // Don't close if moving to popover
+                  if (!relatedTarget || !relatedTarget.closest('.cell-edit-info-popover')) {
+                    onCellFocusWithHistory('', null);
+                  }
+                }
+              }}
               onDoubleClick={(e) => {
                 // Don't enter edit mode if Shift key is pressed - just select the cell
                 if (e.shiftKey) {
@@ -1337,10 +1347,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 if (onCellFocus && isEditable) {
                   onCellFocus({ rowId: row.id, monthKey: key });
                 }
-                // Call onCellFocusWithHistory for any editable cell OR locked cell
-                // But NOT if we're currently editing (adjustment note dropdown is shown)
-                // And NOT if cell is in dirty state (edited but not saved)
-                // And NOT if Shift key was pressed during selection (user is selecting cells)
+                // Show popover on focus for cells with indicators
                 if (onCellFocusWithHistory && (isEditable || isCellLocked) && !editingCell && !shiftKeyPressedRef.current) {
                   const focusCellKey = `${row.id}-${key}`;
                   const isDirty = editedCells?.has(focusCellKey) && !savedEditedCells?.has(focusCellKey);
@@ -1356,15 +1363,20 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                     const cellRect = cellElement.getBoundingClientRect();
                     const cellValue = row.values[key];
                     onCellFocusWithHistory(focusCellKey, cellRect, cellValue, isCellLocked, isImpactedCell || wasImpactedAndSaved);
-                  } else if (isImpactedCell || wasImpactedAndSaved) {
-                    // Explicitly close popover for impacted cells or saved impacted cells
-                    if (onCellFocusWithHistory) {
-                      onCellFocusWithHistory(focusCellKey, null, undefined, isCellLocked, true);
-                    }
                   }
                 }
                 // Reset shift key tracking after focus
                 shiftKeyPressedRef.current = false;
+              }}
+              onBlur={(e) => {
+                // Close popover when cell loses focus (unless moving to popover)
+                if (onCellFocusWithHistory) {
+                  const relatedTarget = e.relatedTarget as HTMLElement;
+                  // Don't close if moving to popover
+                  if (!relatedTarget || !relatedTarget.closest('.cell-edit-info-popover')) {
+                    onCellFocusWithHistory('', null);
+                  }
+                }
               }}
               onKeyDown={(e) => {
                 // Don't enter edit mode if Shift key is pressed - just select the cell

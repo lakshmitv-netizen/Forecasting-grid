@@ -43,6 +43,7 @@ interface HierarchicalGridProps {
   onCanRedoChange?: (canRedo: boolean) => void; // Callback when redo availability changes
   onCommitDrafts?: () => void; // Callback to commit draft edits to saved history (called on Save)
   onClearDrafts?: () => void; // Callback to clear draft edits (called on Cancel)
+  onAfterSave?: () => void; // Callback called after save completes
   selectedCells?: Set<string>; // Set of selected cell keys
   onCellSelect?: (cellKey: string, event: React.MouseEvent) => void; // Callback when a cell is clicked for selection
   onCellChangeHandlerReady?: (handler: (rowId: string, monthKey: string, newValue: number, note?: string) => void) => void; // Callback to expose cell change handler for programmatic updates
@@ -52,6 +53,8 @@ interface HierarchicalGridProps {
   showAllPeriods?: boolean; // Whether to show all time periods or filter by date range
   startPeriod?: string; // Start date for filtering (YYYY-MM-DD format)
   endPeriod?: string; // End date for filtering (YYYY-MM-DD format)
+  visibleMeasureIds?: Set<string>; // Set of visible measure IDs to filter impacted count
+  onToggleShowOnlyImpactedKPIChange?: (checked: boolean) => void; // Callback when "Show Only Impacted Measures" is toggled
 }
 
 const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({ 
@@ -78,6 +81,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   onCellContextMenu,
   onCommitDrafts,
   onClearDrafts,
+  onAfterSave,
   selectedCells = new Set(),
   onCellSelect,
   onCellChangeHandlerReady,
@@ -86,7 +90,9 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   endPeriod = '',
   onGetCurrentCellValueReady,
   onEditingCellChange,
-  onSavedImpactedCellsReady
+  onSavedImpactedCellsReady,
+  visibleMeasureIds,
+  onToggleShowOnlyImpactedKPIChange
 }) => {
   // Store onEditHistory in a ref so it's always available in callbacks
   const onEditHistoryRef = useRef(onEditHistory);
@@ -498,14 +504,90 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     setExpandedRows(new Set());
   }, []);
 
-  // Handle toggle for "Show Only Impacted KPI" - collapse all when checked
+  // Handle toggle for "Show Only Impacted KPI" - collapse all when checked, expand latest edited measure when unchecked
   const handleToggleShowOnlyImpactedKPI = useCallback((checked: boolean) => {
     setShowOnlyImpactedKPI(checked);
     if (checked) {
       // Collapse all rows when showing only impacted measures
       setExpandedRows(new Set());
+      // Close side panels when checking "Show Only Impacted Measures"
+      if (onToggleShowOnlyImpactedKPIChange) {
+        onToggleShowOnlyImpactedKPIChange(checked);
+      }
+    } else {
+      // When unchecked, find and expand the latest edited measure
+      // Helper function to extract measure ID from rowId
+      const getMeasureIdFromRowId = (rowId: string): string | null => {
+        // Check if rowId is directly a measure ID
+        const directMeasure = gridData.find(m => m.id === rowId);
+        if (directMeasure) {
+          return directMeasure.id;
+        }
+        
+        // Extract measure ID from rowId pattern: account-measure-xxx, category-xxx-measure-xxx, product-xxx-measure-xxx
+        const parts = rowId.split('-');
+        const measureIndex = parts.findIndex(part => part === 'measure');
+        if (measureIndex !== -1 && measureIndex < parts.length - 1) {
+          const measureId = `measure-${parts.slice(measureIndex + 1).join('-')}`;
+          if (gridData.find(m => m.id === measureId)) {
+            return measureId;
+          }
+        }
+        
+        // Fallback: search through all measures to find which one contains this row
+        for (const m of gridData) {
+          const row = findRowById(rowId, [m]);
+          if (row) {
+            return m.id;
+          }
+        }
+        
+        return null;
+      };
+      
+      // Find the latest edited measure from editedCells
+      let latestMeasureId: string | null = null;
+      
+      // First, try to find from cellEditHistory (has timestamps)
+      if (cellEditHistory && cellEditHistory.length > 0) {
+        // Sort by timestamp (most recent first)
+        const sortedHistory = [...cellEditHistory].sort((a, b) => 
+          b.timestamp.getTime() - a.timestamp.getTime()
+        );
+        
+        // Find the most recent edited cell that's still in editedCells
+        for (const entry of sortedHistory) {
+          const cellKey = entry.cellKey; // Format: `${rowId}-${monthKey}`
+          const rowId = entry.rowId;
+          
+          // Check if this cell is still in editedCells (unsaved)
+          if (editedCells.has(cellKey)) {
+            const measureId = getMeasureIdFromRowId(rowId);
+            if (measureId) {
+              latestMeasureId = measureId;
+              break;
+            }
+          }
+        }
+      }
+      
+      // If no measure found from history, use the first edited cell
+      if (!latestMeasureId && editedCells.size > 0) {
+        const firstEditedCellKey = Array.from(editedCells.keys())[0];
+        const rowId = firstEditedCellKey.split('-').slice(0, -1).join('-'); // Remove monthKey
+        latestMeasureId = getMeasureIdFromRowId(rowId);
+      }
+      
+      // Expand the latest edited measure if found
+      if (latestMeasureId) {
+        setExpandedRows(prev => {
+          const newSet = new Set(prev);
+          newSet.add(latestMeasureId!);
+          return newSet;
+        });
+      }
     }
-  }, []);
+  }, [gridData, editedCells, cellEditHistory]);
   
   // Register handlers with parent component
   useEffect(() => {
@@ -2200,9 +2282,20 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       }
     });
     
-    console.log('[FOOTER] Total impacted measures:', impactedMeasureIds.size, 'measures:', Array.from(impactedMeasureIds));
-    return impactedMeasureIds.size;
-  }, [editedCells, impactedCells, gridData]);
+    // Filter to only count visible measures if visibleMeasureIds is provided
+    let finalCount = impactedMeasureIds.size;
+    if (visibleMeasureIds && visibleMeasureIds.size > 0) {
+      const visibleImpactedMeasures = Array.from(impactedMeasureIds).filter(measureId => 
+        visibleMeasureIds.has(measureId)
+      );
+      finalCount = visibleImpactedMeasures.length;
+      console.log('[FOOTER] Total impacted measures (all):', impactedMeasureIds.size, 'measures:', Array.from(impactedMeasureIds));
+      console.log('[FOOTER] Visible impacted measures:', finalCount, 'measures:', visibleImpactedMeasures);
+    } else {
+      console.log('[FOOTER] Total impacted measures:', impactedMeasureIds.size, 'measures:', Array.from(impactedMeasureIds));
+    }
+    return finalCount;
+  }, [editedCells, impactedCells, gridData, visibleMeasureIds]);
 
   // Undo handler - undo the most recent operation
   const handleUndo = useCallback(() => {
@@ -2476,7 +2569,12 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       isInternalUpdateRef.current = true; // Mark as internal update to prevent sync loop
       onDataChange(gridData);
     }
-  }, [gridData, onDataChange, editedCells, onCommitDrafts]);
+    
+    // Call onAfterSave callback if provided (after all save operations complete)
+    if (onAfterSave) {
+      onAfterSave();
+    }
+  }, [gridData, onDataChange, editedCells, onCommitDrafts, onAfterSave]);
 
   // Check if footer should be visible (only if there are unsaved edits)
   const isFooterVisible = editedCells.size > 0 || impactedCells.size > 0;

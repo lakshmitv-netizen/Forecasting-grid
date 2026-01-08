@@ -1072,7 +1072,106 @@ export const updateCrossMeasureDependencies = (
     }
   }
   
-  // 3. Order Quantity → Order Revenue (via unit price)
+  // 3. Sales Agreement Quantity → Forecasted Quantity (100%)
+  if (measureId === 'measure-sa-qty') {
+    console.log('[CROSS-MEASURE] Processing SA Qty → Forecasted Qty');
+    const forecastMeasureId = 'measure-forecast-qty';
+    const forecastMeasure = data.find(m => m.id === forecastMeasureId);
+    console.log('[CROSS-MEASURE] Forecasted Qty measure found:', !!forecastMeasure, 'path length:', path.length, 'row:', !!row);
+    if (forecastMeasure && path.length > 0 && row) {
+      // Find the corresponding row at the same hierarchy level
+      const forecastRow = findRowByPath(forecastMeasure.children, 0);
+      console.log('[CROSS-MEASURE] Forecasted Qty row found:', forecastRow ? { name: forecastRow.name, id: forecastRow.id } : 'null');
+      if (forecastRow) {
+        updates.push({ rowId: forecastRow.id, monthKey, newValue });
+        const forecastDelta = newValue - forecastRow.values[monthKey];
+        if (forecastDelta !== 0) {
+          updates.push(...propagateUpward(forecastRow.id, monthKey, forecastDelta, data, lockedCells));
+          updates.push(...propagateDownward(forecastRow.id, monthKey, forecastDelta, data, lockedCells));
+        }
+        
+        // 3b. Forecasted Quantity → Forecasted Revenue (via unit price)
+        const forecastRevenueMeasureId = 'measure-forecast-rev';
+        const forecastRevenueMeasure = data.find(m => m.id === forecastRevenueMeasureId);
+        if (forecastRevenueMeasure && path.length > 0) {
+          const forecastRevenueRow = findRowByPath(forecastRevenueMeasure.children, 0);
+          console.log('[CROSS-MEASURE] Forecasted Rev row found:', forecastRevenueRow ? { name: forecastRevenueRow.name, id: forecastRevenueRow.id } : 'null');
+          if (forecastRevenueRow) {
+            // Calculate unit price from ORIGINAL values (before edit) for accurate calculation
+            let unitPrice: number | null = null;
+            
+            // Strategy 1: Try measure-level totals from original data
+            const forecastQtyMeasure = originalData ? originalData.find(m => m.id === 'measure-forecast-qty') : data.find(m => m.id === 'measure-forecast-qty');
+            const forecastRevMeasure = originalData ? originalData.find(m => m.id === 'measure-forecast-rev') : data.find(m => m.id === 'measure-forecast-rev');
+            if (forecastQtyMeasure && forecastRevMeasure && forecastQtyMeasure.values[monthKey] !== 0) {
+              unitPrice = forecastRevMeasure.values[monthKey] / forecastQtyMeasure.values[monthKey];
+              console.log('[CROSS-MEASURE] Forecast unit price from measure totals:', unitPrice);
+              
+              if (!isFinite(unitPrice) || isNaN(unitPrice) || unitPrice === 0) {
+                unitPrice = null;
+              }
+            }
+            
+            // Strategy 2: Try account-level from original data
+            if ((unitPrice === null || !isFinite(unitPrice) || isNaN(unitPrice)) && originalData) {
+              const forecastQtyMeasureForSearch = originalData.find(m => m.id === 'measure-forecast-qty');
+              const forecastRevMeasureForSearch = originalData.find(m => m.id === 'measure-forecast-rev');
+              if (forecastQtyMeasureForSearch && forecastRevMeasureForSearch && forecastQtyMeasureForSearch.children && forecastQtyMeasureForSearch.children.length > 0) {
+                const qtyAccount = forecastQtyMeasureForSearch.children[0];
+                const revAccount = forecastRevMeasureForSearch.children[0];
+                if (qtyAccount && revAccount && qtyAccount.values[monthKey] !== 0 && revAccount.values[monthKey] !== 0) {
+                  unitPrice = revAccount.values[monthKey] / qtyAccount.values[monthKey];
+                  console.log('[CROSS-MEASURE] Forecast unit price from account-level:', unitPrice);
+                }
+              }
+            }
+            
+            // Strategy 3: Try current data as fallback
+            if ((unitPrice === null || !isFinite(unitPrice) || isNaN(unitPrice))) {
+              unitPrice = calculateUnitPrice(forecastRevenueRow.id, forecastRow.id, monthKey, data);
+              console.log('[CROSS-MEASURE] Forecast unit price from current data:', unitPrice);
+            }
+            
+            // Strategy 4: Default unit price
+            if (unitPrice === null || !isFinite(unitPrice) || isNaN(unitPrice) || unitPrice === 0) {
+              unitPrice = 100; // Default unit price
+              console.log('[CROSS-MEASURE] Using default unit price for Forecast:', unitPrice);
+            }
+            
+            // CRITICAL: If quantity is zero, revenue must be zero (regardless of unit price)
+            let newForecastRevenue: number;
+            if (newValue === 0) {
+              newForecastRevenue = 0;
+              console.log('[CROSS-MEASURE] Forecast Quantity is zero, setting revenue to zero');
+            } else if (unitPrice !== null && !isNaN(unitPrice) && isFinite(unitPrice) && unitPrice > 0) {
+              newForecastRevenue = newValue * unitPrice;
+              console.log('[CROSS-MEASURE] New Forecast Revenue:', newForecastRevenue);
+            } else {
+              console.log('[CROSS-MEASURE] Unit price is still invalid for Forecast Revenue');
+              newForecastRevenue = 0;
+            }
+            
+            updates.push({ rowId: forecastRevenueRow.id, monthKey, newValue: newForecastRevenue });
+            const forecastRevDelta = newForecastRevenue - forecastRevenueRow.values[monthKey];
+            if (forecastRevDelta !== 0) {
+              updates.push(...propagateUpward(forecastRevenueRow.id, monthKey, forecastRevDelta, data, lockedCells));
+              updates.push(...propagateDownward(forecastRevenueRow.id, monthKey, forecastRevDelta, data, lockedCells));
+            }
+          }
+        }
+      } else {
+        console.log('[CROSS-MEASURE] Forecasted Qty row not found for path:', path);
+      }
+    } else {
+      console.log('[CROSS-MEASURE] Conditions not met for Forecasted Qty update:', { 
+        hasForecastMeasure: !!forecastMeasure, 
+        pathLength: path.length, 
+        hasRow: !!row 
+      });
+    }
+  }
+  
+  // 4. Order Quantity → Order Revenue (via unit price)
   if (measureId === 'measure-order-qty') {
     console.log('[CROSS-MEASURE] Processing Order Qty → Order Rev');
     const revenueMeasureId = 'measure-order-rev';

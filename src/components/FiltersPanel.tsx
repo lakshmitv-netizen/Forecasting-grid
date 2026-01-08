@@ -70,8 +70,6 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
 }) => {
   // Track original values for Cancel functionality (only for filter cards)
   const [originalFilters, setOriginalFilters] = useState<Filter[]>([
-    { id: '1', type: 'measures', label: 'Filter by Measures', value: '5 Measures Selected' },
-    { id: '2', type: 'account', label: 'Filter by Account', value: 'Equals All' },
     { id: '3', type: 'category', label: 'Filter by Category', value: 'Equals All' },
     { id: '4', type: 'products', label: 'Filter by Products', value: 'Equals All' },
     { id: '5', type: 'time', label: 'Filter by Time', value: 'Equals Jan 26 to Dec 26' },
@@ -177,8 +175,6 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
   };
 
   const [filters, setFilters] = useState<Filter[]>([
-    { id: '1', type: 'measures', label: 'Filter by Measures', value: '5 Measures Selected' },
-    { id: '2', type: 'account', label: 'Filter by Account', value: 'Equals All' },
     { id: '3', type: 'category', label: 'Filter by Category', value: 'Equals All' },
     { id: '4', type: 'products', label: 'Filter by Products', value: 'Equals All' },
     { id: '5', type: 'time', label: 'Filter by Time', value: 'Equals Jan 26 to Dec 26' },
@@ -393,7 +389,6 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
     // Get active filter values
     const categoryFilter = filters.find(f => f.type === 'category');
     const productFilter = filters.find(f => f.type === 'products');
-    const accountFilter = filters.find(f => f.type === 'account');
     
     const selectedCategories = categoryFilter && categoryFilter.value !== 'Equals All' && categoryFilter.value !== 'All'
       ? categoryFilter.value.split(',').map(c => c.trim())
@@ -401,10 +396,6 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
     
     const selectedProducts = productFilter && productFilter.value !== 'Equals All' && productFilter.value !== 'All'
       ? productFilter.value.split(',').map(p => p.trim())
-      : null;
-    
-    const selectedAccounts = accountFilter && accountFilter.value !== 'Equals All' && accountFilter.value !== 'All'
-      ? accountFilter.value.split(',').map(a => a.trim())
       : null;
 
     // Filter by dimension levels first
@@ -417,18 +408,7 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
     });
 
     // Apply filters with AND logic - order matters for intelligent filtering
-    // 1. Filter by accounts first (if specified)
-    if (selectedAccounts) {
-      filtered = filtered.map((measure: MeasureData) => {
-        const filteredChildren = filterByAccounts(measure.children || [], selectedAccounts);
-        return {
-          ...measure,
-          children: filteredChildren
-        };
-      });
-    }
-
-    // 2. Filter by categories (if specified)
+    // 1. Filter by categories (if specified)
     // This will limit which categories are shown
     if (selectedCategories) {
       filtered = filtered.map((measure: MeasureData) => {
@@ -440,7 +420,7 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
       });
     }
 
-    // 3. Filter by products (if specified)
+    // 2. Filter by products (if specified)
     // If categories are also filtered, products will automatically be limited to those categories
     // If products are selected but categories are not, show only those products (from any category)
     if (selectedProducts) {
