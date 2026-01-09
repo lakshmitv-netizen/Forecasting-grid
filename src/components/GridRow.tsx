@@ -1319,7 +1319,9 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 // If another cell in this row is being edited, clear selection first
                 // BUT: Don't override Shift or Ctrl/Cmd keys - let them work normally (handle in onClick)
                 // Only handle normal clicks here when another cell is editing
-                if (editingCell && editingCell.monthKey !== key && onCellSelect && isEditable && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+                // Allow selection for locked cells (they can't be edited but can be selected for viewing history, etc.)
+                const canSelect = isEditable || isCellLocked;
+                if (editingCell && editingCell.monthKey !== key && onCellSelect && canSelect && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
                   // Clear any existing selection by selecting only this cell
                   // Only do this if no modifier keys are pressed
                   const syntheticEvent = { ...e, ctrlKey: false, metaKey: false, shiftKey: false, detail: 1 } as React.MouseEvent;
@@ -1327,7 +1329,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                   return;
                 }
                 // Don't handle Shift/Ctrl/Cmd in mousedown - let onClick handle them for better reliability
-                if (onCellSelect && isEditable && !e.shiftKey && !e.ctrlKey && !e.metaKey && !editingCell) {
+                // Allow selection for locked cells
+                if (onCellSelect && canSelect && !e.shiftKey && !e.ctrlKey && !e.metaKey && !editingCell) {
                   onCellSelect(cellKey, e);
                 }
               }}
@@ -1350,14 +1353,20 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 }
                 // Handle selection on click - especially for Shift/Ctrl/Cmd keys
                 // This ensures modifier keys are properly detected
-                if (onCellSelect && isEditable) {
+                // Allow selection for locked cells (they can't be edited but can be selected for viewing history, etc.)
+                const canSelect = isEditable || isCellLocked;
+                if (onCellSelect && canSelect) {
                   // Always handle Shift/Ctrl/Cmd clicks here for better reliability
                   if (e.shiftKey || e.ctrlKey || e.metaKey) {
                     onCellSelect(cellKey, e);
                   } else if (!editingCell) {
                     // For normal clicks, handle here if mousedown didn't already handle it
                     // (mousedown handles normal clicks when another cell is editing)
-                    onCellSelect(cellKey, e);
+                    // Prevent double-selection: only call if mousedown didn't already handle it
+                    // Check if this cell is already selected to avoid double-selection
+                    if (!selectedCells.has(cellKey)) {
+                      onCellSelect(cellKey, e);
+                    }
                   }
                 }
               }}
