@@ -195,13 +195,17 @@ const GridRowComponent: React.FC<GridRowProps> = ({
   }, [editingCell]);
 
 
-  const handleCellValueDoubleClick = (monthKey: keyof GridRowType['values'], e: React.MouseEvent) => {
+  const handleCellValueClick = (monthKey: keyof GridRowType['values'], e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent cell click from firing
     // Don't enter edit mode if Shift key is pressed - just select the cell
     if (e.shiftKey) {
       return;
     }
-    console.log('[GridRow] Cell value double-clicked (entering edit mode):', { rowId: row.id, rowType: row.type, monthKey });
+    // Don't enter edit mode if already editing this cell
+    if (editingCell?.monthKey === monthKey) {
+      return;
+    }
+    console.log('[GridRow] Cell value clicked (entering edit mode):', { rowId: row.id, rowType: row.type, monthKey });
     // Measure rows are calculated values and should not be editable
     if (row.type === 'measure') {
       console.log('[GridRow] Measure row is not editable, returning');
@@ -211,12 +215,22 @@ const GridRowComponent: React.FC<GridRowProps> = ({
       console.log('[GridRow] No onCellChange handler, returning');
       return;
     }
+    // Close the edit info popover when entering edit mode
+    if (onCellFocusWithHistory) {
+      onCellFocusWithHistory('', null);
+    }
     setEditingCell({ monthKey });
     setEditValue(row.values[monthKey].toString());
     // Check for unsaved note for this cell
     const cellKey = `${row.id}-${monthKey}`;
     const unsavedNote = unsavedNotes?.get(cellKey) || '';
     setAdjustmentNote(unsavedNote); // Restore unsaved note if it exists
+    // Notify parent that editing started - use setTimeout to ensure state is set
+    setTimeout(() => {
+      if (onCellEditStateChange) {
+        onCellEditStateChange(true, row.id, monthKey);
+      }
+    }, 0);
   };
 
   const handleCellEnterKey = (monthKey: keyof GridRowType['values']) => {
@@ -567,6 +581,47 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               <div style={{
                 padding: '12px'
               }}>
+                <div style={{
+                  fontSize: '11px',
+                  lineHeight: '16px',
+                  color: '#706e6b',
+                  marginBottom: '8px',
+                  fontFamily: 'var(--slds-g-font-family-base, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif)'
+                }}>
+                  Press <span style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '2px 6px',
+                    border: '1px solid #5C5C5C',
+                    borderRadius: '3px',
+                    backgroundColor: '#ffffff',
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    fontFamily: 'var(--font-family-base)',
+                    color: '#5C5C5C',
+                    lineHeight: 1,
+                    minWidth: '40px',
+                    textAlign: 'center',
+                    margin: '0 2px'
+                  }}>Enter</span> / <span style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '2px 6px',
+                    border: '1px solid #5C5C5C',
+                    borderRadius: '3px',
+                    backgroundColor: '#ffffff',
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    fontFamily: 'var(--font-family-base)',
+                    color: '#5C5C5C',
+                    lineHeight: 1,
+                    minWidth: '40px',
+                    textAlign: 'center',
+                    margin: '0 2px'
+                  }}>Return</span> to update your entry
+                </div>
                 <label style={{
                   display: 'block',
                   fontSize: '13px',
@@ -575,7 +630,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                   marginBottom: '8px',
                   lineHeight: '18px'
                 }}>
-                  Notes
+                  Add Notes (Optional)
                 </label>
                 <textarea
                   ref={adjustmentNoteInputRef}
@@ -600,7 +655,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                     boxSizing: 'border-box',
                     resize: 'none',
                     lineHeight: '18px',
-                    cursor: 'text'
+                    cursor: 'text',
+                    marginBottom: '0'
                   }}
                   onFocus={(e) => {
                     e.stopPropagation();
@@ -718,7 +774,6 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                     }
                   }}
                 />
-                
               </div>
             </div>,
             document.body
@@ -870,7 +925,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               <span 
                 className={`cell-value cell-value-edited ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
                 style={{ cursor: isEditable ? 'pointer' : 'default', color: deltaColor }}
-                onDoubleClick={isEditable ? (e) => handleCellValueDoubleClick(monthKey, e) : undefined}
+                onClick={isEditable ? (e) => handleCellValueClick(monthKey, e) : undefined}
               >
                 {valueMatchesSearch ? (
                   <SearchHighlight text={formatValue(currentValue)} searchTerms={otherTerms} />
@@ -916,7 +971,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               <span 
                 className={`cell-value cell-value-edited ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
                 style={{ cursor: isEditable ? 'pointer' : 'default', color: deltaColor }}
-                onDoubleClick={isEditable ? (e) => handleCellValueDoubleClick(monthKey, e) : undefined}
+                onClick={isEditable ? (e) => handleCellValueClick(monthKey, e) : undefined}
               >
                 {valueMatchesSearch ? (
                   <SearchHighlight text={formatValue(currentValue)} searchTerms={otherTerms} />
@@ -964,7 +1019,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
             <span 
               className={`cell-value cell-value-saved ${!isCellLocked && (isIncrease ? 'cell-value-increase' : 'cell-value-decrease')} ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
               style={{ cursor: isEditable ? 'pointer' : 'default' }}
-              onDoubleClick={isEditable ? (e) => handleCellValueDoubleClick(monthKey, e) : undefined}
+              onClick={isEditable ? (e) => handleCellValueClick(monthKey, e) : undefined}
             >
               {valueMatchesSearch ? (
                 <SearchHighlight text={formatValue(currentValue)} searchTerms={otherTerms} />
@@ -1010,7 +1065,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               <span 
                 className={`cell-value cell-value-impacted ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
                 style={{ cursor: isEditable ? 'pointer' : 'default', color: deltaColor }}
-                onDoubleClick={isEditable ? (e) => handleCellValueDoubleClick(monthKey, e) : undefined}
+                onClick={isEditable ? (e) => handleCellValueClick(monthKey, e) : undefined}
               >
                 {valueMatchesSearch ? (
                   <SearchHighlight text={formatValue(currentValue)} searchTerms={otherTerms} />
@@ -1048,7 +1103,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
           <span 
             className={`cell-value ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
             style={{ cursor: isEditable ? 'pointer' : 'default' }}
-            onDoubleClick={isEditable ? (e) => handleCellValueDoubleClick(monthKey, e) : undefined}
+            onClick={isEditable ? (e) => handleCellValueClick(monthKey, e) : undefined}
           >
             {cellValueMatchesSearch ? (
               <SearchHighlight text={formatValue(cellValue, row.name?.toLowerCase().includes('quantity'))} searchTerms={otherTerms} />
@@ -1277,6 +1332,12 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 }
               }}
               onClick={(e) => {
+                // Don't trigger selection if clicking on the cell value (value click handles editing)
+                const target = e.target as HTMLElement;
+                if (target.closest('.cell-value')) {
+                  // Value click is handled by handleCellValueClick which stops propagation
+                  return;
+                }
                 // Track Shift key state for this selection
                 shiftKeyPressedRef.current = e.shiftKey;
                 // Prevent selection on double-click
@@ -1332,16 +1393,10 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                   }
                 }
               }}
-              onDoubleClick={(e) => {
-                // Don't enter edit mode if Shift key is pressed - just select the cell
-                if (e.shiftKey) {
-                  return;
-                }
-                if (isEditable && !editingCell) {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  handleCellEnterKey(key);
-                }
+              onDoubleClick={() => {
+                // Double-click on cell container is no longer used for editing
+                // Editing is now done by clicking the cell value (single click)
+                // Keep this handler empty to prevent any default behavior
               }}
               onFocus={(e) => {
                 if (onCellFocus && isEditable) {

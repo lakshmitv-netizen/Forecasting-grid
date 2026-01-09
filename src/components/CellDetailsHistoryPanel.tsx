@@ -871,11 +871,16 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
           <div className="cell-details-history-content">
             {/* Contextual Header with Filter */}
             <div className="cell-details-history-context-header">
-              {selectedCells.size === 0 ? (
-                <span className="cell-details-history-context-text">Complete cell edit history</span>
-              ) : (
-                <span className="cell-details-history-context-text">Changes in {selectedCells.size} selected cells</span>
-              )}
+              <div className="cell-details-history-context-header-main">
+                {selectedCells.size === 0 ? (
+                  <>
+                    <span className="cell-details-history-context-text">Complete cell edit history</span>
+                    <span className="cell-details-history-context-hint">Select cells in the grid to view their specific history</span>
+                  </>
+                ) : (
+                  <span className="cell-details-history-context-text">Edit history for {selectedCells.size} selected cells</span>
+                )}
+              </div>
               <div className="cell-details-history-filter-wrapper">
                 <button
                   ref={filterButtonRef}

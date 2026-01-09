@@ -53,6 +53,14 @@ const ForecastingGrid: React.FC = () => {
   const [savedImpactedCells, setSavedImpactedCells] = useState<Set<string>>(new Set());
   // Ref to track savedImpactedCells for synchronous access in callbacks
   const savedImpactedCellsRef = useRef<Set<string>>(new Set());
+  const contextMenuRef = useRef<{
+    isOpen: boolean;
+    position: { x: number; y: number };
+    cellKey: string;
+    cellValue: number;
+    isLocked: boolean;
+    isEditable: boolean;
+  } | null>(null);
   
   // Keep refs in sync with state
   useEffect(() => {
@@ -1074,6 +1082,13 @@ const ForecastingGrid: React.FC = () => {
       return;
     }
     
+    // Don't show hover popover if context menu is open
+    // Use ref for synchronous access
+    if (contextMenuRef.current && contextMenuRef.current.isOpen) {
+      setEditInfoPopover(null);
+      return;
+    }
+    
     // Check if this cell was impacted but is now saved (shouldn't show popover)
     // These cells were impacted in a previous session but are now saved, so they shouldn't show old popovers
     // Use ref for synchronous access to latest value
@@ -1144,7 +1159,7 @@ const ForecastingGrid: React.FC = () => {
         left: leftPos
       }
     });
-  }, [editHistory, draftEditHistory]); // Note: savedImpactedCellsRef is a ref, so it doesn't need to be in deps
+  }, [editHistory, draftEditHistory]); // Note: savedImpactedCellsRef and contextMenuRef are refs, so they don't need to be in deps
 
   // Close edit info popover
   const handleCloseEditInfoPopover = useCallback(() => {
@@ -1288,6 +1303,11 @@ const ForecastingGrid: React.FC = () => {
     isLocked: boolean;
     isEditable: boolean;
   } | null>(null);
+  
+  // Keep contextMenuRef in sync with contextMenu state
+  useEffect(() => {
+    contextMenuRef.current = contextMenu;
+  }, [contextMenu]);
 
   // Clipboard state for context menu
   const [clipboardValue, setClipboardValue] = useState<number | null>(null);

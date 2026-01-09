@@ -64,7 +64,7 @@
   border-radius: 4px;
   resize: vertical;
   box-sizing: border-box;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .cell-note-popover-input:focus {
@@ -75,6 +75,34 @@
 
 .cell-note-popover-input::placeholder {
   color: #999;
+}
+
+.cell-note-popover-instruction {
+  font-family: 'SF Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 11px;
+  line-height: 16px;
+  color: #706e6b;
+  margin-top: 0;
+  margin-bottom: 12px;
+  display: block;
+}
+
+.cell-note-popover-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  border: 1px solid #5C5C5C;
+  border-radius: 3px;
+  background-color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-family-base);
+  color: #5C5C5C;
+  line-height: 1;
+  min-width: 40px;
+  text-align: center;
+  margin: 0 2px;
 }
 
 .cell-note-popover-actions {

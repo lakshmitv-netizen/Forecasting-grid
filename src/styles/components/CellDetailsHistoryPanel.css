@@ -521,11 +521,27 @@
   flex-shrink: 0;
 }
 
+.cell-details-history-context-header-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
 .cell-details-history-context-text {
   font-family: var(--font-family-base);
   font-size: 13px;
   font-weight: 500;
   color: #444;
+}
+
+.cell-details-history-context-hint {
+  font-family: var(--font-family-base);
+  font-size: 11px;
+  font-weight: 400;
+  color: #706e6b;
+  line-height: 14px;
 }
 
 /* Cell Info Header - Compact Layout */

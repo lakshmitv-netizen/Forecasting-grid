@@ -119,7 +119,9 @@ const CellNotePopover: React.FC<CellNotePopoverProps> = ({
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
       onClose();
-    } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    } else if (e.key === 'Enter' && !e.shiftKey) {
+      // Enter (without Shift) saves the note
+      e.preventDefault();
       handleSave();
     }
   };
@@ -162,6 +164,9 @@ const CellNotePopover: React.FC<CellNotePopoverProps> = ({
           rows={4}
           autoFocus
         />
+        <div className="cell-note-popover-instruction">
+          Press <span className="cell-note-popover-key">Enter</span> / <span className="cell-note-popover-key">Return</span> to update your entry
+        </div>
         {noteText.trim() && (
           <div className="cell-note-popover-actions">
             <button
