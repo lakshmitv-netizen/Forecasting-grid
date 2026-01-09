@@ -620,7 +620,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                     minWidth: '40px',
                     textAlign: 'center',
                     margin: '0 2px'
-                  }}>Return</span> to update your entry
+                  }}>Return</span> after you update your entry
                 </div>
                 <label style={{
                   display: 'block',
