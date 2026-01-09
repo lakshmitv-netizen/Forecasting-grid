@@ -1856,7 +1856,32 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   }, [handleExpandAll, handleCollapseAll, onExpandAllRows, onCollapseAllRows, onGetVisibleRowsReady, onGetVisibleTimeKeysReady, getAllVisibleRows, getVisibleTimeKeys]);
 
   // Handle keyboard navigation
+  // Note: handleSave is defined later, so we'll use a ref or move this callback after handleSave
+  const handleSaveRef = useRef<(() => void) | null>(null);
+  
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    // Handle Save shortcut (S key) - only if footer is visible and not typing in input
+    if (e.key === 's' || e.key === 'S') {
+      const activeElement = document.activeElement as HTMLElement;
+      const isTyping = activeElement && (
+        activeElement.tagName === 'INPUT' ||
+        activeElement.tagName === 'TEXTAREA' ||
+        (activeElement.isContentEditable === true)
+      );
+      
+      // Check if footer should be visible (there are changes)
+      const footerVisible = editedCells.size > 0 || impactedCells.size > 0;
+      
+      // Only save if footer is visible (there are changes) and not typing in an input field
+      if (footerVisible && !isTyping && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        if (handleSaveRef.current) {
+          handleSaveRef.current();
+        }
+        return;
+      }
+    }
+    
     // Don't handle navigation if user is typing in an input field
     const activeElement = document.activeElement;
     if (activeElement && (
@@ -1994,7 +2019,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
         cellElement.focus();
       }
     }
-  }, [focusedCell, getAllVisibleRows, getVisibleTimeKeys, handleCellChange]);
+  }, [focusedCell, getAllVisibleRows, getVisibleTimeKeys, handleCellChange, editedCells, impactedCells]);
 
   // Expose cell change handler for programmatic updates (mass update)
   // Also expose a function to get current cell value from gridData
