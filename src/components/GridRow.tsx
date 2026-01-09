@@ -196,9 +196,15 @@ const GridRowComponent: React.FC<GridRowProps> = ({
 
 
   const handleCellValueClick = (monthKey: keyof GridRowType['values'], e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent cell click from firing
-    // Don't enter edit mode if Shift key is pressed - just select the cell
-    if (e.shiftKey) {
+    // CRITICAL: If Shift/Ctrl/Cmd is pressed, don't stop propagation
+    // This allows the cell's onClick handler to handle selection
+    // Only stop propagation for normal clicks (which should trigger editing)
+    const isModifierKey = e.shiftKey || e.ctrlKey || e.metaKey;
+    if (!isModifierKey) {
+      e.stopPropagation(); // Prevent cell click from firing for normal clicks
+    }
+    // Don't enter edit mode if Shift/Ctrl/Cmd key is pressed - let selection handle it
+    if (isModifierKey) {
       return;
     }
     // Don't enter edit mode if already editing this cell
@@ -1307,42 +1313,58 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               onMouseDown={(e) => {
                 // Track Shift key state for this selection
                 shiftKeyPressedRef.current = e.shiftKey;
+                
+                // CRITICAL: Never handle Shift/Ctrl/Cmd in mousedown - always let onClick handle them
+                // This ensures modifier keys are reliably detected
+                // Return immediately if any modifier key is pressed
+                if (e.shiftKey || e.ctrlKey || e.metaKey) {
+                  return; // Let onClick handle modifier key clicks - don't do anything here
+                }
+                
                 // Use mousedown to catch selection earlier, before blur refocus happens
                 // Only handle if this is a left click
                 if (e.button !== 0) {
                   return;
                 }
+                
                 // If this cell is currently being edited, don't trigger selection
                 if (editingCell?.monthKey === key) {
                   return;
                 }
                 // If another cell in this row is being edited, clear selection first
-                // BUT: Don't override Shift or Ctrl/Cmd keys - let them work normally (handle in onClick)
                 // Only handle normal clicks here when another cell is editing
                 // Allow selection for locked cells (they can't be edited but can be selected for viewing history, etc.)
                 const canSelect = isEditable || isCellLocked;
-                if (editingCell && editingCell.monthKey !== key && onCellSelect && canSelect && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+                if (editingCell && editingCell.monthKey !== key && onCellSelect && canSelect) {
                   // Clear any existing selection by selecting only this cell
-                  // Only do this if no modifier keys are pressed
+                  // Only do this if no modifier keys are pressed (already checked above)
                   const syntheticEvent = { ...e, ctrlKey: false, metaKey: false, shiftKey: false, detail: 1 } as React.MouseEvent;
                   onCellSelect(cellKey, syntheticEvent);
                   return;
                 }
-                // Don't handle Shift/Ctrl/Cmd in mousedown - let onClick handle them for better reliability
+                // Handle normal clicks (no modifier keys) when no cell is editing
                 // Allow selection for locked cells
-                if (onCellSelect && canSelect && !e.shiftKey && !e.ctrlKey && !e.metaKey && !editingCell) {
+                if (onCellSelect && canSelect && !editingCell) {
                   onCellSelect(cellKey, e);
                 }
               }}
               onClick={(e) => {
-                // Don't trigger selection if clicking on the cell value (value click handles editing)
-                const target = e.target as HTMLElement;
-                if (target.closest('.cell-value')) {
-                  // Value click is handled by handleCellValueClick which stops propagation
-                  return;
-                }
                 // Track Shift key state for this selection
                 shiftKeyPressedRef.current = e.shiftKey;
+                
+                // CRITICAL: For modifier keys (Shift/Ctrl/Cmd), ALWAYS allow selection
+                // even if clicking on the cell value area - selection takes precedence over editing
+                const isModifierKey = e.shiftKey || e.ctrlKey || e.metaKey;
+                
+                // Don't trigger selection if clicking on the cell value (value click handles editing)
+                // BUT: Allow modifier key clicks to proceed (they should select, not edit)
+                const target = e.target as HTMLElement;
+                if (target.closest('.cell-value') && !isModifierKey) {
+                  // Value click is handled by handleCellValueClick which stops propagation
+                  // But only for normal clicks - modifier keys should select, not edit
+                  return;
+                }
+                
                 // Prevent selection on double-click
                 if (e.detail === 2) {
                   return;
@@ -1356,17 +1378,19 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 // Allow selection for locked cells (they can't be edited but can be selected for viewing history, etc.)
                 const canSelect = isEditable || isCellLocked;
                 if (onCellSelect && canSelect) {
-                  // Always handle Shift/Ctrl/Cmd clicks here for better reliability
-                  if (e.shiftKey || e.ctrlKey || e.metaKey) {
+                  // CRITICAL: Always handle Shift/Ctrl/Cmd clicks here - these MUST be handled in onClick
+                  // Check event.shiftKey directly to ensure we catch it
+                  if (isModifierKey) {
+                    // Always call onCellSelect for modifier keys - don't check if already selected
+                    e.stopPropagation(); // Prevent any other handlers from interfering
                     onCellSelect(cellKey, e);
-                  } else if (!editingCell) {
-                    // For normal clicks, handle here if mousedown didn't already handle it
-                    // (mousedown handles normal clicks when another cell is editing)
-                    // Prevent double-selection: only call if mousedown didn't already handle it
-                    // Check if this cell is already selected to avoid double-selection
-                    if (!selectedCells.has(cellKey)) {
-                      onCellSelect(cellKey, e);
-                    }
+                    return;
+                  }
+                  // For normal clicks, only handle if mousedown didn't already handle it
+                  // (mousedown handles normal clicks when another cell is editing)
+                  // Prevent double-selection: only call if mousedown didn't already handle it
+                  if (!editingCell && !selectedCells.has(cellKey)) {
+                    onCellSelect(cellKey, e);
                   }
                 }
               }}

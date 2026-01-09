@@ -253,7 +253,7 @@ const CategoryFilterPopover: React.FC<CategoryFilterPopoverProps> = ({
     
     const rect = anchorElement.getBoundingClientRect();
     const popoverWidth = 320; // Width of the popover
-    const popoverHeight = 400; // Approximate height of the popover
+    const popoverHeight = 320; // Reduced height - value selection area scrolls
     
     // Calculate the vertical center of the filter card
     const filterCardCenterY = rect.top + (rect.height / 2);

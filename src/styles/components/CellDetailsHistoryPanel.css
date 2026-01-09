@@ -15,6 +15,7 @@
   box-shadow: 0px 0px 4.4px 0px rgba(0, 0, 0, 0.09), -4px 0px 4.4px 0px rgba(0, 0, 0, 0.09), -1px 0px 1.44px 0px rgba(0, 0, 0, 0.03);
   align-self: stretch;
   position: relative;
+  z-index: 100;
 }
 
 /* Panel Header */

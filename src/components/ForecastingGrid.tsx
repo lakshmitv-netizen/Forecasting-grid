@@ -41,11 +41,18 @@ const ForecastingGrid: React.FC = () => {
   // State to track selected cells for multi-cell operations
   const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set());
   const [lastSelectedCell, setLastSelectedCell] = useState<string | null>(null);
+  // Ref to track lastSelectedCell for synchronous access (critical for Shift+Click range selection)
+  const lastSelectedCellRef = useRef<string | null>(null);
+  // Track the anchor cell for Shift+Click range selection (first cell clicked while holding Shift)
+  const shiftAnchorCellRef = useRef<string | null>(null);
   // Ref to track selectedCells for synchronous access
   const selectedCellsRef = useRef<Set<string>>(new Set());
   // Track selection order for mass update (preserve order) - use state so it triggers re-renders
   const [selectedCellsOrder, setSelectedCellsOrder] = useState<string[]>([]);
   const selectedCellsOrderRef = useRef<string[]>([]);
+  // Refs to get visible rows and time keys from HierarchicalGrid for range selection
+  const getVisibleRowsRef = useRef<(() => Array<{ id: string; [key: string]: any }>) | null>(null);
+  const getVisibleTimeKeysRef = useRef<(() => string[]) | null>(null);
   
   // Track which cell is currently being edited globally
   const [editingCellKey, setEditingCellKey] = useState<string | null>(null);
@@ -71,10 +78,85 @@ const ForecastingGrid: React.FC = () => {
     savedImpactedCellsRef.current = savedImpactedCells;
   }, [savedImpactedCells]);
   
-  // ROOT CAUSE FIX: Keep ref in sync with state for selectedCellsOrder
+  // ROOT CAUSE FIX: Keep refs in sync with state for synchronous access
   useEffect(() => {
     selectedCellsOrderRef.current = selectedCellsOrder;
   }, [selectedCellsOrder]);
+  
+  useEffect(() => {
+    lastSelectedCellRef.current = lastSelectedCell;
+  }, [lastSelectedCell]);
+  
+  // Helper function to calculate all cells in a range between two cell keys
+  const calculateCellRange = useCallback((startCellKey: string, endCellKey: string): string[] => {
+    // Only works for HierarchicalGrid layout (cellKey format: `${rowId}-${monthKey}`)
+    if (selectedLayoutState !== 'Measures / Dimensions x Time') {
+      return [startCellKey, endCellKey]; // For other layouts, just return endpoints
+    }
+    
+    // Get visible rows and time keys from HierarchicalGrid
+    if (!getVisibleRowsRef.current || !getVisibleTimeKeysRef.current) {
+      return [startCellKey, endCellKey]; // Fallback if refs not ready
+    }
+    
+    const visibleRows = getVisibleRowsRef.current();
+    const visibleTimeKeys = getVisibleTimeKeysRef.current();
+    
+    if (!visibleRows || !visibleTimeKeys || visibleRows.length === 0 || visibleTimeKeys.length === 0) {
+      return [startCellKey, endCellKey];
+    }
+    
+    // Parse cell keys to get rowId and monthKey
+    const parseCellKey = (key: string): { rowId: string; monthKey: string } | null => {
+      const parts = key.split('-');
+      if (parts.length < 2) return null;
+      const monthKey = parts[parts.length - 1];
+      const rowId = parts.slice(0, -1).join('-');
+      return { rowId, monthKey };
+    };
+    
+    const start = parseCellKey(startCellKey);
+    const end = parseCellKey(endCellKey);
+    
+    if (!start || !end) {
+      return [startCellKey, endCellKey];
+    }
+    
+    // Find indices
+    const startRowIndex = visibleRows.findIndex((r: any) => r.id === start.rowId);
+    const endRowIndex = visibleRows.findIndex((r: any) => r.id === end.rowId);
+    const startColIndex = visibleTimeKeys.findIndex((k: any) => String(k) === start.monthKey);
+    const endColIndex = visibleTimeKeys.findIndex((k: any) => String(k) === end.monthKey);
+    
+    if (startRowIndex === -1 || endRowIndex === -1 || startColIndex === -1 || endColIndex === -1) {
+      return [startCellKey, endCellKey];
+    }
+    
+    // Calculate range bounds
+    const minRowIndex = Math.min(startRowIndex, endRowIndex);
+    const maxRowIndex = Math.max(startRowIndex, endRowIndex);
+    const minColIndex = Math.min(startColIndex, endColIndex);
+    const maxColIndex = Math.max(startColIndex, endColIndex);
+    
+    // Generate all cell keys in the rectangular range
+    const rangeCells: string[] = [];
+    try {
+      for (let rowIdx = minRowIndex; rowIdx <= maxRowIndex; rowIdx++) {
+        for (let colIdx = minColIndex; colIdx <= maxColIndex; colIdx++) {
+          const row = visibleRows[rowIdx] as any;
+          const monthKey = String(visibleTimeKeys[colIdx]);
+          if (row && row.id && monthKey) {
+            rangeCells.push(`${row.id}-${monthKey}`);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('[ForecastingGrid] Error generating range cells:', error);
+      return [startCellKey, endCellKey];
+    }
+    
+    return rangeCells.length > 0 ? rangeCells : [startCellKey, endCellKey];
+  }, [selectedLayoutState]);
   
   // Handler for cell selection
   const handleCellSelect = useCallback((cellKey: string, event: React.MouseEvent) => {
@@ -84,8 +166,18 @@ const ForecastingGrid: React.FC = () => {
       return;
     }
     
+    // CRITICAL: Check modifier keys directly from the event object
+    // Don't rely on any refs or state - always read from the event
     const isCtrlOrCmd = event.ctrlKey || event.metaKey;
     const isShift = event.shiftKey;
+    
+    // CRITICAL: If Shift is pressed and we have an anchor, preserve it
+    // This prevents the anchor from being cleared accidentally
+    const hadAnchorBefore = shiftAnchorCellRef.current;
+    if (isShift && hadAnchorBefore) {
+      // Don't let anything clear the anchor while Shift is held
+      // We'll restore it if something tries to clear it
+    }
     
     // If clicking a cell while another is editing, ALWAYS clear selection synchronously first
     // This prevents the editing cell from staying selected
@@ -93,7 +185,9 @@ const ForecastingGrid: React.FC = () => {
     if (editingCellKey && editingCellKey !== cellKey && !isCtrlOrCmd && !isShift) {
       // Clear selection and select only the new cell in one operation
       setSelectedCells(new Set([cellKey]));
+      lastSelectedCellRef.current = cellKey;
       setLastSelectedCell(cellKey);
+      shiftAnchorCellRef.current = null; // Clear Shift anchor
       selectedCellsOrderRef.current = [cellKey];
       setSelectedCellsOrder([cellKey]);
       return; // Early return to prevent double-processing
@@ -127,6 +221,9 @@ const ForecastingGrid: React.FC = () => {
           // Add to end of order
           newOrder.push(cellKey);
         }
+        // Clear Shift anchor when using Ctrl/Cmd (different selection mode)
+        shiftAnchorCellRef.current = null;
+        lastSelectedCellRef.current = cellKey;
         setLastSelectedCell(cellKey);
         // For multi-selection (Ctrl/Cmd), clear focusedCell (panel will show multi-cell view)
         if (newSelection.size !== 1) {
@@ -152,33 +249,84 @@ const ForecastingGrid: React.FC = () => {
         }
       } else if (isShift) {
         // Shift key pressed - range selection
-        if (lastSelectedCell && lastSelectedCell !== cellKey) {
-          // First, keep all previously selected cells
-          prev.forEach(cell => newSelection.add(cell));
-          // Preserve order from ref - only include cells that are still selected
-          currentOrder.forEach(cell => {
-            if (newSelection.has(cell)) {
-              newOrder.push(cell);
-            }
-          });
-          // Add range endpoints in order: lastSelectedCell first, then cellKey
-          // Only add if not already in order
-          if (!newOrder.includes(lastSelectedCell)) {
-            newOrder.push(lastSelectedCell);
+        // For Shift+Click, we need to track the "anchor" cell (first cell clicked while holding Shift)
+        // CRITICAL: Read anchor at the START of the callback to ensure we have the latest value
+        // Also check if any cell from previous selection should become the anchor
+        let currentAnchor = shiftAnchorCellRef.current;
+        
+        // CRITICAL: If no anchor but we have a previous selection, use the first selected cell as anchor
+        // This handles the case where the user clicked without Shift first, then started Shift+Click
+        // IMPORTANT: `prev` in the callback represents the state BEFORE this update
+        // So if user clicked Apr (normal), then Shift+Clicks May, `prev` will have Apr
+        // But we also check the ref to be safe (ref is updated synchronously)
+        const currentSelectedCells = selectedCellsRef.current;
+        const currentOrder = selectedCellsOrderRef.current;
+        
+        // Check if we have a previous selection - prefer `prev` (it's the state before this update)
+        // but also check ref as fallback
+        const hasPreviousSelection = prev.size > 0 || currentSelectedCells.size > 0;
+        
+        if (!currentAnchor && hasPreviousSelection) {
+          // Prefer using `prev` (state before this update) - it's more reliable for detecting previous selection
+          // But also check ref as fallback
+          const previousSelection = prev.size > 0 ? prev : currentSelectedCells;
+          
+          // Prefer using selectedCellsOrder if available (preserves exact selection order)
+          let firstSelected: string | undefined;
+          
+          if (currentOrder.length > 0) {
+            // Use first cell from order array that exists in previous selection
+            firstSelected = currentOrder.find(key => previousSelection.has(key));
           }
-          if (!newOrder.includes(cellKey)) {
-            newOrder.push(cellKey);
+          
+          // Fallback to first cell from Set if order array doesn't have valid cells
+          if (!firstSelected) {
+            firstSelected = Array.from(previousSelection)[0];
           }
-          newSelection.add(cellKey);
-          newSelection.add(lastSelectedCell);
-          setLastSelectedCell(cellKey);
-          // For multi-selection (Shift), clear focusedCell (panel will show multi-cell view)
-          setCurrentFocusedCell(null);
-        } else {
-          // Shift clicked but no lastSelectedCell or same cell - treat as single selection and set it for next Shift click
+          
+          if (firstSelected && previousSelection.has(firstSelected)) {
+            currentAnchor = firstSelected;
+            shiftAnchorCellRef.current = firstSelected;
+            console.log('[handleCellSelect] Using previous selection as anchor:', {
+              firstSelected,
+              currentOrder,
+              currentSelection: Array.from(currentSelectedCells),
+              prevSelection: Array.from(prev),
+              previousSelection: Array.from(previousSelection),
+              'prev.size': prev.size,
+              'currentSelectedCells.size': currentSelectedCells.size
+            });
+          } else {
+            console.log('[handleCellSelect] Failed to find anchor from previous selection:', {
+              firstSelected,
+              currentOrder,
+              currentSelection: Array.from(currentSelectedCells),
+              prevSelection: Array.from(prev),
+              previousSelection: Array.from(previousSelection)
+            });
+          }
+        }
+        
+        console.log('[handleCellSelect] Shift+Click detected:', {
+          cellKey,
+          currentAnchor,
+          hasAnchor: !!currentAnchor,
+          prevSelection: Array.from(prev),
+          prevSize: prev.size,
+          currentSelection: Array.from(currentSelectedCells),
+          currentSelectionSize: currentSelectedCells.size,
+          prevOrder: selectedCellsOrderRef.current,
+          shiftAnchorRef: shiftAnchorCellRef.current
+        });
+        
+        if (!currentAnchor) {
+          // First Shift+Click: Set this cell as the anchor and select it
+          console.log('[handleCellSelect] Setting anchor cell:', cellKey);
+          shiftAnchorCellRef.current = cellKey;
           newSelection.clear();
           newSelection.add(cellKey);
           newOrder.push(cellKey);
+          lastSelectedCellRef.current = cellKey;
           setLastSelectedCell(cellKey);
           // Single cell selected - update focusedCell
           if (selectedLayoutState === 'Dimensions / Time x Measures' || selectedLayoutState === 'Time / Dimensions x Measures') {
@@ -196,14 +344,58 @@ const ForecastingGrid: React.FC = () => {
               setCurrentFocusedCell({ rowId: rowId, monthKey: monthKey });
             }
           }
+        } else {
+          // Subsequent Shift+Click: Calculate range from anchor to current cell
+          // Use the anchor cell that was set on the first Shift+Click (or from previous selection)
+          console.log('[handleCellSelect] Calculating range from anchor:', {
+            anchor: currentAnchor,
+            current: cellKey
+          });
+          
+          const rangeCells = calculateCellRange(currentAnchor, cellKey);
+          
+          console.log('[handleCellSelect] Range calculation result:', {
+            rangeCells,
+            rangeCellsCount: rangeCells.length
+          });
+          
+          // Clear previous selection and add only the new range
+          // This ensures we replace any previous range with the new one
+          newSelection.clear(); // Explicitly clear first
+          rangeCells.forEach(cell => {
+            newSelection.add(cell);
+          });
+          
+          // Build order: add range cells in order (row by row, column by column)
+          newOrder = [];
+          rangeCells.forEach(cell => {
+            newOrder.push(cell);
+          });
+          
+          console.log('[handleCellSelect] After range selection:', {
+            newSelection: Array.from(newSelection),
+            newSelectionSize: newSelection.size,
+            newOrder
+          });
+          
+          lastSelectedCellRef.current = cellKey;
+          setLastSelectedCell(cellKey);
+          // For multi-selection (Shift), clear focusedCell (panel will show multi-cell view)
+          setCurrentFocusedCell(null);
         }
       } else {
         // Single selection - ALWAYS clear previous and select new
         // This handles: normal click, or clicking same cell
         // This ensures that when clicking a cell while another is editing, we clear the old selection
+        // IMPORTANT: When doing a normal click, set the selected cell as the anchor
+        // This allows the next Shift+Click to use it as anchor for range selection
+        // This is the key fix: preserve the selected cell as anchor for future Shift+Click
+        shiftAnchorCellRef.current = cellKey; // Set the clicked cell as anchor for future Shift+Click
+        
         newSelection.clear();
         newSelection.add(cellKey);
         newOrder.push(cellKey);
+        lastSelectedCellRef.current = cellKey;
         setLastSelectedCell(cellKey);
         
         // Update focusedCell when a single cell is selected (so history panel shows its history)
@@ -236,21 +428,29 @@ const ForecastingGrid: React.FC = () => {
       console.log('[handleCellSelect] New order calculated:', newOrder);
       console.log('[handleCellSelect] Cell key:', cellKey);
       console.log('[handleCellSelect] Is Ctrl/Cmd:', isCtrlOrCmd);
+      console.log('[handleCellSelect] Is Shift:', isShift);
       console.log('[handleCellSelect] Previous order (from ref):', currentOrder);
+      console.log('[handleCellSelect] New selection size:', newSelection.size);
+      console.log('[handleCellSelect] New selection:', Array.from(newSelection));
+      
+      // Update refs immediately for synchronous access
+      selectedCellsRef.current = newSelection;
+      selectedCellsOrderRef.current = newOrder;
       
       return newSelection;
     });
     
-    // ROOT CAUSE FIX: Update ref and state AFTER setSelectedCells completes
+    // ROOT CAUSE FIX: Update state AFTER setSelectedCells completes
     // This ensures both are updated atomically with the correct order
-    selectedCellsOrderRef.current = newOrder;
     setSelectedCellsOrder(newOrder);
-  }, [lastSelectedCell, editingCellKey, selectedLayoutState]);
+  }, [lastSelectedCell, editingCellKey, selectedLayoutState, calculateCellRange]);
   
   // Clear selection handler
   const handleClearSelection = useCallback(() => {
     setSelectedCells(new Set());
+    lastSelectedCellRef.current = null;
     setLastSelectedCell(null);
+    shiftAnchorCellRef.current = null; // Clear Shift anchor
     selectedCellsOrderRef.current = [];
     setSelectedCellsOrder([]);
     // Clear focusedCell when selection is cleared
@@ -276,7 +476,9 @@ const ForecastingGrid: React.FC = () => {
       }
       // Clear selection on outside click
       setSelectedCells(new Set());
+      lastSelectedCellRef.current = null;
       setLastSelectedCell(null);
+      shiftAnchorCellRef.current = null; // Clear Shift anchor
     };
     
     document.addEventListener('mousedown', handleClickOutside);
@@ -1506,7 +1708,9 @@ const ForecastingGrid: React.FC = () => {
     const newSet = new Set<string>([cellKey]);
     setSelectedCells(newSet);
     selectedCellsRef.current = newSet;
+    lastSelectedCellRef.current = cellKey;
     setLastSelectedCell(cellKey);
+    shiftAnchorCellRef.current = null; // Clear Shift anchor
     selectedCellsOrderRef.current = [cellKey];
     setSelectedCellsOrder([cellKey]);
   }, []);
@@ -1519,6 +1723,7 @@ const ForecastingGrid: React.FC = () => {
     
     // Select the specific cell whose history we want to view
     handleSelectSingleCell(targetCellKey);
+    // Note: handleSelectSingleCell already clears shiftAnchorCellRef
     
     // Set focusedCell so the panel can filter history correctly
     // Use the entry's rowId, timeKey, and measureId to construct focusedCell
@@ -1948,6 +2153,12 @@ const ForecastingGrid: React.FC = () => {
                 setIsSettingsOpen(false);
                 setIsFiltersOpen(false);
               }
+            }}
+            onGetVisibleRowsReady={(handler) => {
+              getVisibleRowsRef.current = handler;
+            }}
+            onGetVisibleTimeKeysReady={(handler) => {
+              getVisibleTimeKeysRef.current = handler;
             }}
             showAllPeriods={showAllPeriods}
             startPeriod={startPeriod}

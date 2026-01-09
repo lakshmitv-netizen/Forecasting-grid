@@ -55,6 +55,8 @@ interface HierarchicalGridProps {
   endPeriod?: string; // End date for filtering (YYYY-MM-DD format)
   visibleMeasureIds?: Set<string>; // Set of visible measure IDs to filter impacted count
   onToggleShowOnlyImpactedKPIChange?: (checked: boolean) => void; // Callback when "Show Only Impacted Measures" is toggled
+  onGetVisibleRowsReady?: (handler: () => GridRowType[]) => void; // Callback to expose function to get visible rows
+  onGetVisibleTimeKeysReady?: (handler: () => (keyof GridRowType['values'])[]) => void; // Callback to expose function to get visible time keys
 }
 
 const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({ 
@@ -92,7 +94,9 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   onEditingCellChange,
   onSavedImpactedCellsReady,
   visibleMeasureIds,
-  onToggleShowOnlyImpactedKPIChange
+  onToggleShowOnlyImpactedKPIChange,
+  onGetVisibleRowsReady,
+  onGetVisibleTimeKeysReady
 }) => {
   // Store onEditHistory in a ref so it's always available in callbacks
   const onEditHistoryRef = useRef(onEditHistory);
@@ -578,26 +582,45 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
         latestMeasureId = getMeasureIdFromRowId(rowId);
       }
       
-      // Expand the latest edited measure if found
+      // Fully expand the latest edited measure if found (expand all rows within that measure)
       if (latestMeasureId) {
-        setExpandedRows(prev => {
-          const newSet = new Set(prev);
-          newSet.add(latestMeasureId!);
-          return newSet;
-        });
+        const measure = gridData.find(m => m.id === latestMeasureId);
+        if (measure) {
+          // Recursive function to collect all expandable row IDs within this measure
+          const collectExpandableIds = (rows: GridRowType[]): string[] => {
+            const ids: string[] = [];
+            rows.forEach(row => {
+              if (row.children && row.children.length > 0) {
+                ids.push(row.id);
+                ids.push(...collectExpandableIds(row.children));
+              }
+            });
+            return ids;
+          };
+          
+          // Collect all expandable IDs within this measure
+          const allExpandableIds = collectExpandableIds(measure.children || []);
+          
+          // Add the measure itself and all its expandable children
+          setExpandedRows(prev => {
+            const newSet = new Set(prev);
+            newSet.add(latestMeasureId!);
+            allExpandableIds.forEach(id => newSet.add(id));
+            return newSet;
+          });
+        } else {
+          // Fallback: just expand the measure row
+          setExpandedRows(prev => {
+            const newSet = new Set(prev);
+            newSet.add(latestMeasureId!);
+            return newSet;
+          });
+        }
       }
     }
   }, [gridData, editedCells, cellEditHistory]);
   
-  // Register handlers with parent component
-  useEffect(() => {
-    if (onExpandAllRows) {
-      onExpandAllRows(handleExpandAll);
-    }
-    if (onCollapseAllRows) {
-      onCollapseAllRows(handleCollapseAll);
-    }
-  }, [handleExpandAll, handleCollapseAll, onExpandAllRows, onCollapseAllRows]);
+  // Register handlers with parent component (moved after getAllVisibleRows and getVisibleTimeKeys are defined)
 
 
   const formatValue = (value: number): string => {
@@ -1816,6 +1839,22 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     return visibleRows;
   }, [gridData, expandedRows, selectedDimensionLevels, filterRowsByType, deepCopyRow]);
 
+  // Register handlers with parent component (moved here after getAllVisibleRows and getVisibleTimeKeys are defined)
+  useEffect(() => {
+    if (onExpandAllRows) {
+      onExpandAllRows(handleExpandAll);
+    }
+    if (onCollapseAllRows) {
+      onCollapseAllRows(handleCollapseAll);
+    }
+    if (onGetVisibleRowsReady) {
+      onGetVisibleRowsReady(getAllVisibleRows);
+    }
+    if (onGetVisibleTimeKeysReady) {
+      onGetVisibleTimeKeysReady(getVisibleTimeKeys);
+    }
+  }, [handleExpandAll, handleCollapseAll, onExpandAllRows, onCollapseAllRows, onGetVisibleRowsReady, onGetVisibleTimeKeysReady, getAllVisibleRows, getVisibleTimeKeys]);
+
   // Handle keyboard navigation
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
     // Don't handle navigation if user is typing in an input field
@@ -2613,7 +2652,19 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
 
   return (
     <div className="grid-container-wrapper">
-      <div className="grid-container" onKeyDown={handleKeyDown} tabIndex={0}>
+      <div className={`grid-container ${isFooterVisible ? 'has-footer' : ''}`} onKeyDown={handleKeyDown} tabIndex={0}>
+        <GridFooter
+          isVisible={isFooterVisible}
+          impactedMeasuresCount={impactedMeasuresCount}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          onCancel={handleCancel}
+          onSave={handleSave}
+          canUndo={historyIndex > 0}
+          canRedo={historyIndex < undoRedoHistory.length - 1}
+          showOnlyImpactedKPI={showOnlyImpactedKPI}
+          onToggleShowOnlyImpactedKPI={handleToggleShowOnlyImpactedKPI}
+        />
         <table className={`grid-table ${isFiltering ? 'filtered' : ''}`}>
           <thead className="grid-header">
             <tr>
@@ -2760,18 +2811,6 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
         </tbody>
       </table>
     </div>
-    <GridFooter
-        isVisible={isFooterVisible}
-        impactedMeasuresCount={impactedMeasuresCount}
-        onUndo={handleUndo}
-        onRedo={handleRedo}
-        onCancel={handleCancel}
-        onSave={handleSave}
-        canUndo={historyIndex > 0}
-        canRedo={historyIndex < undoRedoHistory.length - 1}
-        showOnlyImpactedKPI={showOnlyImpactedKPI}
-        onToggleShowOnlyImpactedKPI={handleToggleShowOnlyImpactedKPI}
-      />
       
       {/* Cell Note Popover */}
       {editingCell && onAddAdjustmentNote && editingInputRef.current && (

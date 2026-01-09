@@ -29,6 +29,7 @@ const CellEditHistoryCard: React.FC<CellEditHistoryCardProps> = ({ entry, replie
   const [isExpanded, setIsExpanded] = useState(isFirst);
   const [replyText, setReplyText] = useState('');
   const [showHierarchyTooltip, setShowHierarchyTooltip] = useState(false);
+  const [tooltipPosition, setTooltipPosition] = useState<{ top: number; left: number } | null>(null);
   const hierarchyInfoRef = React.useRef<HTMLDivElement>(null);
   
   // Only consider it an "edit" if values are defined AND actually different
@@ -183,13 +184,75 @@ const CellEditHistoryCard: React.FC<CellEditHistoryCardProps> = ({ entry, replie
                   <div 
                     className="sf-timeline-hierarchy-info-wrapper"
                     ref={hierarchyInfoRef}
-                    onMouseEnter={() => setShowHierarchyTooltip(true)}
-                    onMouseLeave={() => setShowHierarchyTooltip(false)}
+                    onMouseEnter={() => {
+                      if (hierarchyInfoRef.current) {
+                        const rect = hierarchyInfoRef.current.getBoundingClientRect();
+                        const tooltipWidth = 300;
+                        const tooltipHeight = 100; // Approximate height
+                        const viewportWidth = window.innerWidth;
+                        const viewportHeight = window.innerHeight;
+                        
+                        // Calculate position - prefer left side to avoid right edge clipping
+                        let left = rect.left - tooltipWidth + rect.width;
+                        let top = rect.bottom + 8;
+                        
+                        // Ensure tooltip stays within viewport
+                        if (left < 8) {
+                          left = rect.right + 8; // Position to the right if not enough space on left
+                        }
+                        if (left + tooltipWidth > viewportWidth - 8) {
+                          left = viewportWidth - tooltipWidth - 8;
+                        }
+                        if (top + tooltipHeight > viewportHeight - 8) {
+                          top = rect.top - tooltipHeight - 8; // Position above if not enough space below
+                        }
+                        
+                        setTooltipPosition({
+                          top: top + window.scrollY,
+                          left: left + window.scrollX
+                        });
+                      }
+                      setShowHierarchyTooltip(true);
+                    }}
+                    onMouseLeave={() => {
+                      setShowHierarchyTooltip(false);
+                      setTooltipPosition(null);
+                    }}
                   >
                     <button
                       className="sf-timeline-hierarchy-info-btn"
-                      onFocus={() => setShowHierarchyTooltip(true)}
-                      onBlur={() => setShowHierarchyTooltip(false)}
+                      onFocus={() => {
+                        if (hierarchyInfoRef.current) {
+                          const rect = hierarchyInfoRef.current.getBoundingClientRect();
+                          const tooltipWidth = 300;
+                          const tooltipHeight = 100;
+                          const viewportWidth = window.innerWidth;
+                          const viewportHeight = window.innerHeight;
+                          
+                          let left = rect.left - tooltipWidth + rect.width;
+                          let top = rect.bottom + 8;
+                          
+                          if (left < 8) {
+                            left = rect.right + 8;
+                          }
+                          if (left + tooltipWidth > viewportWidth - 8) {
+                            left = viewportWidth - tooltipWidth - 8;
+                          }
+                          if (top + tooltipHeight > viewportHeight - 8) {
+                            top = rect.top - tooltipHeight - 8;
+                          }
+                          
+                          setTooltipPosition({
+                            top: top + window.scrollY,
+                            left: left + window.scrollX
+                          });
+                        }
+                        setShowHierarchyTooltip(true);
+                      }}
+                      onBlur={() => {
+                        setShowHierarchyTooltip(false);
+                        setTooltipPosition(null);
+                      }}
                       aria-label="Show full hierarchy"
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -197,8 +260,11 @@ const CellEditHistoryCard: React.FC<CellEditHistoryCardProps> = ({ entry, replie
                         <path d="M12 16v-4M12 8h.01"/>
                       </svg>
                     </button>
-                    {showHierarchyTooltip && (
-                      <div className="sf-timeline-hierarchy-tooltip">
+                    {showHierarchyTooltip && tooltipPosition && (
+                      <div 
+                        className="sf-timeline-hierarchy-tooltip"
+                        style={{ top: `${tooltipPosition.top}px`, left: `${tooltipPosition.left}px` }}
+                      >
                         <div className="sf-timeline-hierarchy-tooltip-nubbin"></div>
                         <span>{fullHierarchyPath}</span>
                       </div>

@@ -779,21 +779,12 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                           ? currentOrder.filter(key => selectedCells.has(key)) // Preserve order, only include selected
                           : Array.from(selectedCells); // Fallback if order not available
                         
-                        // TEMPORARY HACK: Swap first and second selected cells to fix order issue
-                        // This ensures the second selected cell updates first, then the first selected cell
-                        if (orderedKeys.length >= 2) {
-                          const temp = orderedKeys[0];
-                          orderedKeys[0] = orderedKeys[1];
-                          orderedKeys[1] = temp;
-                        }
-                        
-                        console.log('[CellDetailsHistoryPanel] Mass update - orderedKeys (after swap hack):', orderedKeys);
+                        console.log('[CellDetailsHistoryPanel] Mass update - orderedKeys:', orderedKeys);
                         console.log('[CellDetailsHistoryPanel] Mass update - currentOrder (from ref/prop):', currentOrder);
                         console.log('[CellDetailsHistoryPanel] Mass update - selectedCellsOrder prop:', selectedCellsOrder);
                         console.log('[CellDetailsHistoryPanel] Mass update - selectedCells Set:', Array.from(selectedCells));
-                        console.log('[CellDetailsHistoryPanel] Mass update - First cell (will update second):', orderedKeys[0], 'Second cell (will update first):', orderedKeys[1]);
                         
-                        // Pass orderedKeys directly - it's already in the correct order (swapped)
+                        // Pass orderedKeys directly - it's already in the correct order
                         onMassUpdate(orderedKeys, rule, value.trim(), bulkNote.trim() || undefined);
                       }
                     }}

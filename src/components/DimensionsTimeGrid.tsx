@@ -1481,6 +1481,18 @@ const DimensionsTimeGrid: React.FC<DimensionsTimeGridProps> = ({
   return (
     <div className="grid-container-wrapper">
       <div className="grid-container" tabIndex={0}>
+        <GridFooter
+          isVisible={true}
+          impactedMeasuresCount={0}
+          onUndo={() => {}}
+          onRedo={() => {}}
+          onCancel={() => {}}
+          onSave={() => {}}
+          canUndo={false}
+          canRedo={false}
+          showOnlyImpactedKPI={false}
+          onToggleShowOnlyImpactedKPI={() => {}}
+        />
         <table className={`grid-table dimensions-time-table ${isFiltering ? 'filtered' : ''}`}>
           <thead className="grid-header">
             <tr>
@@ -1561,21 +1573,9 @@ const DimensionsTimeGrid: React.FC<DimensionsTimeGridProps> = ({
                 />
               ))
             )}
-          </tbody>
-        </table>
-      </div>
-      <GridFooter
-        isVisible={true}
-        impactedMeasuresCount={0}
-        onUndo={() => {}}
-        onRedo={() => {}}
-        onCancel={() => {}}
-        onSave={() => {}}
-        canUndo={false}
-        canRedo={false}
-        showOnlyImpactedKPI={false}
-        onToggleShowOnlyImpactedKPI={() => {}}
-      />
+        </tbody>
+      </table>
+    </div>
     </div>
   );
 };

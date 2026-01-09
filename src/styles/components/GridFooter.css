@@ -1,6 +1,6 @@
 .grid-footer {
-  position: fixed;
-  bottom: 0;
+  position: sticky;
+  top: 0;
   left: 0;
   right: 0;
   background-color: var(--color-surface-white);
@@ -9,10 +9,10 @@
   justify-content: space-between;
   gap: var(--spacing-2);
   padding: var(--spacing-2);
-  border-radius: 0 0 16px 16px;
+  border-radius: 16px 16px 0 0;
   box-shadow: 
     0px 0px 5px 0px rgba(0, 0, 0, 0.16),
-    0px -3px 3px 0px rgba(0, 0, 0, 0.16),
+    0px 3px 3px 0px rgba(0, 0, 0, 0.16),
     0px 1px 2px 0px rgba(0, 0, 0, 0.09);
   z-index: 1000; /* Higher z-index to ensure it's above everything */
   min-height: 48px;
@@ -61,8 +61,12 @@
 
 .grid-footer-button-outline {
   background-color: var(--color-surface-white);
-  color: var(--color-primary-blue);
-  border-color: var(--color-border);
+  color: #066AFE !important;
+  border-color: #066AFE !important;
+  border-width: 1px !important;
+  border-style: solid !important;
+  font-weight: 700 !important;
+  border-radius: 9999px !important;
 }
 
 .grid-footer-button-outline:hover {
@@ -73,7 +77,8 @@
   background-color: #066AFE !important;
   color: #FFFFFF !important;
   border-color: #066AFE !important;
-  border-radius: 4px !important;
+  border-radius: 9999px !important;
+  font-weight: 700 !important;
 }
 
 .grid-footer-button-brand:hover {
