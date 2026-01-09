@@ -128,6 +128,28 @@ const ForecastingGrid: React.FC = () => {
           newOrder.push(cellKey);
         }
         setLastSelectedCell(cellKey);
+        // For multi-selection (Ctrl/Cmd), clear focusedCell (panel will show multi-cell view)
+        if (newSelection.size !== 1) {
+          setCurrentFocusedCell(null);
+        } else {
+          // Single cell selected via toggle - update focusedCell
+          const singleCellKey = Array.from(newSelection)[0];
+          if (selectedLayoutState === 'Dimensions / Time x Measures' || selectedLayoutState === 'Time / Dimensions x Measures') {
+            const parts = singleCellKey.split('-');
+            if (parts.length >= 2) {
+              const measureId = parts[parts.length - 1];
+              const dimensionId = parts.slice(0, -1).join('-');
+              setCurrentFocusedCell({ rowId: dimensionId, measureId: measureId });
+            }
+          } else {
+            const parts = singleCellKey.split('-');
+            if (parts.length >= 2) {
+              const monthKey = parts[parts.length - 1];
+              const rowId = parts.slice(0, -1).join('-');
+              setCurrentFocusedCell({ rowId: rowId, monthKey: monthKey });
+            }
+          }
+        }
       } else if (isShift) {
         // Shift key pressed - range selection
         if (lastSelectedCell && lastSelectedCell !== cellKey) {
@@ -150,12 +172,30 @@ const ForecastingGrid: React.FC = () => {
           newSelection.add(cellKey);
           newSelection.add(lastSelectedCell);
           setLastSelectedCell(cellKey);
+          // For multi-selection (Shift), clear focusedCell (panel will show multi-cell view)
+          setCurrentFocusedCell(null);
         } else {
           // Shift clicked but no lastSelectedCell or same cell - treat as single selection and set it for next Shift click
           newSelection.clear();
           newSelection.add(cellKey);
           newOrder.push(cellKey);
           setLastSelectedCell(cellKey);
+          // Single cell selected - update focusedCell
+          if (selectedLayoutState === 'Dimensions / Time x Measures' || selectedLayoutState === 'Time / Dimensions x Measures') {
+            const parts = cellKey.split('-');
+            if (parts.length >= 2) {
+              const measureId = parts[parts.length - 1];
+              const dimensionId = parts.slice(0, -1).join('-');
+              setCurrentFocusedCell({ rowId: dimensionId, measureId: measureId });
+            }
+          } else {
+            const parts = cellKey.split('-');
+            if (parts.length >= 2) {
+              const monthKey = parts[parts.length - 1];
+              const rowId = parts.slice(0, -1).join('-');
+              setCurrentFocusedCell({ rowId: rowId, monthKey: monthKey });
+            }
+          }
         }
       } else {
         // Single selection - ALWAYS clear previous and select new
@@ -165,6 +205,32 @@ const ForecastingGrid: React.FC = () => {
         newSelection.add(cellKey);
         newOrder.push(cellKey);
         setLastSelectedCell(cellKey);
+        
+        // Update focusedCell when a single cell is selected (so history panel shows its history)
+        // Parse cellKey based on layout to extract rowId and monthKey/measureId
+        if (selectedLayoutState === 'Dimensions / Time x Measures' || selectedLayoutState === 'Time / Dimensions x Measures') {
+          // For these layouts, cellKey format is `${dimensionId}-${measureId}`
+          const parts = cellKey.split('-');
+          if (parts.length >= 2) {
+            const measureId = parts[parts.length - 1];
+            const dimensionId = parts.slice(0, -1).join('-');
+            setCurrentFocusedCell({
+              rowId: dimensionId,
+              measureId: measureId
+            });
+          }
+        } else {
+          // For HierarchicalGrid, cellKey format is `${rowId}-${monthKey}`
+          const parts = cellKey.split('-');
+          if (parts.length >= 2) {
+            const monthKey = parts[parts.length - 1];
+            const rowId = parts.slice(0, -1).join('-');
+            setCurrentFocusedCell({
+              rowId: rowId,
+              monthKey: monthKey
+            });
+          }
+        }
       }
       
       console.log('[handleCellSelect] New order calculated:', newOrder);
@@ -179,7 +245,7 @@ const ForecastingGrid: React.FC = () => {
     // This ensures both are updated atomically with the correct order
     selectedCellsOrderRef.current = newOrder;
     setSelectedCellsOrder(newOrder);
-  }, [lastSelectedCell, editingCellKey]);
+  }, [lastSelectedCell, editingCellKey, selectedLayoutState]);
   
   // Clear selection handler
   const handleClearSelection = useCallback(() => {
@@ -187,6 +253,8 @@ const ForecastingGrid: React.FC = () => {
     setLastSelectedCell(null);
     selectedCellsOrderRef.current = [];
     setSelectedCellsOrder([]);
+    // Clear focusedCell when selection is cleared
+    setCurrentFocusedCell(null);
   }, []);
   
   // Clear selection when clicking outside the grid

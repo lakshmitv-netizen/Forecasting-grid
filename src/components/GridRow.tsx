@@ -581,47 +581,6 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               <div style={{
                 padding: '12px'
               }}>
-                <div style={{
-                  fontSize: '11px',
-                  lineHeight: '16px',
-                  color: '#706e6b',
-                  marginBottom: '8px',
-                  fontFamily: 'var(--slds-g-font-family-base, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif)'
-                }}>
-                  Press <span style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '2px 6px',
-                    border: '1px solid #5C5C5C',
-                    borderRadius: '3px',
-                    backgroundColor: '#ffffff',
-                    fontSize: '11px',
-                    fontWeight: '600',
-                    fontFamily: 'var(--font-family-base)',
-                    color: '#5C5C5C',
-                    lineHeight: 1,
-                    minWidth: '40px',
-                    textAlign: 'center',
-                    margin: '0 2px'
-                  }}>Enter</span> / <span style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '2px 6px',
-                    border: '1px solid #5C5C5C',
-                    borderRadius: '3px',
-                    backgroundColor: '#ffffff',
-                    fontSize: '11px',
-                    fontWeight: '600',
-                    fontFamily: 'var(--font-family-base)',
-                    color: '#5C5C5C',
-                    lineHeight: 1,
-                    minWidth: '40px',
-                    textAlign: 'center',
-                    margin: '0 2px'
-                  }}>Return</span> after you update your entry
-                </div>
                 <label style={{
                   display: 'block',
                   fontSize: '13px',
@@ -774,6 +733,47 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                     }
                   }}
                 />
+                <div style={{
+                  fontSize: '11px',
+                  lineHeight: '16px',
+                  color: '#706e6b',
+                  marginTop: '8px',
+                  fontFamily: 'var(--slds-g-font-family-base, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif)'
+                }}>
+                  Press <span style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '2px 6px',
+                    border: '1px solid #5C5C5C',
+                    borderRadius: '3px',
+                    backgroundColor: '#ffffff',
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    fontFamily: 'var(--font-family-base)',
+                    color: '#5C5C5C',
+                    lineHeight: 1,
+                    minWidth: '40px',
+                    textAlign: 'center',
+                    margin: '0 2px'
+                  }}>Enter</span> / <span style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '2px 6px',
+                    border: '1px solid #5C5C5C',
+                    borderRadius: '3px',
+                    backgroundColor: '#ffffff',
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    fontFamily: 'var(--font-family-base)',
+                    color: '#5C5C5C',
+                    lineHeight: 1,
+                    minWidth: '40px',
+                    textAlign: 'center',
+                    margin: '0 2px'
+                  }}>Return</span> after you update your entry
+                </div>
               </div>
             </div>,
             document.body
