@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import Header from '../components/Header';
 import '../styles/pages/PlanningForecastingListPage.css';
@@ -166,7 +167,7 @@ const PlanningForecastingListPage: React.FC = () => {
       </div>
 
       {/* New Record Modal */}
-      {isModalOpen && (
+      {isModalOpen && createPortal(
         <div className="list-page-modal-overlay" onClick={() => setIsModalOpen(false)}>
           <button className="list-page-modal-close-outside" onClick={() => setIsModalOpen(false)}>
             <svg viewBox="0 0 24 24" fill="currentColor">
@@ -273,7 +274,8 @@ const PlanningForecastingListPage: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

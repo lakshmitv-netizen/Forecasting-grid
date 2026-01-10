@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { MeasureData } from '../types';
 import '../styles/components/ReorderMeasuresModal.css';
 
@@ -115,21 +116,71 @@ const ReorderMeasuresModal: React.FC<ReorderMeasuresModalProps> = ({
       return;
     }
 
-    const orderNum = parseInt(newOrder, 10);
+    const orderNum = parseFloat(newOrder);
+    const originalOrder = item.order;
     
     // Allow any positive number - don't validate or clamp
-    // Just update the order value, don't do any shifting or validation
     if (isNaN(orderNum) || orderNum < 1) {
       // If invalid, just don't update
       return;
     }
 
-    // Simply update the order number - no auto-adjustment
-    setMeasureItems(items =>
-      items.map(item =>
-        item.id === id ? { ...item, order: orderNum } : item
-      )
-    );
+    setMeasureItems(items => {
+      // Check if the new order number already exists in another row
+      const existingItem = items.find(item => item.id !== id && item.order === orderNum);
+      
+      if (existingItem) {
+        // Determine if we should increase or decrease based on comparison
+        const isIncreasing = orderNum > originalOrder;
+        
+        let adjustment = 0.1; // Default adjustment
+        
+        if (isIncreasing) {
+          // New order is greater than original: decrease existing row by 10%
+          // Find the next order number after orderNum to calculate difference
+          const allOrders = items.map(item => item.order).sort((a, b) => a - b);
+          const nextOrder = allOrders.find(order => order > orderNum);
+          
+          if (nextOrder !== undefined) {
+            const difference = nextOrder - orderNum;
+            adjustment = difference * 0.1;
+          }
+          // Decrease: subtract adjustment
+          return items.map(item => {
+            if (item.id === existingItem.id) {
+              return { ...item, order: orderNum - adjustment };
+            } else if (item.id === id) {
+              return { ...item, order: orderNum };
+            }
+            return item;
+          });
+        } else {
+          // New order is less than original: increase existing row by 10%
+          // Find the previous order number before orderNum to calculate difference
+          const allOrders = items.map(item => item.order).sort((a, b) => a - b);
+          const previousOrder = allOrders.filter(order => order < orderNum).pop();
+          
+          if (previousOrder !== undefined) {
+            const difference = orderNum - previousOrder;
+            adjustment = difference * 0.1;
+          }
+          // Increase: add adjustment
+          return items.map(item => {
+            if (item.id === existingItem.id) {
+              return { ...item, order: orderNum + adjustment };
+            } else if (item.id === id) {
+              return { ...item, order: orderNum };
+            }
+            return item;
+          });
+        }
+      } else {
+        // No conflict, just update the order
+        return items.map(item =>
+          item.id === id ? { ...item, order: orderNum } : item
+        );
+      }
+    });
   };
 
   const handleSort = () => {
@@ -221,19 +272,15 @@ const ReorderMeasuresModal: React.FC<ReorderMeasuresModalProps> = ({
   };
 
   const handleResetOrder = () => {
-    // Reset to original state: all visible and original order
-    if (originalItemsRef.current.length > 0) {
-      setMeasureItems(originalItemsRef.current.map(item => ({ ...item })));
-    } else {
-      // Fallback: reset order and make all visible
-      setMeasureItems(items =>
-        items.map(item => ({
-          ...item,
-          order: originalOrderRef.current.get(item.id) || item.order,
-          visible: true
-        }))
-      );
-    }
+    // Reset to default state: all visible and sequential order (1, 2, 3...)
+    const defaultItems: MeasureOrderItem[] = measures.map((measure, index) => ({
+      id: measure.id,
+      name: measure.name,
+      order: index + 1,
+      visible: true
+    }));
+    setMeasureItems(defaultItems);
+    setSearchTerm(''); // Clear search when resetting
   };
 
 
@@ -277,11 +324,11 @@ const ReorderMeasuresModal: React.FC<ReorderMeasuresModalProps> = ({
 
   if (!isOpen) return null;
 
-  return (
+  const modalContent = (
     <div className="reorder-measures-modal-overlay" onClick={handleCancel}>
       <div className="reorder-measures-modal" onClick={(e) => e.stopPropagation()}>
         <div className="reorder-measures-modal-header">
-          <h2 className="reorder-measures-modal-title">Reorder Measures</h2>
+          <h2 className="reorder-measures-modal-title">Reorder measures and toggle their visibility</h2>
           <button className="reorder-measures-modal-close" onClick={handleCancel} aria-label="Close">
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -291,14 +338,11 @@ const ReorderMeasuresModal: React.FC<ReorderMeasuresModalProps> = ({
         
         <div className="reorder-measures-modal-body">
           <div className="reorder-measures-subtitle-row">
-            <p className="reorder-measures-modal-subtitle">{measureSubgroup}</p>
+            <div className="reorder-measures-subtitle-section">
+              <p className="reorder-measures-modal-subtitle">{measureSubgroup}</p>
+              <p className="reorder-measures-instruction-text">Enter the order and move out of the field to see the new order</p>
+            </div>
             <div className="reorder-measures-button-group">
-            <button 
-              className="reorder-measures-btn-update-order" 
-              onClick={handleUpdateOrder}
-            >
-              Update Sequence
-            </button>
             <button 
               className="reorder-measures-btn-reset-order" 
               onClick={handleResetOrder}
@@ -395,9 +439,10 @@ const ReorderMeasuresModal: React.FC<ReorderMeasuresModalProps> = ({
                         <input
                           type="number"
                           min="1"
-                          max={measureItems.length}
+                          step="any"
                           value={item.order}
                           onChange={(e) => handleOrderChange(item.id, e.target.value)}
+                          onBlur={() => handleUpdateOrder()}
                           className="reorder-measures-order-input"
                         />
                       ) : (
@@ -441,6 +486,9 @@ const ReorderMeasuresModal: React.FC<ReorderMeasuresModalProps> = ({
       </div>
     </div>
   );
+
+  // Render modal using portal to ensure it's at the topmost layer
+  return createPortal(modalContent, document.body);
 };
 
 export default ReorderMeasuresModal;

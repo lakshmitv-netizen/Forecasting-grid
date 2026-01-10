@@ -8,7 +8,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 10000;
+  z-index: 99999 !important; /* Topmost layer - above everything including page header */
 }
 
 .reorder-measures-modal {
@@ -21,6 +21,8 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
+  z-index: 100000 !important; /* Topmost layer - above overlay */
 }
 
 .reorder-measures-modal-header {
@@ -76,12 +78,27 @@
   margin-bottom: var(--spacing-4);
 }
 
+.reorder-measures-subtitle-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .reorder-measures-modal-subtitle {
   font-family: var(--font-family-base);
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-semibold);
   line-height: var(--line-height-base);
   color: var(--color-on-surface-2);
+  margin: 0;
+}
+
+.reorder-measures-instruction-text {
+  font-family: var(--font-family-base);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: var(--line-height-base);
+  color: var(--color-neutral-text);
   margin: 0;
 }
 

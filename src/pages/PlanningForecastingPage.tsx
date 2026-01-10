@@ -125,7 +125,7 @@ const PlanningForecastingPage: React.FC = () => {
                 className={`planning-tab ${leftTab === 'grid-config' ? 'active' : ''}`}
                 onClick={() => setLeftTab('grid-config')}
               >
-                Grid Configuration
+                Plan Data
               </button>
             </div>
             <div className="planning-panel-content">
