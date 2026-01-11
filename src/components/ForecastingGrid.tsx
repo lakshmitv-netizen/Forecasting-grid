@@ -15,7 +15,6 @@ import FiltersPanel from './FiltersPanel';
 import CellDetailsHistoryPanel from './CellDetailsHistoryPanel';
 import CellEditInfoPopover from './CellEditInfoPopover';
 import CellContextMenu from './CellContextMenu';
-import ScopedNotification from './ScopedNotification';
 import '../styles/components/Grid.css';
 
 // Cell focus types for different layouts
@@ -2118,17 +2117,6 @@ const ForecastingGrid: React.FC = () => {
       </div>
       <div style={{ display: 'flex', flexDirection: 'row', flex: '1 1 0', minHeight: 0, overflow: 'hidden' }}>
         <div className="grid-wrapper">
-          {selectedLayoutState === 'Measures / Dimensions x Time' && (
-          <ScopedNotification
-            impactedMeasuresCount={impactedMeasuresCount}
-            showOnlyImpactedKPI={showOnlyImpactedKPI}
-            onToggleShowOnlyImpactedKPI={(checked) => {
-              if (toggleShowOnlyImpactedKPIHandlerRef.current) {
-                toggleShowOnlyImpactedKPIHandlerRef.current(checked);
-              }
-            }}
-          />
-        )}
         {selectedLayoutState === 'Dimensions / Time x Measures' ? (
           <DimensionsTimeGrid 
             data={filteredData} 

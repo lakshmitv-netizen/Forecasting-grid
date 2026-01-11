@@ -1528,7 +1528,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 return '';
               })()}`}
               tabIndex={isEditable ? 0 : -1}
-              onMouseMove={(e) => {
+              onMouseMove={(_e) => {
                 // Handle drag selection mouse move
                 if (onCellMouseMove) {
                   onCellMouseMove(cellKey);
@@ -1659,10 +1659,12 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                   }
                 }
               }}
-              onDoubleClick={() => {
-                // Double-click on cell container is no longer used for editing
-                // Editing is now done by clicking the cell value (single click)
-                // Keep this handler empty to prevent any default behavior
+              onDoubleClick={(e) => {
+                // Enter edit mode on double-click
+                if (isEditable && !editingCell && onCellChange) {
+                  e.stopPropagation();
+                  handleCellValueClick(key, e);
+                }
               }}
               onFocus={(e) => {
                 e.stopPropagation();
@@ -1729,7 +1731,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 // We should NOT add note indicators here - let renderCellValue handle everything
                 return renderCellValue(key);
               })()}
-              {renderPencilIcon(key, isEditable)}
+              {renderPencilIcon(key, !!isEditable)}
               {/* Drag handle indicator - show on last selected cell */}
               {lastSelectedCell === cellKey && selectedCells.has(cellKey) && (
                 <div 

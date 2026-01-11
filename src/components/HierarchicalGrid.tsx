@@ -2863,6 +2863,9 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
           onSave={handleSave}
           canUndo={historyIndex > 0}
           canRedo={historyIndex < undoRedoHistory.length - 1}
+          impactedMeasuresCount={impactedMeasuresCount}
+          showOnlyImpactedKPI={showOnlyImpactedKPI}
+          onToggleShowOnlyImpactedKPI={handleToggleShowOnlyImpactedKPI}
         />
     </div>
       

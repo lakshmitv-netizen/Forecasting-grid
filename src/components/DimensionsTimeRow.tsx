@@ -46,8 +46,8 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
   const [editValue, setEditValue] = useState<string>('');
   const inputRef = useRef<HTMLInputElement>(null);
   const savedByEnterRef = useRef<boolean>(false);
-  const [hoveredMeasureId, setHoveredMeasureId] = useState<string | null>(null);
-  const [focusedCellKey, setFocusedCellKey] = useState<string | null>(null);
+  const [_hoveredMeasureId, setHoveredMeasureId] = useState<string | null>(null);
+  const [_focusedCellKey, setFocusedCellKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (editingCell && inputRef.current) {

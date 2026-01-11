@@ -256,7 +256,8 @@ const ProductFilterPopover: React.FC<ProductFilterPopoverProps> = ({
     const filterCardCenterY = rect.top + (rect.height / 2);
     
     // Calculate maximum height to ensure buttons are always visible
-    const maxAvailableHeight = Math.min(
+    // Note: This is calculated but not directly used - height is managed via CSS maxHeight
+    Math.min(
       spaceAbove + spaceBelow + rect.height, // Total available vertical space
       window.innerHeight - headerBottom - 8 // Viewport height minus header and margins
     );

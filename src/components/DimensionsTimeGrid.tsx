@@ -50,10 +50,10 @@ const DimensionsTimeGrid: React.FC<DimensionsTimeGridProps> = ({
   showAllPeriods = true,
   startPeriod = '',
   endPeriod = '',
-  selectedCells,
-  onCellSelect,
-  onCellMouseDown,
-  onCellMouseMove
+  selectedCells: _selectedCells,
+  onCellSelect: _onCellSelect,
+  onCellMouseDown: _onCellMouseDown,
+  onCellMouseMove: _onCellMouseMove
 }) => {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [focusedCell, setFocusedCell] = useState<{ rowId: string; measureId: string } | null>(initialFocusedCell || null);

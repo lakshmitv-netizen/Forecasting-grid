@@ -150,12 +150,24 @@
   flex-shrink: 0;
 }
 
+.grid-footer-impacted-measures {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.grid-footer-warning-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
 .grid-footer-warning-text {
   font-family: var(--font-family-base);
   font-size: 14px;
   font-weight: 590;
   line-height: 19px;
-  color: var(--color-on-surface-2);
+  color: #8C4B02;
   white-space: nowrap;
 }
 
@@ -186,7 +198,7 @@
 .grid-footer-checkbox-text {
   font-family: var(--font-family-base);
   font-size: 14px;
-  font-weight: 590;
+  font-weight: 400;
   line-height: 19px;
   color: var(--color-on-surface-2);
   user-select: none;
