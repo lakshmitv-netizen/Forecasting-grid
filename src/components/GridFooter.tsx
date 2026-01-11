@@ -3,37 +3,31 @@ import '../styles/components/GridFooter.css';
 
 interface GridFooterProps {
   isVisible: boolean;
-  impactedMeasuresCount: number;
   onUndo: () => void;
   onRedo: () => void;
   onCancel: () => void;
   onSave: () => void;
   canUndo: boolean;
   canRedo: boolean;
-  showOnlyImpactedKPI: boolean;
-  onToggleShowOnlyImpactedKPI: (checked: boolean) => void;
 }
 
 const GridFooter: React.FC<GridFooterProps> = ({
   isVisible,
-  impactedMeasuresCount,
   onUndo,
   onRedo,
   onCancel,
   onSave,
   canUndo,
   canRedo,
-  showOnlyImpactedKPI,
-  onToggleShowOnlyImpactedKPI,
 }) => {
-  console.log('[FOOTER] Rendering footer. isVisible:', isVisible, 'impactedMeasuresCount:', impactedMeasuresCount);
+  console.log('[FOOTER] Rendering footer. isVisible:', isVisible);
   
   if (!isVisible) {
     console.log('[FOOTER] Footer not visible, returning null');
     return null;
   }
   
-  console.log('[FOOTER] Footer visible, showing. impactedMeasuresCount:', impactedMeasuresCount);
+  console.log('[FOOTER] Footer visible, showing.');
 
   return (
     <div className="grid-footer">
@@ -41,29 +35,6 @@ const GridFooter: React.FC<GridFooterProps> = ({
         <button className="grid-footer-button grid-footer-button-outline" onClick={onCancel}>
           Cancel
         </button>
-      </div>
-      
-      <div className="grid-footer-center">
-        {impactedMeasuresCount > 0 && (
-          <div className="grid-footer-warning">
-            <svg className="grid-footer-warning-icon" width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path fillRule="evenodd" clipRule="evenodd" d="M31.6308 26.1508L17.5384 3.3614C16.8 2.12953 15.2 2.12953 14.4615 3.3614L0.369217 26.1508C-0.492322 27.5675 0.369217 29.5385 1.90768 29.5385H30.0923C31.6308 29.5385 32.5538 27.5675 31.6308 26.1508ZM16 24.6104C14.9538 24.6104 14.1538 23.8097 14.1538 22.7626C14.1538 21.7155 14.9538 20.9148 16 20.9148C17.0461 20.9148 17.8461 21.7155 17.8461 22.7626C17.8461 23.8097 17.0461 24.6104 16 24.6104ZM17.8461 19.0674C17.8461 19.4369 17.6 19.6833 17.2307 19.6833H14.7692C14.4 19.6833 14.1538 19.4369 14.1538 19.0674V11.0603C14.1538 10.6907 14.4 10.4443 14.7692 10.4443H17.2307C17.6 10.4443 17.8461 10.6907 17.8461 11.0603V19.0674Z" fill="#CA8501"/>
-            </svg>
-            <span className="grid-footer-warning-text">
-              4 Measures are impacted by this edit
-            </span>
-            <span className="grid-footer-separator">•</span>
-            <label className="grid-footer-checkbox-label">
-              <input
-                type="checkbox"
-                className="grid-footer-checkbox"
-                checked={showOnlyImpactedKPI}
-                onChange={(e) => onToggleShowOnlyImpactedKPI(e.target.checked)}
-              />
-              <span className="grid-footer-checkbox-text">Show Only Impacted Measures</span>
-            </label>
-          </div>
-        )}
       </div>
       
       <div className="grid-footer-right">
@@ -90,7 +61,7 @@ const GridFooter: React.FC<GridFooterProps> = ({
           </button>
         </div>
         <button className="grid-footer-button grid-footer-button-brand" onClick={onSave}>
-          Save Grid
+          Save Changes
         </button>
       </div>
     </div>

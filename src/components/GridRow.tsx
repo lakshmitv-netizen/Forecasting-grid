@@ -32,6 +32,9 @@ interface GridRowProps {
   onCellContextMenu?: (e: React.MouseEvent, cellKey: string, cellValue: number, isLocked: boolean, isEditable: boolean) => void; // Callback for right-click context menu
   selectedCells?: Set<string>; // Set of selected cell keys
   onCellSelect?: (cellKey: string, event: React.MouseEvent) => void; // Callback when a cell is clicked for selection
+  onCellMouseDown?: (cellKey: string, event: React.MouseEvent) => void; // Callback for mouse down (drag selection)
+  onCellMouseMove?: (cellKey: string) => void; // Callback for mouse move (drag selection)
+  lastSelectedCell?: string | null; // Last selected cell key (for drag handle indicator)
 }
 
 const GridRowComponent: React.FC<GridRowProps> = ({
@@ -60,6 +63,9 @@ const GridRowComponent: React.FC<GridRowProps> = ({
   onCellContextMenu,
   selectedCells = new Set(),
   onCellSelect,
+  onCellMouseDown,
+  onCellMouseMove,
+  lastSelectedCell = null,
 }) => {
   const hasChildren = row.children && row.children.length > 0;
   const [editingCell, setEditingCell] = useState<{ monthKey: keyof GridRowType['values'] } | null>(null);
@@ -70,6 +76,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
   const savedByEnterRef = useRef<boolean>(false);
   const isMovingToNoteInputRef = useRef<boolean>(false); // Track if we're intentionally moving focus to note input
   const shiftKeyPressedRef = useRef<boolean>(false); // Track if Shift key is pressed during selection
+  const [hoveredCell, setHoveredCell] = useState<keyof GridRowType['values'] | null>(null);
+  const [focusedCellKey, setFocusedCellKey] = useState<string | null>(null);
   
   // Convert savedImpactedCells Set to array so React can detect changes
   // Use state to force re-render when savedImpactedCells changes
@@ -375,6 +383,76 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     }, 0);
   };
 
+  // Helper function to save cell changes
+  const handleSaveCell = (monthKey: keyof GridRowType['values'], inputValue?: string) => {
+    const valueToSave = inputValue || editValue;
+    const currentRowId = row.id;
+    
+    // Set flag to prevent blur handler from double-saving
+    savedByEnterRef.current = true;
+    
+    // Save the value directly
+    const numValue = parseFloat(valueToSave.replace(/,/g, ''));
+    
+    if (!isNaN(numValue) && onCellChange) {
+      const roundedValue = Math.round(numValue * 100) / 100;
+      // Pass note to onCellChange so it can be saved with edit history
+      const noteToSave = adjustmentNote.trim() || undefined;
+      onCellChange(currentRowId, monthKey, roundedValue, noteToSave);
+      
+      // Clear note after saving
+      if (noteToSave) {
+        setAdjustmentNote('');
+      }
+    }
+    
+    // Clear editing state
+    if (editingCell?.monthKey === monthKey) {
+      setEditingCell(null);
+      setEditValue('');
+      setAdjustmentNote('');
+      // Notify parent that editing ended
+      if (onCellEditStateChange) {
+        onCellEditStateChange(false, currentRowId, monthKey);
+      }
+    }
+    
+    // Refocus the cell after saving
+    setTimeout(() => {
+      if (cellRefs && onCellFocus) {
+        const cellKey = `${currentRowId}-${monthKey}`;
+        const cellElement = cellRefs.current.get(cellKey);
+        if (cellElement) {
+          cellElement.focus();
+          onCellFocus({ rowId: currentRowId, monthKey });
+        }
+      }
+    }, 0);
+  };
+
+  // Helper function to cancel cell editing
+  const handleCancelCell = (monthKey: keyof GridRowType['values']) => {
+    const currentRowId = row.id;
+    setEditingCell(null);
+    setEditValue('');
+    setAdjustmentNote('');
+    // Notify parent that editing ended
+    if (onCellEditStateChange) {
+      onCellEditStateChange(false, currentRowId, monthKey);
+    }
+    // Refocus the cell after canceling edit
+    setTimeout(() => {
+      if (cellRefs && onCellFocus) {
+        const cellKey = `${currentRowId}-${monthKey}`;
+        const cellElement = cellRefs.current.get(cellKey);
+        if (cellElement) {
+          cellElement.focus();
+          onCellFocus({ rowId: currentRowId, monthKey });
+        }
+      }
+    }, 0);
+  };
+
   const handleCellKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, monthKey: keyof GridRowType['values']) => {
     // Handle ArrowDown to focus adjustment note input
     if (e.key === 'ArrowDown') {
@@ -411,116 +489,74 @@ const GridRowComponent: React.FC<GridRowProps> = ({
       return;
     }
     
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' || e.key === 'Return') {
       e.preventDefault();
       e.stopPropagation();
-      // Read value directly from the input element
       const inputValue = (e.target as HTMLInputElement).value;
-      const currentRowId = row.id;
-      
-      // Store on window immediately to track Enter key press
-      if (typeof window !== 'undefined') {
-        (window as any).gridRowEnterKeyPressed = { rowId: currentRowId, monthKey, inputValue, timestamp: Date.now() };
-        (window as any).gridRowEnterKeyPressCount = ((window as any).gridRowEnterKeyPressCount || 0) + 1;
-      }
-      
-      console.log('[GridRow] Enter pressed - Saving:', { rowId: currentRowId, monthKey, value: inputValue, editingCell: editingCell?.monthKey });
-      
-      // Set flag to prevent blur handler from double-saving
-      savedByEnterRef.current = true;
-      
-      // Save the value directly
-      const numValue = parseFloat(inputValue.replace(/,/g, ''));
-      
-      // Store debug info
-      if (typeof window !== 'undefined') {
-        (window as any).gridRowBeforeOnCellChange = { 
-          numValue, 
-          isNaN: isNaN(numValue), 
-          hasOnCellChange: !!onCellChange,
-          onCellChangeType: typeof onCellChange,
-          rowId: currentRowId,
-          monthKey
-        };
-      }
-      
-      if (!isNaN(numValue) && onCellChange) {
-        const roundedValue = Math.round(numValue * 100) / 100;
-        // Store on window for debugging
-        if (typeof window !== 'undefined') {
-          (window as any).gridRowOnCellChangeCall = { rowId: currentRowId, monthKey, newValue: roundedValue, timestamp: Date.now() };
-          (window as any).gridRowOnCellChangeCallCount = ((window as any).gridRowOnCellChangeCallCount || 0) + 1;
-        }
-        // Use multiple logging methods to ensure visibility
-        console.error('========================================');
-        console.error('[GridRow] ✓ Calling onCellChange from Enter key');
-        console.error('rowId:', currentRowId);
-        console.error('monthKey:', monthKey);
-        console.error('newValue:', roundedValue);
-        console.error('hasOnCellChange:', !!onCellChange);
-        console.error('onCellChange type:', typeof onCellChange);
-        console.error('========================================');
-        // Also log to console.log and console.warn
-        console.log('[GridRow] ✓ Calling onCellChange from Enter key:', { rowId: currentRowId, monthKey, newValue: roundedValue });
-        console.warn('[GridRow] ✓ Calling onCellChange from Enter key:', { rowId: currentRowId, monthKey, newValue: roundedValue });
-        // Pass note to onCellChange so it can be saved with edit history
-        // Read note from state - it should be current since we're in the blur handler
-        const noteToSave = adjustmentNote.trim() || undefined;
-        onCellChange(currentRowId, monthKey, roundedValue, noteToSave);
-        
-        // Clear note after saving
-        if (noteToSave) {
-          setAdjustmentNote('');
-        }
-        
-        console.error('[GridRow] ✓ onCellChange called successfully');
-      } else {
-        if (typeof window !== 'undefined') {
-          (window as any).gridRowOnCellChangeFailed = { numValue, isNaN: isNaN(numValue), hasOnCellChange: !!onCellChange };
-        }
-        console.error('[GridRow] ✗ Cannot save - invalid number or no onCellChange:', { numValue, isNaN: isNaN(numValue), hasOnCellChange: !!onCellChange });
-      }
-      
-      // Clear editing state
-      if (editingCell?.monthKey === monthKey) {
-        setEditingCell(null);
-        setEditValue('');
-        setAdjustmentNote('');
-      }
-      
-      // Refocus the cell after saving (don't blur, just refocus the td element)
-      setTimeout(() => {
-        if (cellRefs && onCellFocus) {
-          const cellKey = `${currentRowId}-${monthKey}`;
-          const cellElement = cellRefs.current.get(cellKey);
-          if (cellElement) {
-            cellElement.focus();
-            onCellFocus({ rowId: currentRowId, monthKey });
-          }
-        }
-      }, 0);
+      handleSaveCell(monthKey, inputValue);
     } else if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
-      const monthKey = editingCell?.monthKey;
-      setEditingCell(null);
-      setEditValue('');
-      setAdjustmentNote('');
-      // Refocus the cell after canceling edit
-      setTimeout(() => {
-        if (cellRefs && onCellFocus && monthKey) {
-          const cellKey = `${row.id}-${monthKey}`;
-          const cellElement = cellRefs.current.get(cellKey);
-          if (cellElement) {
-            cellElement.focus();
-            onCellFocus({ rowId: row.id, monthKey });
-          }
-        }
-      }, 0);
+      handleCancelCell(monthKey);
     } else {
       // Stop propagation for other keys to prevent grid navigation while editing
       e.stopPropagation();
     }
+  };
+
+  // Helper function to render pencil icon for editable cells on hover/focus/selection
+  const renderPencilIcon = (monthKey: keyof GridRowType['values'], isEditable: boolean) => {
+    if (!isEditable || editingCell) return null;
+    
+    const cellKey = `${row.id}-${monthKey}`;
+    const isHovered = hoveredCell === monthKey;
+    const isFocused = focusedCellKey === cellKey;
+    const isSelected = selectedCells.has(cellKey);
+    const isMultipleSelected = selectedCells.size > 1;
+    // Don't show pencil icon when multiple cells are selected
+    const showPencil = (isHovered || isFocused || (isSelected && !isMultipleSelected));
+    
+    if (!showPencil) return null;
+    
+    return (
+      <svg 
+        width="14" 
+        height="14" 
+        viewBox="0 0 24 24" 
+        fill="none" 
+        xmlns="http://www.w3.org/2000/svg"
+        style={{ 
+          position: 'absolute',
+          right: '8px',
+          top: '50%',
+          transform: 'translateY(-50%)',
+          opacity: 0.8,
+          cursor: 'pointer',
+          zIndex: 1000,
+          pointerEvents: 'auto'
+        }}
+        onMouseEnter={(e) => {
+          e.stopPropagation();
+          // Keep hover state when hovering over the icon
+          if (isEditable) {
+            setHoveredCell(monthKey);
+          }
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (isEditable && !editingCell && onCellChange) {
+            handleCellValueClick(monthKey, e);
+          }
+        }}
+      >
+        <path 
+          fillRule="evenodd" 
+          clipRule="evenodd" 
+          d="M4.38298 15.4163L8.48876 19.5234C8.67329 19.708 8.95008 19.708 9.13461 19.5234L19.376 9.23257C19.5605 9.04798 19.5605 8.77109 19.376 8.5865L15.3163 4.52553C15.1318 4.34094 14.855 4.34094 14.6705 4.52553L4.38298 14.8164C4.19845 15.001 4.19845 15.2779 4.38298 15.4163V15.4163ZM16.6541 2.6336C16.4695 2.81819 16.4695 3.09507 16.6541 3.27966L20.7137 7.34063C20.8982 7.52522 21.175 7.52522 21.3596 7.34063L22.5129 6.18695C23.251 5.49474 23.251 4.3872 22.5129 3.64884L20.3447 1.47992C19.6065 0.741558 18.4532 0.741558 17.7151 1.47992L16.6541 2.6336V2.6336ZM0.96922 22.2463C0.876955 22.7077 1.29215 23.1231 1.75347 23.0308L6.7819 21.8309C6.96643 21.7848 7.10483 21.6925 7.19709 21.6002L7.28935 21.5079C7.38162 21.4156 7.42775 21.0926 7.24322 20.908L3.09131 16.7547C2.90678 16.5701 2.58385 16.6163 2.49159 16.7086L2.39932 16.8009C2.26093 16.9393 2.21479 17.0777 2.16866 17.2162L0.96922 22.2463V22.2463Z" 
+          fill="#747474"
+        />
+      </svg>
+    );
   };
 
   const renderCellValue = (monthKey: keyof GridRowType['values']) => {
@@ -557,7 +593,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 boxShadow: '0 7px 7px rgba(0, 0, 0, 0.07), 0 0 10px rgba(0, 0, 0, 0.05), 0 -1px 3px rgba(0, 0, 0, 0.03)',
                 zIndex: 100000,
                 fontFamily: 'var(--slds-g-font-family-base, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif)',
-                marginTop: '4px'
+                marginTop: '4px',
+                overflow: 'visible'
               }}
               onMouseDown={(e) => e.preventDefault()} // Prevent blur
             >
@@ -583,20 +620,292 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 borderBottom: '7px solid #ffffff'
               }}></div>
               
-              {/* Note Input */}
+              {/* Popover Content */}
               <div style={{
-                padding: '12px'
+                padding: '12px',
+                paddingBottom: '8px'
               }}>
-                <label style={{
-                  display: 'block',
-                  fontSize: '13px',
-                  fontWeight: '590',
-                  color: '#181818',
-                  marginBottom: '8px',
-                  lineHeight: '18px'
-                }}>
-                  Add Notes (Optional)
-                </label>
+                {/* Value Change Section or Initial Message */}
+                {(() => {
+                  const oldValue = row.values[monthKey];
+                  const parsedNewValue = editValue ? parseFloat(editValue.replace(/,/g, '')) : null;
+                  const newValue = !isNaN(parsedNewValue || NaN) ? parsedNewValue! : oldValue;
+                  const hasValueChanged = Math.abs(newValue - oldValue) > 0.01; // Account for floating point precision
+                  const hasNotes = adjustmentNote.trim().length > 0;
+                  const showButtons = hasValueChanged || hasNotes;
+                  
+                  if (!hasValueChanged) {
+                    // Show initial instruction
+                    return (
+                      <div style={{
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        color: '#181818',
+                        fontFamily: 'var(--slds-g-font-family-base, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif)',
+                        marginBottom: '4px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: showButtons ? 'space-between' : 'flex-start',
+                        gap: '8px'
+                      }}>
+                        <span>Edit the cell value and add any notes</span>
+                        {showButtons && (
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            flexShrink: 0,
+                            border: '1px solid #706e6b',
+                            borderRadius: '20px',
+                            overflow: 'hidden',
+                            backgroundColor: '#ffffff'
+                          }}>
+                            {/* Cancel Button (X) */}
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleCancelCell(monthKey);
+                              }}
+                              style={{
+                                width: '24px',
+                                height: '24px',
+                                minWidth: '24px',
+                                minHeight: '24px',
+                                border: 'none',
+                                borderRadius: '0',
+                                backgroundColor: '#ffffff',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                padding: '0',
+                                margin: '0',
+                                outline: 'none',
+                                transition: 'all 0.2s ease',
+                                flexShrink: 0,
+                                boxSizing: 'border-box'
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.backgroundColor = '#fef7f7';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.backgroundColor = '#ffffff';
+                              }}
+                              title="Cancel (Esc)"
+                              type="button"
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M18 6L6 18M6 6l12 12" stroke="#0176d3" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </button>
+
+                            {/* Divider */}
+                            <div style={{
+                              width: '1px',
+                              height: '18px',
+                              backgroundColor: '#706e6b',
+                              flexShrink: 0,
+                              alignSelf: 'center'
+                            }}></div>
+
+                            {/* Save Button (Checkmark) */}
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const inputValue = inputRef.current?.value || editValue;
+                                handleSaveCell(monthKey, inputValue);
+                              }}
+                              style={{
+                                width: '24px',
+                                height: '24px',
+                                minWidth: '24px',
+                                minHeight: '24px',
+                                border: 'none',
+                                borderRadius: '0',
+                                backgroundColor: '#ffffff',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                padding: '0',
+                                margin: '0',
+                                outline: 'none',
+                                transition: 'all 0.2s ease',
+                                flexShrink: 0,
+                                boxSizing: 'border-box',
+                                color: '#0176d3',
+                                fontSize: '14px',
+                                fontWeight: 'bold',
+                                lineHeight: '1'
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.backgroundColor = '#f0f8ff';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.backgroundColor = '#ffffff';
+                              }}
+                              title="Save (Enter)"
+                              type="button"
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+                                <path d="M20 6L9 17l-5-5" stroke="#0176d3" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                              </svg>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  } else {
+                    // Show value change one-liner with buttons inline
+                    const delta = newValue - oldValue;
+                    const deltaFormatted = delta >= 0 ? `+${formatValue(delta)}` : formatValue(delta);
+                    const deltaColor = delta >= 0 ? '#2e844a' : '#c23934';
+                    
+                    return (
+                      <div style={{
+                        fontSize: '13px',
+                        color: '#181818',
+                        fontFamily: 'var(--slds-g-font-family-base, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        flexWrap: 'wrap',
+                        marginBottom: '4px',
+                        justifyContent: 'space-between'
+                      }}>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          flexWrap: 'wrap',
+                          flex: '1',
+                          minWidth: 0
+                        }}>
+                          <span style={{
+                            textDecoration: 'line-through',
+                            color: '#706e6b'
+                          }}>{formatValue(oldValue)}</span>
+                          <span style={{ color: '#706e6b' }}>→</span>
+                          <span style={{
+                            fontWeight: '600',
+                            color: '#181818'
+                          }}>{formatValue(newValue)}</span>
+                          <span style={{
+                            fontWeight: '600',
+                            color: deltaColor,
+                            marginLeft: '4px'
+                          }}>({deltaFormatted})</span>
+                        </div>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          flexShrink: 0,
+                          border: '1px solid #706e6b',
+                          borderRadius: '20px',
+                          overflow: 'hidden',
+                          backgroundColor: '#ffffff'
+                        }}>
+                          {/* Cancel Button (X) */}
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleCancelCell(monthKey);
+                            }}
+                            style={{
+                              width: '24px',
+                              height: '24px',
+                              minWidth: '24px',
+                              minHeight: '24px',
+                              border: 'none',
+                              borderRadius: '0',
+                              backgroundColor: '#ffffff',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              padding: '0',
+                              margin: '0',
+                              outline: 'none',
+                              transition: 'all 0.2s ease',
+                              flexShrink: 0,
+                              boxSizing: 'border-box'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = '#fef7f7';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = '#ffffff';
+                            }}
+                            title="Cancel (Esc)"
+                            type="button"
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                              <path d="M18 6L6 18M6 6l12 12" stroke="#0176d3" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          </button>
+
+                          {/* Divider */}
+                          <div style={{
+                            width: '1px',
+                            height: '18px',
+                            backgroundColor: '#706e6b',
+                            flexShrink: 0,
+                            alignSelf: 'center'
+                          }}></div>
+
+                          {/* Save Button (Checkmark) */}
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              const inputValue = inputRef.current?.value || editValue;
+                              handleSaveCell(monthKey, inputValue);
+                            }}
+                            style={{
+                              width: '24px',
+                              height: '24px',
+                              minWidth: '24px',
+                              minHeight: '24px',
+                              border: 'none',
+                              borderRadius: '0',
+                              backgroundColor: '#ffffff',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              padding: '0',
+                              margin: '0',
+                              outline: 'none',
+                              transition: 'all 0.2s ease',
+                              flexShrink: 0,
+                              boxSizing: 'border-box',
+                              color: '#0176d3',
+                              fontSize: '14px',
+                              fontWeight: 'bold',
+                              lineHeight: '1'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = '#f0f8ff';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = '#ffffff';
+                            }}
+                            title="Save (Enter)"
+                            type="button"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+                              <path d="M20 6L9 17l-5-5" stroke="#0176d3" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  }
+                })()}
+
+                {/* Notes Section */}
                 <textarea
                   ref={adjustmentNoteInputRef}
                   value={adjustmentNote}
@@ -604,7 +913,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                     e.stopPropagation();
                     setAdjustmentNote(e.target.value);
                   }}
-                  placeholder="Enter notes"
+                  placeholder="Enter notes (optional)"
                   rows={3}
                   style={{
                     width: '100%',
@@ -637,7 +946,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                     e.stopPropagation();
                     e.target.style.borderColor = '#c9c9c9';
                     e.target.style.boxShadow = 'none';
-                    // Don't process blur if we're saving via Enter
+                    // Don't process blur if we're saving via Enter or button
                     if (savedByEnterRef.current) {
                       return;
                     }
@@ -678,108 +987,21 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                     if (e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
                       e.stopPropagation();
                     }
-                    // Allow Enter to save
-                    if (e.key === 'Enter' && !e.shiftKey) {
+                    // Allow Enter/Return to save
+                    if ((e.key === 'Enter' || e.key === 'Return') && !e.shiftKey) {
                       e.preventDefault();
                       e.stopPropagation();
-                      
-                      // Read note directly from textarea element to ensure we have the latest value
-                      const noteText = (e.target as HTMLTextAreaElement).value.trim();
-                      
-                      // Always call onCellChange if we have a note, even if value hasn't changed
-                      if (noteText && onCellChange) {
-                        // Get current cell value (use editValue if set, otherwise use row value)
-                        const currentCellValue = editValue || formatValue(row.values[monthKey]);
-                        const numValue = parseFloat(currentCellValue.replace(/,/g, ''));
-                        const roundedValue = !isNaN(numValue) ? Math.round(numValue * 100) / 100 : row.values[monthKey];
-                        
-                        // Set flag BEFORE calling onCellChange to prevent blur handler interference
-                        savedByEnterRef.current = true;
-                        isMovingToNoteInputRef.current = false;
-                        
-                        // Update state first to ensure note is captured
-                        setAdjustmentNote(noteText);
-                        
-                        // Save the note - pass it explicitly as a string (not undefined)
-                        onCellChange(row.id, monthKey, roundedValue, noteText);
-                        
-                        // Clear state after a short delay to ensure save completes
-                        setTimeout(() => {
-                          setAdjustmentNote('');
-                          setEditingCell(null);
-                          setEditValue('');
-                          
-                          // Notify parent that editing ended
-                          if (onCellEditStateChange) {
-                            onCellEditStateChange(false, row.id, monthKey);
-                          }
-                          
-                          // Refocus the cell
-                          if (cellRefs && onCellFocus) {
-                            const cellKey = `${row.id}-${monthKey}`;
-                            const cellElement = cellRefs.current.get(cellKey);
-                            if (cellElement) {
-                              cellElement.focus();
-                              onCellFocus({ rowId: row.id, monthKey });
-                            }
-                          }
-                        }, 10);
-                      }
+                      const inputValue = inputRef.current?.value || editValue;
+                      handleSaveCell(monthKey, inputValue);
                     }
                     // Allow Escape to cancel
                     if (e.key === 'Escape') {
                       e.preventDefault();
                       e.stopPropagation();
-                      setAdjustmentNote('');
-                      setEditingCell(null);
-                      setEditValue('');
-                      if (onCellEditStateChange) {
-                        onCellEditStateChange(false, row.id, monthKey);
-                      }
+                      handleCancelCell(monthKey);
                     }
                   }}
                 />
-                <div style={{
-                  fontSize: '11px',
-                  lineHeight: '16px',
-                  color: '#706e6b',
-                  marginTop: '8px',
-                  fontFamily: 'var(--slds-g-font-family-base, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif)'
-                }}>
-                  Press <span style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '2px 6px',
-                    border: '1px solid #5C5C5C',
-                    borderRadius: '3px',
-                    backgroundColor: '#ffffff',
-                    fontSize: '11px',
-                    fontWeight: '600',
-                    fontFamily: 'var(--font-family-base)',
-                    color: '#5C5C5C',
-                    lineHeight: 1,
-                    minWidth: '40px',
-                    textAlign: 'center',
-                    margin: '0 2px'
-                  }}>Enter</span> / <span style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '2px 6px',
-                    border: '1px solid #5C5C5C',
-                    borderRadius: '3px',
-                    backgroundColor: '#ffffff',
-                    fontSize: '11px',
-                    fontWeight: '600',
-                    fontFamily: 'var(--font-family-base)',
-                    color: '#5C5C5C',
-                    lineHeight: 1,
-                    minWidth: '40px',
-                    textAlign: 'center',
-                    margin: '0 2px'
-                  }}>Return</span> after you update your entry
-                </div>
               </div>
             </div>,
             document.body
@@ -922,7 +1144,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 <div style={{ width: '18px', height: '18px' }}></div>
               )}
             </div>
-            <div className="cell-value-left-section">
+            <div className="cell-value-left-section" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
               {deltaPercent !== null && Math.abs(deltaPercent) > 0.001 && (
                 <div className="cell-delta-badge" style={{ color: deltaColor }}>
                   {deltaPercent > 0 ? '+' : ''} {deltaPercent.toFixed(2)}%
@@ -931,7 +1153,6 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               <span 
                 className={`cell-value cell-value-edited ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
                 style={{ cursor: isEditable ? 'pointer' : 'default', color: deltaColor }}
-                onClick={isEditable ? (e) => handleCellValueClick(monthKey, e) : undefined}
               >
                 {valueMatchesSearch ? (
                   <SearchHighlight text={formatValue(currentValue)} searchTerms={otherTerms} />
@@ -977,7 +1198,6 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               <span 
                 className={`cell-value cell-value-edited ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
                 style={{ cursor: isEditable ? 'pointer' : 'default', color: deltaColor }}
-                onClick={isEditable ? (e) => handleCellValueClick(monthKey, e) : undefined}
               >
                 {valueMatchesSearch ? (
                   <SearchHighlight text={formatValue(currentValue)} searchTerms={otherTerms} />
@@ -1005,7 +1225,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
       
       return (
         <>
-          <div className="cell-value-wrapper-saved-container">
+          <div className="cell-value-wrapper-saved-container" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             <div className={`cell-value-left-icon ${!isCellLocked && (isIncrease ? 'cell-arrow-increase' : 'cell-arrow-decrease')}`}>
               {isCellLocked ? (
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
@@ -1025,7 +1245,6 @@ const GridRowComponent: React.FC<GridRowProps> = ({
             <span 
               className={`cell-value cell-value-saved ${!isCellLocked && (isIncrease ? 'cell-value-increase' : 'cell-value-decrease')} ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
               style={{ cursor: isEditable ? 'pointer' : 'default' }}
-              onClick={isEditable ? (e) => handleCellValueClick(monthKey, e) : undefined}
             >
               {valueMatchesSearch ? (
                 <SearchHighlight text={formatValue(currentValue)} searchTerms={otherTerms} />
@@ -1062,7 +1281,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 <div style={{ width: '18px', height: '18px' }}></div>
               )}
             </div>
-            <div className="cell-value-left-section">
+            <div className="cell-value-left-section" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
               {deltaPercent !== null && Math.abs(deltaPercent) > 0.001 && (
                 <div className="cell-delta-badge" style={{ color: deltaColor }}>
                   {deltaPercent > 0 ? '+' : ''} {deltaPercent.toFixed(2)}%
@@ -1071,7 +1290,6 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               <span 
                 className={`cell-value cell-value-impacted ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
                 style={{ cursor: isEditable ? 'pointer' : 'default', color: deltaColor }}
-                onClick={isEditable ? (e) => handleCellValueClick(monthKey, e) : undefined}
               >
                 {valueMatchesSearch ? (
                   <SearchHighlight text={formatValue(currentValue)} searchTerms={otherTerms} />
@@ -1109,7 +1327,6 @@ const GridRowComponent: React.FC<GridRowProps> = ({
           <span 
             className={`cell-value ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
             style={{ cursor: isEditable ? 'pointer' : 'default' }}
-            onClick={isEditable ? (e) => handleCellValueClick(monthKey, e) : undefined}
           >
             {cellValueMatchesSearch ? (
               <SearchHighlight text={formatValue(cellValue, row.name?.toLowerCase().includes('quantity'))} searchTerms={otherTerms} />
@@ -1278,6 +1495,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
           return (
             <td
               key={cellKey}
+              data-cell-key={cellKey}
               style={{ minWidth: `${columnWidth}px`, width: `${columnWidth}px`, position: 'relative' }}
               ref={(el) => {
                 if (el && cellRefs) {
@@ -1310,7 +1528,60 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 return '';
               })()}`}
               tabIndex={isEditable ? 0 : -1}
+              onMouseMove={(e) => {
+                // Handle drag selection mouse move
+                if (onCellMouseMove) {
+                  onCellMouseMove(cellKey);
+                }
+              }}
+              onMouseEnter={(e) => {
+                // Set hover state for pencil icon - always set if editable, regardless of other conditions
+                if (isEditable) {
+                  console.log('[GridRow] Setting hoveredCell to:', key, 'isEditable:', isEditable);
+                  setHoveredCell(key);
+                }
+                // Show popover on hover for cells with indicators
+                if (onCellFocusWithHistory && (isEditable || isCellLocked) && !editingCell) {
+                  const focusCellKey = `${row.id}-${key}`;
+                  const isDirty = editedCells?.has(focusCellKey) && !savedEditedCells?.has(focusCellKey);
+                  const isImpactedCell = impactedCells?.has(focusCellKey);
+                  const wasImpactedAndSaved = savedImpactedCells.has(focusCellKey);
+                  
+                  // Check if cell has edit history before showing popover
+                  const hasEditHistory = editHistory && editHistory.some(entry => 
+                    entry.cellKey === focusCellKey || (entry.rowId === row.id && entry.timeKey === key)
+                  );
+                  
+                  // Only show popover if cell has edit history AND is not impacted/saved impacted
+                  if (hasEditHistory && (!isDirty || isCellLocked) && !isImpactedCell && !wasImpactedAndSaved) {
+                    const cellElement = e.currentTarget;
+                    const cellRect = cellElement.getBoundingClientRect();
+                    const cellValue = row.values[key];
+                    onCellFocusWithHistory(focusCellKey, cellRect, cellValue, isCellLocked, isImpactedCell || wasImpactedAndSaved);
+                  }
+                }
+              }}
+              onMouseLeave={(e) => {
+                // Clear hover state for pencil icon - but only if not moving to the pencil icon itself
+                const relatedTarget = e.relatedTarget as HTMLElement;
+                if (!relatedTarget || !relatedTarget.closest('svg')) {
+                  setHoveredCell(null);
+                }
+                // Close popover when mouse leaves (unless moving to popover itself)
+                if (onCellFocusWithHistory) {
+                  // Don't close if moving to popover
+                  if (!relatedTarget || !relatedTarget.closest('.cell-edit-info-popover')) {
+                    onCellFocusWithHistory('', null);
+                  }
+                }
+              }}
               onMouseDown={(e) => {
+                // Handle drag selection (only store the starting cell, don't interfere with clicks)
+                // Only call if no modifier keys (let onClick handle those)
+                if (onCellMouseDown && !e.shiftKey && !e.ctrlKey && !e.metaKey && e.button === 0) {
+                  onCellMouseDown(cellKey, e);
+                }
+                
                 // Track Shift key state for this selection
                 shiftKeyPressedRef.current = e.shiftKey;
                 
@@ -1356,14 +1627,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 // even if clicking on the cell value area - selection takes precedence over editing
                 const isModifierKey = e.shiftKey || e.ctrlKey || e.metaKey;
                 
-                // Don't trigger selection if clicking on the cell value (value click handles editing)
-                // BUT: Allow modifier key clicks to proceed (they should select, not edit)
-                const target = e.target as HTMLElement;
-                if (target.closest('.cell-value') && !isModifierKey) {
-                  // Value click is handled by handleCellValueClick which stops propagation
-                  // But only for normal clicks - modifier keys should select, not edit
-                  return;
-                }
+                // Allow all clicks to proceed for selection
+                // Editing is now done by clicking the pencil icon, not the cell value
                 
                 // Prevent selection on double-click
                 if (e.detail === 2) {
@@ -1394,44 +1659,18 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                   }
                 }
               }}
-              onMouseEnter={(e) => {
-                // Show popover on hover for cells with indicators
-                if (onCellFocusWithHistory && (isEditable || isCellLocked) && !editingCell) {
-                  const focusCellKey = `${row.id}-${key}`;
-                  const isDirty = editedCells?.has(focusCellKey) && !savedEditedCells?.has(focusCellKey);
-                  const isImpactedCell = impactedCells?.has(focusCellKey);
-                  const wasImpactedAndSaved = savedImpactedCells.has(focusCellKey);
-                  
-                  // Check if cell has edit history before showing popover
-                  const hasEditHistory = editHistory && editHistory.some(entry => 
-                    entry.cellKey === focusCellKey || (entry.rowId === row.id && entry.timeKey === key)
-                  );
-                  
-                  // Only show popover if cell has edit history AND is not impacted/saved impacted
-                  if (hasEditHistory && (!isDirty || isCellLocked) && !isImpactedCell && !wasImpactedAndSaved) {
-                    const cellElement = e.currentTarget;
-                    const cellRect = cellElement.getBoundingClientRect();
-                    const cellValue = row.values[key];
-                    onCellFocusWithHistory(focusCellKey, cellRect, cellValue, isCellLocked, isImpactedCell || wasImpactedAndSaved);
-                  }
-                }
-              }}
-              onMouseLeave={(e) => {
-                // Close popover when mouse leaves (unless moving to popover itself)
-                if (onCellFocusWithHistory) {
-                  const relatedTarget = e.relatedTarget as HTMLElement;
-                  // Don't close if moving to popover
-                  if (!relatedTarget || !relatedTarget.closest('.cell-edit-info-popover')) {
-                    onCellFocusWithHistory('', null);
-                  }
-                }
-              }}
               onDoubleClick={() => {
                 // Double-click on cell container is no longer used for editing
                 // Editing is now done by clicking the cell value (single click)
                 // Keep this handler empty to prevent any default behavior
               }}
               onFocus={(e) => {
+                e.stopPropagation();
+                // Set focused cell key for pencil icon visibility
+                if (isEditable) {
+                  setFocusedCellKey(cellKey);
+                }
+                // Call parent onCellFocus handler
                 if (onCellFocus && isEditable) {
                   onCellFocus({ rowId: row.id, monthKey: key });
                 }
@@ -1457,6 +1696,9 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 shiftKeyPressedRef.current = false;
               }}
               onBlur={(e) => {
+                e.stopPropagation();
+                // Clear focused cell key for pencil icon visibility
+                setFocusedCellKey(null);
                 // Close popover when cell loses focus (unless moving to popover)
                 if (onCellFocusWithHistory) {
                   const relatedTarget = e.relatedTarget as HTMLElement;
@@ -1487,6 +1729,23 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 // We should NOT add note indicators here - let renderCellValue handle everything
                 return renderCellValue(key);
               })()}
+              {renderPencilIcon(key, isEditable)}
+              {/* Drag handle indicator - show on last selected cell */}
+              {lastSelectedCell === cellKey && selectedCells.has(cellKey) && (
+                <div 
+                  className="cell-drag-handle"
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    if (onCellMouseDown) {
+                      onCellMouseDown(cellKey, e);
+                    }
+                  }}
+                >
+                  <svg width="8" height="8" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="4" cy="4" r="1.5" fill="#747474"/>
+                  </svg>
+                </div>
+              )}
             </td>
           );
         })}

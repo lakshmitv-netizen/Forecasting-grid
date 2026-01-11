@@ -15,6 +15,7 @@ import FiltersPanel from './FiltersPanel';
 import CellDetailsHistoryPanel from './CellDetailsHistoryPanel';
 import CellEditInfoPopover from './CellEditInfoPopover';
 import CellContextMenu from './CellContextMenu';
+import ScopedNotification from './ScopedNotification';
 import '../styles/components/Grid.css';
 
 // Cell focus types for different layouts
@@ -53,6 +54,11 @@ const ForecastingGrid: React.FC = () => {
   // Refs to get visible rows and time keys from HierarchicalGrid for range selection
   const getVisibleRowsRef = useRef<(() => Array<{ id: string; [key: string]: any }>) | null>(null);
   const getVisibleTimeKeysRef = useRef<(() => string[]) | null>(null);
+  
+  // Drag selection state
+  const isDraggingRef = useRef(false);
+  const dragStartCellRef = useRef<string | null>(null);
+  const isDragSelectionRef = useRef(false);
   
   // Track which cell is currently being edited globally
   const [editingCellKey, setEditingCellKey] = useState<string | null>(null);
@@ -160,6 +166,12 @@ const ForecastingGrid: React.FC = () => {
   
   // Handler for cell selection
   const handleCellSelect = useCallback((cellKey: string, event: React.MouseEvent) => {
+    // Don't process selection if we're actively dragging (mouse has moved to a different cell)
+    // But allow normal clicks if we just clicked without dragging
+    if (isDragSelectionRef.current && isDraggingRef.current) {
+      return;
+    }
+    
     // Prevent selection if this is a double-click (which should enter edit mode)
     // Note: detail is only available on click events, not mousedown
     if (event.type === 'click' && event.detail === 2) {
@@ -444,6 +456,97 @@ const ForecastingGrid: React.FC = () => {
     // This ensures both are updated atomically with the correct order
     setSelectedCellsOrder(newOrder);
   }, [lastSelectedCell, editingCellKey, selectedLayoutState, calculateCellRange]);
+  
+  // Drag selection handlers
+  const handleCellMouseDown = useCallback((cellKey: string, event: React.MouseEvent) => {
+    // Don't start drag if double-clicking
+    if (event.detail === 2) {
+      return;
+    }
+    
+    // Store the starting cell for potential drag, but don't mark as dragging yet
+    // Only mark as dragging when mouse actually moves to a different cell
+    dragStartCellRef.current = cellKey;
+    isDragSelectionRef.current = false; // Will be set to true on first move to different cell
+    isDraggingRef.current = false; // Reset dragging state
+    
+    // Don't interfere with normal click selection - let onCellSelect handle it
+    // We'll only start drag if mouse moves to a different cell before mouseup
+  }, []);
+  
+  const handleCellMouseMove = useCallback((cellKey: string) => {
+    // Only start drag if we have a starting cell and mouse has moved
+    if (!dragStartCellRef.current) {
+      return;
+    }
+    
+    const startCellKey = dragStartCellRef.current;
+    
+    // Only mark as dragging if mouse moved to a different cell
+    if (startCellKey !== cellKey) {
+      // If this is the first move to a different cell, mark as dragging
+      if (!isDraggingRef.current) {
+        isDraggingRef.current = true;
+        isDragSelectionRef.current = true;
+        
+        // Select the starting cell first
+        setSelectedCells(new Set([startCellKey]));
+        setSelectedCellsOrder([startCellKey]);
+        lastSelectedCellRef.current = startCellKey;
+        setLastSelectedCell(startCellKey);
+        shiftAnchorCellRef.current = null;
+      }
+      
+      // Calculate range from start to current cell
+      const range = calculateCellRange(startCellKey, cellKey);
+      
+      // Update selection with the range
+      setSelectedCells(new Set(range));
+      setSelectedCellsOrder(range);
+      lastSelectedCellRef.current = cellKey;
+      setLastSelectedCell(cellKey);
+    }
+  }, [calculateCellRange]);
+  
+  const handleCellMouseUp = useCallback(() => {
+    // Clear drag state
+    if (isDraggingRef.current || dragStartCellRef.current) {
+      isDraggingRef.current = false;
+      dragStartCellRef.current = null;
+      isDragSelectionRef.current = false;
+    }
+  }, []);
+  
+  // Global mouse move and mouse up handlers for drag selection
+  useEffect(() => {
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      // Only process if we have a starting cell (potential drag)
+      if (!dragStartCellRef.current) return;
+      
+      // Find the cell under the mouse cursor
+      const target = e.target as HTMLElement;
+      const cellElement = target.closest('.grid-cell');
+      if (cellElement) {
+        const cellKey = cellElement.getAttribute('data-cell-key');
+        if (cellKey) {
+          handleCellMouseMove(cellKey);
+        }
+      }
+    };
+    
+    const handleGlobalMouseUp = () => {
+      // Always clear drag state on mouse up
+      handleCellMouseUp();
+    };
+    
+    document.addEventListener('mousemove', handleGlobalMouseMove);
+    document.addEventListener('mouseup', handleGlobalMouseUp);
+    
+    return () => {
+      document.removeEventListener('mousemove', handleGlobalMouseMove);
+      document.removeEventListener('mouseup', handleGlobalMouseUp);
+    };
+  }, [handleCellMouseMove, handleCellMouseUp]);
   
   // Clear selection handler
   const handleClearSelection = useCallback(() => {
@@ -1801,6 +1904,9 @@ const ForecastingGrid: React.FC = () => {
   const [showAllPeriods, setShowAllPeriods] = useState<boolean>(true);
   const [startPeriod, setStartPeriod] = useState<string>('');
   const [endPeriod, setEndPeriod] = useState<string>('');
+  const [impactedMeasuresCount, setImpactedMeasuresCount] = useState<number>(0);
+  const [showOnlyImpactedKPI, setShowOnlyImpactedKPI] = useState<boolean>(false);
+  const toggleShowOnlyImpactedKPIHandlerRef = useRef<((checked: boolean) => void) | null>(null);
   
   // Default column width based on layout - 50% of slider range
   // "Measures / Dimensions x Time": 50px - 200px range, default = 50 + (200-50)*0.5 = 125px
@@ -2010,7 +2116,19 @@ const ForecastingGrid: React.FC = () => {
           </div>
         </div>
       </div>
-      <div className="grid-wrapper">
+      <div style={{ display: 'flex', flexDirection: 'row', flex: '1 1 0', minHeight: 0, overflow: 'hidden' }}>
+        <div className="grid-wrapper">
+          {selectedLayoutState === 'Measures / Dimensions x Time' && (
+          <ScopedNotification
+            impactedMeasuresCount={impactedMeasuresCount}
+            showOnlyImpactedKPI={showOnlyImpactedKPI}
+            onToggleShowOnlyImpactedKPI={(checked) => {
+              if (toggleShowOnlyImpactedKPIHandlerRef.current) {
+                toggleShowOnlyImpactedKPIHandlerRef.current(checked);
+              }
+            }}
+          />
+        )}
         {selectedLayoutState === 'Dimensions / Time x Measures' ? (
           <DimensionsTimeGrid 
             data={filteredData} 
@@ -2042,6 +2160,10 @@ const ForecastingGrid: React.FC = () => {
             showAllPeriods={showAllPeriods}
             startPeriod={startPeriod}
             endPeriod={endPeriod}
+            selectedCells={selectedCells}
+            onCellSelect={handleCellSelect}
+            onCellMouseDown={handleCellMouseDown}
+            onCellMouseMove={handleCellMouseMove}
           />
         ) : selectedLayoutState === 'Time / Dimensions x Measures' ? (
           <TimeDimensionsGrid 
@@ -2074,6 +2196,10 @@ const ForecastingGrid: React.FC = () => {
             showAllPeriods={showAllPeriods}
             startPeriod={startPeriod}
             endPeriod={endPeriod}
+            selectedCells={selectedCells}
+            onCellSelect={handleCellSelect}
+            onCellMouseDown={handleCellMouseDown}
+            onCellMouseMove={handleCellMouseMove}
           />
         ) : (
           <HierarchicalGrid 
@@ -2122,6 +2248,9 @@ const ForecastingGrid: React.FC = () => {
             onCellContextMenu={handleContextMenu}
             selectedCells={selectedCells}
             onCellSelect={handleCellSelect}
+            onCellMouseDown={handleCellMouseDown}
+            onCellMouseMove={handleCellMouseMove}
+            lastSelectedCell={lastSelectedCell}
             onCellChangeHandlerReady={(handler) => {
               cellChangeHandlerRef.current = handler;
             }}
@@ -2147,12 +2276,20 @@ const ForecastingGrid: React.FC = () => {
             }}
             visibleMeasureIds={visibleMeasureIds}
             onToggleShowOnlyImpactedKPIChange={(checked) => {
+              setShowOnlyImpactedKPI(checked);
               if (checked) {
                 // Close all side panels when "Show Only Impacted Measures" is checked
                 setIsCellDetailsHistoryOpen(false);
                 setIsSettingsOpen(false);
                 setIsFiltersOpen(false);
               }
+            }}
+            onImpactedMeasuresInfoReady={(info) => {
+              setImpactedMeasuresCount(info.count);
+              setShowOnlyImpactedKPI(info.showOnlyImpactedKPI);
+            }}
+            onToggleShowOnlyImpactedKPIHandlerReady={(handler) => {
+              toggleShowOnlyImpactedKPIHandlerRef.current = handler;
             }}
             onGetVisibleRowsReady={(handler) => {
               getVisibleRowsRef.current = handler;
@@ -2164,7 +2301,8 @@ const ForecastingGrid: React.FC = () => {
             startPeriod={startPeriod}
             endPeriod={endPeriod}
         />
-        )}
+          )}
+        </div>
         <SettingsPanel 
           isOpen={isSettingsOpen} 
           onClose={() => setIsSettingsOpen(false)}

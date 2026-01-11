@@ -46,6 +46,8 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
   const [editValue, setEditValue] = useState<string>('');
   const inputRef = useRef<HTMLInputElement>(null);
   const savedByEnterRef = useRef<boolean>(false);
+  const [hoveredMeasureId, setHoveredMeasureId] = useState<string | null>(null);
+  const [focusedCellKey, setFocusedCellKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (editingCell && inputRef.current) {
@@ -195,7 +197,7 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
           <div className="cell-value-left-icon">
             <div style={{ width: '18px', height: '18px' }}></div>
           </div>
-          <div className="cell-value-left-section">
+          <div className="cell-value-left-section" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             {deltaPercent !== null && Math.abs(deltaPercent) > 0.001 && (
               <div className="cell-delta-badge" style={{ color: deltaColor }}>
                 {deltaPercent > 0 ? '+' : ''} {deltaPercent.toFixed(2)}%
@@ -278,7 +280,7 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
           <div className="cell-value-left-icon">
             <div style={{ width: '18px', height: '18px' }}></div>
           </div>
-          <div className="cell-value-left-section">
+          <div className="cell-value-left-section" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             {deltaPercent !== null && Math.abs(deltaPercent) > 0.001 && (
               <div className="cell-delta-badge" style={{ color: deltaColor }}>
                 {deltaPercent > 0 ? '+' : ''} {deltaPercent.toFixed(2)}%
@@ -329,8 +331,8 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
           const measure = measures.find(m => m.id === measureId);
           const isQuantity = measure?.name?.toLowerCase().includes('quantity') || false;
           return formatValue(currentValue, isQuantity);
-        })()}
-      </span>
+          })()}
+        </span>
       </div>
     );
   };
@@ -465,7 +467,7 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
           return (
             <td
               key={cellKey}
-              style={{ minWidth: `${columnWidth}px`, width: `${columnWidth}px` }}
+              style={{ minWidth: `${columnWidth}px`, width: `${columnWidth}px`, position: 'relative' }}
               ref={(el) => {
                 if (el && cellRefs) {
                   cellRefs.current.set(cellKey, el);
@@ -473,17 +475,31 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
               }}
               className={cellClassName}
               tabIndex={isEditable ? 0 : -1}
+              onMouseEnter={() => {
+                if (isEditable) {
+                  setHoveredMeasureId(measure.id);
+                }
+              }}
+              onMouseLeave={() => {
+                setHoveredMeasureId(null);
+              }}
+              onFocus={() => {
+                if (isEditable) {
+                  setFocusedCellKey(cellKey);
+                }
+                if (onCellFocus && isEditable) {
+                  onCellFocus({ rowId: row.id, measureId: measure.id });
+                }
+              }}
+              onBlur={() => {
+                setFocusedCellKey(null);
+              }}
               onDoubleClick={(e) => {
                 // Double-click anywhere on the cell to enter edit mode
                 if (isEditable && !editingCell) {
                   e.preventDefault();
                   e.stopPropagation();
                   handleCellEnterKey(measure.id);
-                }
-              }}
-              onFocus={() => {
-                if (onCellFocus && isEditable) {
-                  onCellFocus({ rowId: row.id, measureId: measure.id });
                 }
               }}
               onKeyDown={(e) => {
@@ -495,6 +511,7 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
               }}
             >
               {renderCellValue(measure.id)}
+              {/* {renderPencilIcon(measure.id, isEditable)} */}
             </td>
           );
         })}

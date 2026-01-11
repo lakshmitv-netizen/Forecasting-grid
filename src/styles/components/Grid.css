@@ -299,11 +299,13 @@
   position: relative;
   flex: 1 1 0;
   display: flex;
+  flex-direction: column; /* Stack children vertically */
   min-height: 0;
   min-width: 0; /* Allow flex item to shrink below content size */
   gap: 0;
-  overflow: hidden; /* Contain children within bounds */
+  overflow: visible; /* Allow notification to be visible outside bounds */
   padding: 0;
+  background-color: #E9E9E9; /* Grey background instead of white */
 }
 
 .grid-container-wrapper {
@@ -315,7 +317,7 @@
   position: relative;
   overflow: hidden; /* Contain children within bounds */
   padding: 0;
-  margin: var(--spacing-2) var(--spacing-2) 0 var(--spacing-2);
+  margin: var(--spacing-2) var(--spacing-2) var(--spacing-2) var(--spacing-2);
   max-width: calc(100% - var(--spacing-2) * 2);
   box-shadow: 0 0 0 6px #DCDCDC, 0 0 0 12px rgba(220, 220, 220, 0.7), 0 0 0 18px rgba(220, 220, 220, 0.4), 0 8px 20px rgba(0, 0, 0, 0.2);
   border-radius: 8px;
@@ -334,14 +336,15 @@
   margin-bottom: 0;
   box-shadow: none !important;
   /* Hide scrollbar by default */
-  scrollbar-width: thin;
+  scrollbar-width: none; /* Firefox - hide scrollbar completely */
   scrollbar-color: transparent transparent;
 }
 
 /* Hide scrollbar for webkit browsers (Chrome, Safari, Edge) */
 .grid-container::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 0px;
+  height: 0px;
+  background: transparent;
 }
 
 .grid-container::-webkit-scrollbar-track {
@@ -353,23 +356,23 @@
   border-radius: 4px;
 }
 
-/* Show scrollbar on hover or when scrolling */
-.grid-container:hover::-webkit-scrollbar-thumb,
-.grid-container:active::-webkit-scrollbar-thumb {
+/* Show scrollbar on hover */
+.grid-container:hover {
+  scrollbar-width: thin; /* Firefox - show thin scrollbar on hover */
+  scrollbar-color: #c1c1c1 transparent;
+}
+
+.grid-container:hover::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.grid-container:hover::-webkit-scrollbar-thumb {
   background: #c1c1c1;
 }
 
-.grid-container:hover::-webkit-scrollbar-thumb:hover,
-.grid-container:active::-webkit-scrollbar-thumb:hover {
+.grid-container:hover::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
-}
-
-.grid-container:hover {
-  scrollbar-color: #c1c1c1 transparent;
-}
-
-.grid-container:active {
-  scrollbar-color: #c1c1c1 transparent;
 }
 
 .grid-table {
@@ -425,10 +428,7 @@
   box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3) !important;
 }
 
-/* When GridFooter is visible, adjust grid header top position */
-.grid-container.has-footer .grid-header th {
-  top: 48px;
-}
+/* Footer is now at bottom, no header adjustment needed */
 
 .grid-header th:last-child {
   border-right: none;
@@ -448,10 +448,7 @@
   border-bottom: 1px solid #A0A0A0 !important;
 }
 
-/* When GridFooter is visible, adjust first column header top position */
-.grid-container.has-footer .grid-header th:first-child {
-  top: 48px;
-}
+/* Footer is now at bottom, no header adjustment needed */
 
 .grid-header th:first-child::after {
   content: '';
@@ -1171,5 +1168,29 @@
 .cell-lock-indicator svg {
   width: 10px;
   height: 10px;
+}
+
+/* Drag handle indicator */
+.cell-drag-handle {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  cursor: grab;
+  z-index: 100;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cell-drag-handle:active {
+  cursor: grabbing;
+}
+
+.cell-drag-handle svg {
+  width: 8px;
+  height: 8px;
 }
 

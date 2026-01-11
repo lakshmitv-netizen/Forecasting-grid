@@ -236,25 +236,100 @@ const ProductFilterPopover: React.FC<ProductFilterPopoverProps> = ({
   // Calculate popover position relative to viewport (fixed positioning)
   // Position popover to the left of the filter card, aligned so nubbin originates from the product block
   const getPopoverPosition = () => {
-    if (!anchorElement) return { top: 0, left: 0 };
+    if (!anchorElement) return { top: 0, left: 0, maxHeight: 'none', contentMaxHeight: 'none', nubbinTop: '50%' };
     
     const rect = anchorElement.getBoundingClientRect();
     const popoverWidth = 320; // Width of the popover
-    const popoverHeight = 320; // Reduced height - value selection area scrolls
+    const buttonAreaHeight = 40; // Approximate height of buttons section
+    const paddingTop = 12;
+    const paddingBottom = 12;
+    const minContentHeight = 100; // Minimum height for content area
     
-    // Calculate the vertical center of the filter card
+    // Find header height to ensure popover doesn't go under it
+    const pageHeader = document.querySelector('.page-header');
+    const headerHeight = pageHeader ? pageHeader.getBoundingClientRect().height : 0;
+    const headerBottom = headerHeight + 8; // Add 8px margin below header
+    
+    // Calculate available space above and below the filter card
+    const spaceAbove = rect.top - headerBottom; // Account for header
+    const spaceBelow = window.innerHeight - rect.bottom - 8; // 8px margin from bottom
     const filterCardCenterY = rect.top + (rect.height / 2);
     
-    // Position popover so that its vertical center (where nubbin is at 50%) aligns with filter card center
-    // This makes the nubbin point directly at the center of the product filter block
-    const topPosition = filterCardCenterY - (popoverHeight / 2);
+    // Calculate maximum height to ensure buttons are always visible
+    const maxAvailableHeight = Math.min(
+      spaceAbove + spaceBelow + rect.height, // Total available vertical space
+      window.innerHeight - headerBottom - 8 // Viewport height minus header and margins
+    );
     
-    // Ensure it doesn't go above viewport, but allow some overflow at bottom if needed
-    const finalTopPosition = Math.max(8, topPosition);
+    // Calculate maximum available height for the entire popover (including buttons)
+    const maxAvailablePopoverHeight = window.innerHeight - headerBottom - 8; // 8px margin from bottom
+    
+    // Calculate maximum content height (total height - padding - buttons - gaps)
+    const maxContentHeight = maxAvailablePopoverHeight - buttonAreaHeight - paddingTop - paddingBottom - 16; // 16px for gaps
+    const actualContentHeight = Math.max(minContentHeight, Math.min(maxContentHeight, 280)); // Increased cap for taller popover
+    
+    // Calculate actual total popover height
+    const actualPopoverHeight = actualContentHeight + buttonAreaHeight + paddingTop + paddingBottom + 16;
+    
+    // Position popover so nubbin aligns with filter card center
+    const nubbinTargetY = filterCardCenterY;
+    
+    // Calculate ideal popover top so nubbin (at middle) aligns with filter card center
+    const idealPopoverTop = nubbinTargetY - (actualPopoverHeight / 2);
+    
+    // Ensure popover is below header
+    let adjustedTop = Math.max(headerBottom, idealPopoverTop);
+    
+    // Ensure popover doesn't go below viewport - this is critical
+    const popoverBottom = adjustedTop + actualPopoverHeight;
+    if (popoverBottom > window.innerHeight - 8) {
+      // Adjust upward to fit within viewport
+      adjustedTop = window.innerHeight - 8 - actualPopoverHeight;
+      // But don't go above header
+      adjustedTop = Math.max(headerBottom, adjustedTop);
+    }
+    
+    // Recalculate content height based on final position to ensure buttons are always visible
+    const finalMaxContentHeight = window.innerHeight - adjustedTop - 8 - buttonAreaHeight - paddingTop - paddingBottom - 16;
+    let finalContentHeight = Math.max(minContentHeight, Math.min(finalMaxContentHeight, actualContentHeight));
+    
+    // Final verification: ensure popover with final height fits
+    const finalPopoverHeightCheck = finalContentHeight + buttonAreaHeight + paddingTop + paddingBottom + 16;
+    if (adjustedTop + finalPopoverHeightCheck > window.innerHeight - 8) {
+      // If still doesn't fit, reduce content height further
+      const maxAllowedContentHeight = window.innerHeight - adjustedTop - 8 - buttonAreaHeight - paddingTop - paddingBottom - 16;
+      finalContentHeight = Math.max(minContentHeight, maxAllowedContentHeight);
+    }
+    
+    // Recalculate final popover height with adjusted content height
+    let finalPopoverHeight = finalContentHeight + buttonAreaHeight + paddingTop + paddingBottom + 16;
+    
+    // Final check: ensure popover bottom doesn't exceed viewport
+    const popoverBottomFinal = adjustedTop + finalPopoverHeight;
+    if (popoverBottomFinal > window.innerHeight - 8) {
+      // Reduce popover height to fit
+      finalPopoverHeight = window.innerHeight - adjustedTop - 8;
+      // Recalculate content height to match
+      finalContentHeight = finalPopoverHeight - buttonAreaHeight - paddingTop - paddingBottom - 16;
+      finalContentHeight = Math.max(minContentHeight, finalContentHeight);
+      // Recalculate popover height with adjusted content
+      finalPopoverHeight = finalContentHeight + buttonAreaHeight + paddingTop + paddingBottom + 16;
+    }
+    
+    // Calculate exact nubbin position to align with filter card center
+    const nubbinOffsetFromPopoverTop = nubbinTargetY - adjustedTop;
+    
+    // Clamp nubbin position to be within reasonable bounds (20px from edges)
+    const minNubbinTop = 20;
+    const maxNubbinTop = finalPopoverHeight - 20;
+    const clampedNubbinTop = Math.max(minNubbinTop, Math.min(nubbinOffsetFromPopoverTop, maxNubbinTop));
     
     return {
-      top: finalTopPosition,
-      left: rect.left - popoverWidth - 8 // Position to the left with 8px gap
+      top: adjustedTop,
+      left: rect.left - popoverWidth - 8, // Position to the left with 8px gap
+      maxHeight: `${finalPopoverHeight}px`, // Total height including padding, content, buttons, and gaps
+      contentMaxHeight: `${finalContentHeight}px`, // Max height for scrollable content area
+      nubbinTop: `${clampedNubbinTop}px` // Dynamic nubbin position, clamped within bounds
     };
   };
   
@@ -272,14 +347,23 @@ const ProductFilterPopover: React.FC<ProductFilterPopoverProps> = ({
         className="product-filter-popover"
         style={{
           top: `${position.top}px`,
-          left: `${position.left}px`
+          left: `${position.left}px`,
+          maxHeight: position.maxHeight
         }}
       >
         {/* Nubbin */}
-        <div className="product-filter-popover-nubbin" />
+        <div 
+          className="product-filter-popover-nubbin" 
+          style={{ top: position.nubbinTop }}
+        />
         
-        {/* Field Section */}
-        <div className="product-filter-field-section">
+        {/* Scrollable Content Area */}
+        <div 
+          className="product-filter-popover-content-scrollable"
+          style={{ maxHeight: position.contentMaxHeight }}
+        >
+          {/* Field Section */}
+          <div className="product-filter-field-section">
           <label className="product-filter-label">Field</label>
           <div className="product-filter-dropdown-wrapper" ref={fieldDropdownRef}>
             <div 
@@ -437,6 +521,7 @@ const ProductFilterPopover: React.FC<ProductFilterPopoverProps> = ({
               </div>
             </div>
           )}
+        </div>
         </div>
         
         {/* Action Buttons */}

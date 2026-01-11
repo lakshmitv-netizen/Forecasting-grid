@@ -28,6 +28,10 @@ interface TimeDimensionsGridProps {
   showAllPeriods?: boolean; // Whether to show all time periods or filter by date range
   startPeriod?: string; // Start date for filtering (YYYY-MM-DD format)
   endPeriod?: string; // End date for filtering (YYYY-MM-DD format)
+  selectedCells?: Set<string>; // Set of selected cell keys
+  onCellSelect?: (cellKey: string, event: React.MouseEvent) => void; // Callback when a cell is clicked for selection
+  onCellMouseDown?: (cellKey: string, event: React.MouseEvent) => void; // Callback for mouse down (drag selection)
+  onCellMouseMove?: (cellKey: string) => void; // Callback for mouse move (drag selection)
 }
 
 const TimeDimensionsGrid: React.FC<TimeDimensionsGridProps> = ({
@@ -985,8 +989,10 @@ const TimeDimensionsGrid: React.FC<TimeDimensionsGridProps> = ({
 
   if (transformedRows.length === 0) {
     return (
-      <div className="grid-container">
-        <div className="grid-empty">No data available</div>
+      <div className="grid-container-wrapper">
+        <div className="grid-container">
+          <div className="grid-empty">No data available</div>
+        </div>
       </div>
     );
   }
@@ -995,8 +1001,9 @@ const TimeDimensionsGrid: React.FC<TimeDimensionsGridProps> = ({
   const isFiltering = searchTerm && searchTerm.trim().length > 0;
 
   return (
-    <div className="grid-container">
-      <div className="grid-wrapper">
+    <div className="grid-container-wrapper">
+      <div className="grid-container" tabIndex={0}>
+        <div className="grid-wrapper">
         <table className={`grid-table dimensions-time-table time-dimensions-table ${isFiltering ? 'filtered' : ''}`}>
           <thead className="grid-header dimensions-time-layout">
             <tr>
@@ -1073,6 +1080,7 @@ const TimeDimensionsGrid: React.FC<TimeDimensionsGridProps> = ({
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

@@ -46,6 +46,9 @@ interface HierarchicalGridProps {
   onAfterSave?: () => void; // Callback called after save completes
   selectedCells?: Set<string>; // Set of selected cell keys
   onCellSelect?: (cellKey: string, event: React.MouseEvent) => void; // Callback when a cell is clicked for selection
+  onCellMouseDown?: (cellKey: string, event: React.MouseEvent) => void; // Callback for mouse down (drag selection)
+  onCellMouseMove?: (cellKey: string) => void; // Callback for mouse move (drag selection)
+  lastSelectedCell?: string | null; // Last selected cell key (for drag handle indicator)
   onCellChangeHandlerReady?: (handler: (rowId: string, monthKey: string, newValue: number, note?: string) => void) => void; // Callback to expose cell change handler for programmatic updates
   onGetCurrentCellValueReady?: (handler: (rowId: string, monthKey: string) => number) => void; // Callback to expose function to get current cell value
   onEditingCellChange?: (cellKey: string | null) => void; // Callback when editing cell changes (cellKey format: `${rowId}-${monthKey}`)
@@ -57,6 +60,8 @@ interface HierarchicalGridProps {
   onToggleShowOnlyImpactedKPIChange?: (checked: boolean) => void; // Callback when "Show Only Impacted Measures" is toggled
   onGetVisibleRowsReady?: (handler: () => GridRowType[]) => void; // Callback to expose function to get visible rows
   onGetVisibleTimeKeysReady?: (handler: () => (keyof GridRowType['values'])[]) => void; // Callback to expose function to get visible time keys
+  onImpactedMeasuresInfoReady?: (info: { count: number; showOnlyImpactedKPI: boolean }) => void; // Callback to expose impacted measures count and toggle state
+  onToggleShowOnlyImpactedKPIHandlerReady?: (handler: (checked: boolean) => void) => void; // Callback to expose toggle handler
 }
 
 const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({ 
@@ -86,6 +91,9 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   onAfterSave,
   selectedCells = new Set(),
   onCellSelect,
+  onCellMouseDown,
+  onCellMouseMove,
+  lastSelectedCell = null,
   onCellChangeHandlerReady,
   showAllPeriods = true,
   startPeriod = '',
@@ -96,7 +104,9 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   visibleMeasureIds,
   onToggleShowOnlyImpactedKPIChange,
   onGetVisibleRowsReady,
-  onGetVisibleTimeKeysReady
+  onGetVisibleTimeKeysReady,
+  onImpactedMeasuresInfoReady,
+  onToggleShowOnlyImpactedKPIHandlerReady
 }) => {
   // Store onEditHistory in a ref so it's always available in callbacks
   const onEditHistoryRef = useRef(onEditHistory);
@@ -2361,6 +2371,23 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     return finalCount;
   }, [editedCells, impactedCells, gridData, visibleMeasureIds]);
 
+  // Expose impacted measures info to parent
+  useEffect(() => {
+    if (onImpactedMeasuresInfoReady) {
+      onImpactedMeasuresInfoReady({
+        count: impactedMeasuresCount,
+        showOnlyImpactedKPI: showOnlyImpactedKPI
+      });
+    }
+  }, [impactedMeasuresCount, showOnlyImpactedKPI, onImpactedMeasuresInfoReady]);
+
+  // Expose toggle handler to parent
+  useEffect(() => {
+    if (onToggleShowOnlyImpactedKPIHandlerReady) {
+      onToggleShowOnlyImpactedKPIHandlerReady(handleToggleShowOnlyImpactedKPI);
+    }
+  }, [handleToggleShowOnlyImpactedKPI, onToggleShowOnlyImpactedKPIHandlerReady]);
+
   // Undo handler - undo the most recent operation
   const handleUndo = useCallback(() => {
     const currentIndex = historyIndexRef.current;
@@ -2678,18 +2705,6 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   return (
     <div className="grid-container-wrapper">
       <div className={`grid-container ${isFooterVisible ? 'has-footer' : ''}`} onKeyDown={handleKeyDown} tabIndex={0}>
-        <GridFooter
-          isVisible={isFooterVisible}
-          impactedMeasuresCount={impactedMeasuresCount}
-          onUndo={handleUndo}
-          onRedo={handleRedo}
-          onCancel={handleCancel}
-          onSave={handleSave}
-          canUndo={historyIndex > 0}
-          canRedo={historyIndex < undoRedoHistory.length - 1}
-          showOnlyImpactedKPI={showOnlyImpactedKPI}
-          onToggleShowOnlyImpactedKPI={handleToggleShowOnlyImpactedKPI}
-        />
         <table className={`grid-table ${isFiltering ? 'filtered' : ''}`}>
           <thead className="grid-header">
             <tr>
@@ -2794,6 +2809,9 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                     onCellContextMenu={onCellContextMenu}
                     selectedCells={selectedCells}
                     onCellSelect={onCellSelect}
+                    onCellMouseDown={onCellMouseDown}
+                    onCellMouseMove={onCellMouseMove}
+                    lastSelectedCell={lastSelectedCell}
                   />
               );
               }
@@ -2829,12 +2847,23 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                   onCellContextMenu={onCellContextMenu}
                   selectedCells={selectedCells}
                   onCellSelect={onCellSelect}
+                  onCellMouseDown={onCellMouseDown}
+                  onCellMouseMove={onCellMouseMove}
                 />
               );
             })
           )}
         </tbody>
       </table>
+        <GridFooter
+          isVisible={isFooterVisible}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          onCancel={handleCancel}
+          onSave={handleSave}
+          canUndo={historyIndex > 0}
+          canRedo={historyIndex < undoRedoHistory.length - 1}
+        />
     </div>
       
       {/* Cell Note Popover */}

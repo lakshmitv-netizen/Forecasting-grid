@@ -1,0 +1,70 @@
+.scoped-notification {
+  background-color: #F9E3B6;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: var(--spacing-2) var(--spacing-2) var(--spacing-2) var(--spacing-2);
+  display: flex;
+  align-items: center;
+  width: calc(100% - var(--spacing-2) * 2);
+  flex-shrink: 0; /* Prevent stretching in flex container */
+  height: auto; /* Only take up needed height */
+  min-height: auto; /* Don't force minimum height */
+  box-sizing: border-box;
+  position: relative;
+  z-index: 2; /* Above grid shadow */
+  border: 0.5px solid rgba(140, 75, 2, 0.4);
+  box-shadow: 0 0 8px 4px rgba(255, 170, 74, 0.3);
+}
+
+.scoped-notification-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.scoped-notification-icon {
+  flex-shrink: 0;
+  display: block;
+  vertical-align: middle;
+}
+
+.scoped-notification-text {
+  font-family: var(--font-family-base);
+  font-size: 13px;
+  font-weight: 700;
+  color: #2E2E2E;
+  line-height: 20px;
+}
+
+.scoped-notification-separator {
+  color: #2E2E2E;
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0 4px;
+}
+
+.scoped-notification-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  margin-left: auto;
+}
+
+.scoped-notification-checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #066AFE;
+}
+
+.scoped-notification-checkbox-text {
+  font-family: var(--font-family-base);
+  font-size: 13px;
+  font-weight: 700;
+  color: #2E2E2E;
+  line-height: 20px;
+  user-select: none;
+}
+

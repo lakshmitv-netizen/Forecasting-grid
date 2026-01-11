@@ -1,6 +1,6 @@
 .grid-footer {
   position: sticky;
-  top: 0;
+  bottom: 0;
   left: 0;
   right: 0;
   background-color: var(--color-surface-white);
@@ -9,11 +9,11 @@
   justify-content: space-between;
   gap: var(--spacing-2);
   padding: var(--spacing-2);
-  border-radius: 16px 16px 0 0;
+  border-radius: 0;
   box-shadow: 
     0px 0px 5px 0px rgba(0, 0, 0, 0.16),
-    0px 3px 3px 0px rgba(0, 0, 0, 0.16),
-    0px 1px 2px 0px rgba(0, 0, 0, 0.09);
+    0px -3px 3px 0px rgba(0, 0, 0, 0.16),
+    0px -1px 2px 0px rgba(0, 0, 0, 0.09);
   z-index: 1000; /* Higher z-index to ensure it's above everything */
   min-height: 48px;
   max-width: 100vw; /* Ensure footer doesn't exceed viewport width */

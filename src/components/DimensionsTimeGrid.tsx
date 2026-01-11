@@ -1,7 +1,6 @@
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { MeasureData } from '../types';
 import DimensionsTimeRowComponent from './DimensionsTimeRow';
-import GridFooter from './GridFooter';
 import { transformToDimensionsTimeLayout, TransformedRow } from '../utils/layoutTransform';
 import {
   extractSearchTerms,
@@ -29,6 +28,10 @@ interface DimensionsTimeGridProps {
   showAllPeriods?: boolean; // Whether to show all time periods or filter by date range
   startPeriod?: string; // Start date for filtering (YYYY-MM-DD format)
   endPeriod?: string; // End date for filtering (YYYY-MM-DD format)
+  selectedCells?: Set<string>; // Set of selected cell keys
+  onCellSelect?: (cellKey: string, event: React.MouseEvent) => void; // Callback when a cell is clicked for selection
+  onCellMouseDown?: (cellKey: string, event: React.MouseEvent) => void; // Callback for mouse down (drag selection)
+  onCellMouseMove?: (cellKey: string) => void; // Callback for mouse move (drag selection)
 }
 
 const DimensionsTimeGrid: React.FC<DimensionsTimeGridProps> = ({
@@ -46,7 +49,11 @@ const DimensionsTimeGrid: React.FC<DimensionsTimeGridProps> = ({
   onEditHistory,
   showAllPeriods = true,
   startPeriod = '',
-  endPeriod = ''
+  endPeriod = '',
+  selectedCells,
+  onCellSelect,
+  onCellMouseDown,
+  onCellMouseMove
 }) => {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [focusedCell, setFocusedCell] = useState<{ rowId: string; measureId: string } | null>(initialFocusedCell || null);
@@ -96,10 +103,13 @@ const DimensionsTimeGrid: React.FC<DimensionsTimeGridProps> = ({
   // Transform data to Dimensions/Time x Measures layout
   const transformedRows = useMemo(() => {
     try {
+      console.log('[DimensionsTimeGrid] Transforming data, gridData length:', gridData?.length);
       const transformed = transformToDimensionsTimeLayout(gridData);
-      return transformed;
+      console.log('[DimensionsTimeGrid] Transformation result:', transformed?.length, 'rows');
+      return transformed || [];
     } catch (error) {
       console.error('[DimensionsTimeGrid] Error transforming data:', error);
+      console.error('[DimensionsTimeGrid] Error stack:', error instanceof Error ? error.stack : 'No stack');
       return [];
     }
   }, [gridData]);
@@ -1473,27 +1483,56 @@ const DimensionsTimeGrid: React.FC<DimensionsTimeGridProps> = ({
     }
   }, [gridData, onDataChange, editedCells, transformedRows, onEditHistory]);
 
-  console.log('[DimensionsTimeGrid] Rendering, transformedRows:', transformedRows.length, 'measures:', measures.length);
+  console.log('[DimensionsTimeGrid] Component rendering...');
+  console.log('[DimensionsTimeGrid] gridData:', gridData?.length, 'measures:', measures?.length, 'transformedRows:', transformedRows?.length);
+  console.log('[DimensionsTimeGrid] filteredRows:', filteredRows?.length, 'dateRangeFilteredRows:', dateRangeFilteredRows?.length);
+  
+  // Use filteredRows if available, otherwise fall back to transformedRows (for debugging)
+  const rowsToRender = filteredRows && filteredRows.length > 0 ? filteredRows : (transformedRows && transformedRows.length > 0 ? transformedRows : []);
+  console.log('[DimensionsTimeGrid] rowsToRender:', rowsToRender?.length);
   
   // Check if search is active (filtering columns)
   const isFiltering = searchTerm && searchTerm.trim().length > 0;
 
-  return (
-    <div className="grid-container-wrapper">
-      <div className="grid-container" tabIndex={0}>
-        <GridFooter
-          isVisible={true}
-          impactedMeasuresCount={0}
-          onUndo={() => {}}
-          onRedo={() => {}}
-          onCancel={() => {}}
-          onSave={() => {}}
-          canUndo={false}
-          canRedo={false}
-          showOnlyImpactedKPI={false}
-          onToggleShowOnlyImpactedKPI={() => {}}
-        />
-        <table className={`grid-table dimensions-time-table ${isFiltering ? 'filtered' : ''}`}>
+  // Early return if no data at all - make it very visible
+  if (!gridData || gridData.length === 0) {
+    console.warn('[DimensionsTimeGrid] No gridData available');
+    return (
+      <div className="grid-container-wrapper" style={{ minHeight: '200px', backgroundColor: '#f5f5f5', padding: '20px' }}>
+        <div className="grid-container" tabIndex={0}>
+          <div className="grid-wrapper">
+            <div style={{ padding: '20px', textAlign: 'center', color: '#d32f2f', fontSize: '16px', fontWeight: 'bold' }}>
+              ⚠️ No data available. gridData is empty or undefined.
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Ensure measures is not empty - make it very visible
+  if (!measures || measures.length === 0) {
+    console.warn('[DimensionsTimeGrid] No measures available');
+    return (
+      <div className="grid-container-wrapper" style={{ minHeight: '200px', backgroundColor: '#f5f5f5', padding: '20px' }}>
+        <div className="grid-container" tabIndex={0}>
+          <div className="grid-wrapper">
+            <div style={{ padding: '20px', textAlign: 'center', color: '#d32f2f', fontSize: '16px', fontWeight: 'bold' }}>
+              ⚠️ No measures available. measures array is empty.
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Always render something visible - even if there's an error
+  try {
+    return (
+      <div className="grid-container-wrapper" style={{ minHeight: '100px' }}>
+        <div className="grid-container" tabIndex={0} style={{ minHeight: '100px' }}>
+          <div className="grid-wrapper" style={{ minHeight: '100px' }}>
+            <table className={`grid-table dimensions-time-table ${isFiltering ? 'filtered' : ''}`} style={{ minHeight: '100px' }}>
           <thead className="grid-header">
             <tr>
               <th style={{ width: '300px', minWidth: '300px' }}>
@@ -1513,7 +1552,7 @@ const DimensionsTimeGrid: React.FC<DimensionsTimeGridProps> = ({
                   )}
                 </div>
               </th>
-              {measures.map((measure) => {
+              {measures && measures.length > 0 && measures.map((measure) => {
                 const searchTerms = searchTerm && searchTerm.trim() ? extractSearchTerms(searchTerm) : [];
                 const { otherTerms } = searchTerms.length > 0 ? separateSearchTerms(searchTerms) : { otherTerms: [] };
                 return (
@@ -1538,20 +1577,14 @@ const DimensionsTimeGrid: React.FC<DimensionsTimeGridProps> = ({
             </tr>
           </thead>
           <tbody className="grid-body">
-            {transformedRows.length === 0 ? (
+            {!rowsToRender || rowsToRender.length === 0 ? (
               <tr>
-                <td colSpan={measures.length + 1} style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
-                  No data available. Please check the console for errors.
-                </td>
-              </tr>
-            ) : filteredRows.length === 0 ? (
-              <tr>
-                <td colSpan={measures.length + 1} className="grid-no-results">
-                  {searchTerm && searchTerm.trim() ? `No results found for '${searchTerm}'` : 'No data available'}
+                <td colSpan={measures.length + 1} style={{ padding: '20px', textAlign: 'center', color: '#666', backgroundColor: '#fff' }}>
+                  No data available. transformedRows: {transformedRows?.length || 0}, filteredRows: {filteredRows?.length || 0}. Please check the console for errors.
                 </td>
               </tr>
             ) : (
-              filteredRows.map((row) => (
+              rowsToRender.map((row) => (
                 <DimensionsTimeRowComponent
                   key={row.id}
                   row={row}
@@ -1573,11 +1606,31 @@ const DimensionsTimeGrid: React.FC<DimensionsTimeGridProps> = ({
                 />
               ))
             )}
-        </tbody>
-      </table>
+          </tbody>
+        </table>
+        </div>
+      </div>
     </div>
-    </div>
-  );
+    );
+  } catch (error) {
+    console.error('[DimensionsTimeGrid] Rendering error:', error);
+    console.error('[DimensionsTimeGrid] Error stack:', error instanceof Error ? error.stack : 'No stack');
+    return (
+      <div className="grid-container-wrapper" style={{ minHeight: '200px', backgroundColor: '#ffebee', padding: '20px' }}>
+        <div className="grid-container" tabIndex={0}>
+          <div className="grid-wrapper">
+            <div style={{ padding: '20px', textAlign: 'center', color: '#d32f2f', fontSize: '16px', fontWeight: 'bold' }}>
+              ⚠️ Error rendering DimensionsTimeGrid. Check console for details.
+              <br />
+              <span style={{ fontSize: '12px', fontWeight: 'normal' }}>
+                {error instanceof Error ? error.message : String(error)}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 };
 
 export default DimensionsTimeGrid;

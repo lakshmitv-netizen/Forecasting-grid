@@ -874,19 +874,16 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
                         : filter.value}
                     </p>
                   </div>
-                  {/* Remove button disabled temporarily */}
-                  {/* <button 
+                  {/* Delete icon (non-functional) */}
+                  <button 
                     className="filter-card-remove" 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleRemoveFilter(filter.id);
-                    }}
                     aria-label={`Remove ${filter.label}`}
+                    type="button"
                   >
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
-                  </button> */}
+                  </button>
                 </div>
               );
             })}

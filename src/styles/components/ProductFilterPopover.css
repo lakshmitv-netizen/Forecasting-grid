@@ -22,12 +22,53 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  overflow: hidden; /* Prevent popover from growing beyond maxHeight, content scrolls internally */
+  box-sizing: border-box; /* Ensure padding is included in maxHeight */
 }
 
-/* Nubbin (Arrow pointing to filter card - pointing right, moved down by 50px) */
+/* Scrollable content area */
+.product-filter-popover-content-scrollable {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  /* Hide scrollbar by default */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+/* Hide scrollbar for WebKit browsers */
+.product-filter-popover-content-scrollable::-webkit-scrollbar {
+  width: 0px;
+  height: 0px;
+  background: transparent;
+}
+
+/* Show scrollbar on hover */
+.product-filter-popover-content-scrollable:hover {
+  scrollbar-width: thin; /* Firefox - show thin scrollbar on hover */
+  scrollbar-color: #c1c1c1 transparent;
+}
+
+.product-filter-popover-content-scrollable:hover::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.product-filter-popover-content-scrollable:hover::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+.product-filter-popover-content-scrollable:hover::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* Nubbin (Arrow pointing to filter card - pointing right, positioned dynamically) */
 .product-filter-popover-nubbin {
   position: absolute;
-  top: calc(50% + 50px);
   right: -8px;
   transform: translateY(-50%);
   width: 0;
@@ -205,7 +246,7 @@
   overflow-y: auto;
   flex: 1 1 auto;
   min-height: 0;
-  max-height: 150px;
+  max-height: 120px; /* Reduced height to show fewer items upfront */
   display: flex;
   flex-direction: column;
 }

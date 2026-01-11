@@ -46,6 +46,8 @@ const TimeDimensionsRowComponent: React.FC<TimeDimensionsRowProps> = ({
   const [editValue, setEditValue] = useState<string>('');
   const inputRef = useRef<HTMLInputElement>(null);
   const savedByEnterRef = useRef<boolean>(false);
+  const [hoveredMeasureId, setHoveredMeasureId] = useState<string | null>(null);
+  const [focusedCellKey, setFocusedCellKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (editingCell && inputRef.current) {
@@ -198,7 +200,7 @@ const TimeDimensionsRowComponent: React.FC<TimeDimensionsRowProps> = ({
           <div className="cell-value-left-icon">
             <div style={{ width: '18px', height: '18px' }}></div>
           </div>
-          <div className="cell-value-left-section">
+          <div className="cell-value-left-section" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             {deltaPercent !== null && Math.abs(deltaPercent) > 0.001 && (
               <div className="cell-delta-badge" style={{ color: deltaColor }}>
                 {deltaPercent > 0 ? '+' : ''} {deltaPercent.toFixed(2)}%
@@ -287,7 +289,7 @@ const TimeDimensionsRowComponent: React.FC<TimeDimensionsRowProps> = ({
           <div className="cell-value-left-icon">
             <div style={{ width: '18px', height: '18px' }}></div>
           </div>
-          <div className="cell-value-left-section">
+          <div className="cell-value-left-section" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             {deltaPercent !== null && Math.abs(deltaPercent) > 0.001 && (
               <div className="cell-delta-badge" style={{ color: deltaColor }}>
                 {deltaPercent > 0 ? '+' : ''} {deltaPercent.toFixed(2)}%
@@ -449,24 +451,39 @@ const TimeDimensionsRowComponent: React.FC<TimeDimensionsRowProps> = ({
           return (
             <td
               key={cellKey}
-              style={{ minWidth: `${columnWidth}px`, width: `${columnWidth}px` }}
+              style={{ minWidth: `${columnWidth}px`, width: `${columnWidth}px`, position: 'relative' }}
               ref={(el) => {
                 if (el && cellRefs) {
                   cellRefs.current.set(cellKey, el);
                 }
               }}
               className={cellClassName}
+              tabIndex={isEditable ? 0 : -1}
+              onMouseEnter={() => {
+                if (isEditable) {
+                  setHoveredMeasureId(measure.id);
+                }
+              }}
+              onMouseLeave={() => {
+                setHoveredMeasureId(null);
+              }}
+              onFocus={() => {
+                if (isEditable) {
+                  setFocusedCellKey(cellKey);
+                }
+                if (onCellFocus && isEditable) {
+                  onCellFocus({ rowId: row.id, measureId: measure.id });
+                }
+              }}
+              onBlur={() => {
+                setFocusedCellKey(null);
+              }}
               onDoubleClick={(e) => {
                 // Double-click anywhere on the cell to enter edit mode
                 if (isEditable && !editingCell) {
                   e.preventDefault();
                   e.stopPropagation();
                   handleCellEnterKey(measure.id);
-                }
-              }}
-              onFocus={() => {
-                if (onCellFocus && isEditable) {
-                  onCellFocus({ rowId: row.id, measureId: measure.id });
                 }
               }}
               onKeyDown={(e) => {
@@ -478,6 +495,7 @@ const TimeDimensionsRowComponent: React.FC<TimeDimensionsRowProps> = ({
               }}
             >
               {renderCellValue(measure.id)}
+              {/* {renderPencilIcon(measure.id, isEditable)} */}
             </td>
           );
         })}
