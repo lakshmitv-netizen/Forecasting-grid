@@ -453,27 +453,39 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     setGridData(calculatedData);
   }, [data, calculateMeasureValues]);
 
-  // Expand all rows by default
+  // Expand only Sales Agreement Quantity by default, keep Chassis Components closed
   useEffect(() => {
-    const allRowIds = new Set<string>();
-    const collectRowIds = (rows: GridRowType[]) => {
-      for (const row of rows) {
-        if (row.children && row.children.length > 0) {
-          allRowIds.add(row.id);
-          collectRowIds(row.children);
-        }
-      }
-    };
+    const expandedRowIds = new Set<string>();
     
-    // Collect from all measures
-    for (const measure of gridData) {
-      if (measure.children && measure.children.length > 0) {
-        allRowIds.add(measure.id);
-        collectRowIds(measure.children);
+    // Find Sales Agreement Quantity measure
+    const salesAgreementQtyMeasure = gridData.find(measure => measure.id === 'measure-sa-qty');
+    
+    if (salesAgreementQtyMeasure && salesAgreementQtyMeasure.children) {
+      // Expand the measure itself
+      expandedRowIds.add(salesAgreementQtyMeasure.id);
+      
+      // Expand the account (MagnaDrive - Michigan Plant)
+      const account = salesAgreementQtyMeasure.children.find(row => row.type === 'account');
+      if (account && account.children) {
+        expandedRowIds.add(account.id);
+        
+        // Expand only Transmission Assembly, keep Chassis Components closed
+        for (const category of account.children) {
+          if (category.name === 'Transmission Assembly') {
+            expandedRowIds.add(category.id);
+            // Also expand Transmission Assembly's children (products)
+            if (category.children) {
+              for (const product of category.children) {
+                expandedRowIds.add(product.id);
+              }
+            }
+          }
+          // Chassis Components is not added, so it stays closed
+        }
       }
     }
     
-    setExpandedRows(allRowIds);
+    setExpandedRows(expandedRowIds);
   }, [gridData]);
 
   const toggleExpand = (id: string) => {

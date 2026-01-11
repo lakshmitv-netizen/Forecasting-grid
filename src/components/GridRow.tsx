@@ -1144,7 +1144,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 <div style={{ width: '18px', height: '18px' }}></div>
               )}
             </div>
-            <div className="cell-value-left-section" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <div className="cell-value-left-section">
               {deltaPercent !== null && Math.abs(deltaPercent) > 0.001 && (
                 <div className="cell-delta-badge" style={{ color: deltaColor }}>
                   {deltaPercent > 0 ? '+' : ''} {deltaPercent.toFixed(2)}%
@@ -1281,7 +1281,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 <div style={{ width: '18px', height: '18px' }}></div>
               )}
             </div>
-            <div className="cell-value-left-section" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <div className="cell-value-left-section">
               {deltaPercent !== null && Math.abs(deltaPercent) > 0.001 && (
                 <div className="cell-delta-badge" style={{ color: deltaColor }}>
                   {deltaPercent > 0 ? '+' : ''} {deltaPercent.toFixed(2)}%
