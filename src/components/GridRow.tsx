@@ -1661,7 +1661,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               }}
               onDoubleClick={(e) => {
                 // Enter edit mode on double-click
-                if (isEditable && !editingCell && onCellChange) {
+                if (isEditable && !editingCell) {
                   e.stopPropagation();
                   handleCellValueClick(key, e);
                 }

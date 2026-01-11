@@ -1903,8 +1903,8 @@ const ForecastingGrid: React.FC = () => {
   const [showAllPeriods, setShowAllPeriods] = useState<boolean>(true);
   const [startPeriod, setStartPeriod] = useState<string>('');
   const [endPeriod, setEndPeriod] = useState<string>('');
-  const [impactedMeasuresCount, setImpactedMeasuresCount] = useState<number>(0);
-  const [showOnlyImpactedKPI, setShowOnlyImpactedKPI] = useState<boolean>(false);
+  const [_impactedMeasuresCount, setImpactedMeasuresCount] = useState<number>(0);
+  const [_showOnlyImpactedKPI, setShowOnlyImpactedKPI] = useState<boolean>(false);
   const toggleShowOnlyImpactedKPIHandlerRef = useRef<((checked: boolean) => void) | null>(null);
   
   // Default column width based on layout - 50% of slider range
