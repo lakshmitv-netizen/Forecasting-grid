@@ -408,7 +408,8 @@
 }
 
 .grid-header th {
-  padding: 5px 7px; /* Reduced by 25% from 7px 9px */
+  /* Responsive padding: min 5px 7px (for short screens), max ~9px 12px (for tall screens) */
+  padding: clamp(5px, calc(5px + 4px * (100vh - 600px) / 600px), 9px) clamp(7px, calc(7px + 5px * (100vh - 600px) / 600px), 12px);
   text-align: left;
   font-family: var(--font-family-base) !important;
   font-weight: 700 !important;
@@ -573,14 +574,16 @@
 }
 
 .grid-cell {
-  padding: 5px 7px; /* Reduced by 25% from 7px 9px */
+  /* Responsive padding: min 5px 7px (for short screens), max ~9px 12px (for tall screens) */
+  padding: clamp(5px, calc(5px + 4px * (100vh - 600px) / 600px), 9px) clamp(7px, calc(7px + 5px * (100vh - 600px) / 600px), 12px);
   border-right: 1px solid #A0A0A0 !important;
   border-top: 1px solid #A0A0A0 !important;
   border-bottom: 1px solid #A0A0A0 !important;
   border-width: 1px 1px 1px 0 !important;
   vertical-align: middle;
   background-color: inherit !important;
-  min-height: 18px; /* Reduced by 25% from 24px */
+  /* Responsive min-height: min 18px (for short screens), max 32px (for tall screens) */
+  min-height: clamp(18px, calc(18px + 14px * (100vh - 600px) / 600px), 32px);
 }
 
 .grid-cell:first-child {
@@ -615,6 +618,14 @@
 /* Measure rows - keep their original background color */
 .grid-row.measure-row .grid-cell:first-child {
   background-color: #F3F3F3 !important;
+}
+
+/* Measure row cells - increase minimum height */
+.grid-row.measure-row .grid-cell {
+  /* Responsive min-height: min 28px (for short screens), max 42px (for tall screens) - noticeably taller than regular cells */
+  min-height: clamp(28px, calc(28px + 14px * (100vh - 600px) / 600px), 42px) !important;
+  padding-top: clamp(8px, calc(8px + 4px * (100vh - 600px) / 600px), 12px) !important;
+  padding-bottom: clamp(8px, calc(8px + 4px * (100vh - 600px) / 600px), 12px) !important;
 }
 
 .grid-row.measure-row:hover .grid-cell:first-child {
@@ -790,7 +801,8 @@
   align-items: center;
   justify-content: center;
   width: 100%;
-  min-height: 18px;
+  /* Responsive min-height: min 18px (for short screens), max 32px (for tall screens) */
+  min-height: clamp(18px, calc(18px + 14px * (100vh - 600px) / 600px), 32px);
 }
 
 .cell-value-readonly {
@@ -837,7 +849,8 @@
   position: relative;
   /* Don't use display: flex on td - keep it as table-cell */
   vertical-align: middle;
-  height: 18px; /* Reduced by 25% from 24px */
+  /* Responsive height: min 18px (for short screens), max 32px (for tall screens) */
+  height: clamp(18px, calc(18px + 14px * (100vh - 600px) / 600px), 32px);
 }
 
 .cell-value-wrapper-edited-container {
@@ -846,7 +859,8 @@
   justify-content: center;
   width: 100%;
   height: 100%;
-  min-height: 18px; /* Reduced by 25% from 24px */
+  /* Responsive min-height: min 18px (for short screens), max 32px (for tall screens) */
+  min-height: clamp(18px, calc(18px + 14px * (100vh - 600px) / 600px), 32px);
   padding: 0;
   gap: 0;
   position: absolute;
@@ -877,7 +891,8 @@
   justify-content: center;
   width: 100%;
   height: 100%;
-  min-height: 18px; /* Reduced by 25% from 42px */
+  /* Responsive min-height: min 18px (for short screens), max 32px (for tall screens) */
+  min-height: clamp(18px, calc(18px + 14px * (100vh - 600px) / 600px), 32px);
   padding: 0;
   gap: 0;
   position: absolute;
@@ -935,7 +950,8 @@
   justify-content: center;
   gap: 0px; /* No gap - margin will handle spacing */
   width: 100%;
-  height: 18px; /* Reduced by 25% from 42px */
+  /* Responsive height: min 18px (for short screens), max 32px (for tall screens) */
+  height: clamp(18px, calc(18px + 14px * (100vh - 600px) / 600px), 32px);
   padding: 0 22px; /* No vertical padding, right: 22px */
   padding-left: 30px; /* Icon is 20px wide at left:8px, so ends at 28px. Add 2px gap = 30px */
   position: relative;
@@ -999,7 +1015,8 @@
   width: 100%;
   gap: 0;
   height: 100%;
-  min-height: 18px; /* Reduced by 25% from 42px */
+  /* Responsive min-height: min 18px (for short screens), max 32px (for tall screens) */
+  min-height: clamp(18px, calc(18px + 14px * (100vh - 600px) / 600px), 32px);
   padding: 0;
   position: absolute;
   top: 0;

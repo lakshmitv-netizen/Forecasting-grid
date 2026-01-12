@@ -894,6 +894,8 @@
   border: 1px solid #5c5c5c;
   border-radius: 8px;
   font-family: var(--font-family-base);
+  min-height: 35px; /* Reduced by 50% from ~70px (3 rows) */
+  max-height: 150px; /* Maximum height before scrolling */
   font-size: 13px;
   font-weight: 400;
   line-height: 18px;
@@ -903,6 +905,37 @@
   outline: none;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
   box-sizing: border-box;
+  overflow-y: auto; /* Show scrollbar only when content exceeds max-height */
+  overflow-x: hidden; /* Hide horizontal scrollbar */
+  /* Hide scrollbar by default, show only when scrolling is needed */
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.cell-details-history-note-textarea:hover {
+  scrollbar-color: #c9c9c9 transparent;
+}
+
+.cell-details-history-note-textarea:focus {
+  scrollbar-color: #c9c9c9 transparent;
+}
+
+.cell-details-history-note-textarea::-webkit-scrollbar {
+  width: 8px;
+}
+
+.cell-details-history-note-textarea::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cell-details-history-note-textarea::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 4px;
+}
+
+.cell-details-history-note-textarea:hover::-webkit-scrollbar-thumb,
+.cell-details-history-note-textarea:focus::-webkit-scrollbar-thumb {
+  background-color: #c9c9c9;
 }
 
 .cell-details-history-note-textarea::placeholder {
