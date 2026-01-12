@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Forecasting Grid - Original Card Sort Grouping (6 Categories)</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #f5f5f5;
+      color: #1a1a1a;
+      line-height: 1.6;
+      padding: 40px 20px;
+    }
+    
+    .container {
+      max-width: 1600px;
+      margin: 0 auto;
+    }
+    
+    .header {
+      text-align: center;
+      margin-bottom: 48px;
+      padding-bottom: 24px;
+      border-bottom: 3px solid #0176d3;
+    }
+    
+    .header h1 {
+      font-size: 36px;
+      font-weight: 700;
+      color: #0176d3;
+      margin-bottom: 12px;
+    }
+    
+    .header p {
+      font-size: 18px;
+      color: #666;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    
+    .personas {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 24px;
+      font-size: 14px;
+    }
+    
+    .persona-tag {
+      background: #e6f2ff;
+      color: #0176d3;
+      padding: 6px 12px;
+      border-radius: 16px;
+      font-weight: 500;
+    }
+    
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+      gap: 24px;
+      margin-bottom: 48px;
+    }
+    
+    .category-card {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    
+    .category-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    }
+    
+    .category-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 2px solid #e5e5e5;
+    }
+    
+    .category-number {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 18px;
+      color: white;
+      flex-shrink: 0;
+    }
+    
+    .category-title {
+      flex: 1;
+    }
+    
+    .category-title h2 {
+      font-size: 22px;
+      font-weight: 700;
+      color: #1a1a1a;
+      margin-bottom: 4px;
+    }
+    
+    .category-subtitle {
+      font-size: 14px;
+      color: #666;
+      font-style: italic;
+    }
+    
+    .category-intent {
+      background: #f8f9fa;
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      font-size: 14px;
+      color: #444;
+      border-left: 4px solid #0176d3;
+    }
+    
+    .category-intent strong {
+      color: #0176d3;
+      font-weight: 600;
+    }
+    
+    .capabilities-list {
+      list-style: none;
+    }
+    
+    .capability-item {
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      background: #f8f9fa;
+      border-radius: 6px;
+      font-size: 14px;
+      color: #333;
+      border-left: 3px solid transparent;
+      transition: all 0.2s;
+    }
+    
+    .capability-item:hover {
+      background: #e9ecef;
+      border-left-color: #0176d3;
+      padding-left: 16px;
+    }
+    
+    .capability-item::before {
+      content: "✓";
+      color: #0176d3;
+      font-weight: 700;
+      margin-right: 8px;
+    }
+    
+    .persona-relevance {
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid #e5e5e5;
+    }
+    
+    .persona-relevance-title {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #666;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+    
+    .persona-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    
+    .persona-tag-small {
+      background: #fff3cd;
+      color: #856404;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    
+    /* Color coding for categories */
+    .category-1 .category-number { background: #0176d3; }
+    .category-1 .category-intent { border-left-color: #0176d3; }
+    
+    .category-2 .category-number { background: #2e7d32; }
+    .category-2 .category-intent { border-left-color: #2e7d32; }
+    .category-2 .capability-item::before { color: #2e7d32; }
+    
+    .category-3 .category-number { background: #ff6b35; }
+    .category-3 .category-intent { border-left-color: #ff6b35; }
+    .category-3 .capability-item::before { color: #ff6b35; }
+    
+    .category-4 .category-number { background: #6c5ce7; }
+    .category-4 .category-intent { border-left-color: #6c5ce7; }
+    .category-4 .capability-item::before { color: #6c5ce7; }
+    
+    .category-5 .category-number { background: #d63031; }
+    .category-5 .category-intent { border-left-color: #d63031; }
+    .category-5 .capability-item::before { color: #d63031; }
+    
+    .category-6 .category-number { background: #00b894; }
+    .category-6 .category-intent { border-left-color: #00b894; }
+    .category-6 .capability-item::before { color: #00b894; }
+    
+    .summary-section {
+      background: white;
+      border-radius: 12px;
+      padding: 32px;
+      margin-top: 48px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .summary-section h2 {
+      font-size: 24px;
+      font-weight: 700;
+      color: #0176d3;
+      margin-bottom: 20px;
+    }
+    
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 16px;
+    }
+    
+    .summary-item {
+      padding: 16px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      border-left: 4px solid #0176d3;
+    }
+    
+    .summary-item-number {
+      font-size: 24px;
+      font-weight: 700;
+      color: #0176d3;
+      margin-bottom: 4px;
+    }
+    
+    .summary-item-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #1a1a1a;
+      margin-bottom: 4px;
+    }
+    
+    .summary-item-desc {
+      font-size: 13px;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Forecasting Grid - Original Card Sort Grouping</h1>
+      <p>Consolidated feature grouping that serves multiple personas and balances mental model with frequency of use and groups by task context</p>
+      <div class="personas">
+        <span class="persona-tag">Key Account Managers</span>
+        <span class="persona-tag">Financial Planners</span>
+        <span class="persona-tag">Operations Managers</span>
+        <span class="persona-tag">Sales Heads</span>
+        <span class="persona-tag">Account Directors</span>
+      </div>
+      <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e5e5;">
+        <a href="card-sort-final-grouping.html" style="color: #0176d3; text-decoration: none; font-weight: 500;">📄 View Detailed 15-Category Version</a>
+      </div>
+    </div>
+
+    <div class="grid">
+      <!-- Category 1: Workspace Configuration & Setup -->
+      <div class="category-card category-1">
+        <div class="category-header">
+          <div class="category-number">1</div>
+          <div class="category-title">
+            <h2>Workspace Configuration & Setup</h2>
+            <div class="category-subtitle">Structure & Organization</div>
+          </div>
+        </div>
+        <div class="category-intent">
+          <strong>Core Intent:</strong> Configure the workspace structure and data organization
+        </div>
+        <ul class="capabilities-list">
+          <li class="capability-item">Select view layout</li>
+          <li class="capability-item">Configure table hierarchies</li>
+          <li class="capability-item">Configure time granularity</li>
+          <li class="capability-item">Configure time range</li>
+          <li class="capability-item">Configure KPI subgroups</li>
+          <li class="capability-item">Table layout settings</li>
+          <li class="capability-item">Hierarchy controls</li>
+          <li class="capability-item">Configure/edit original data plan</li>
+          <li class="capability-item">Change list view</li>
+          <li class="capability-item">Save table settings</li>
+        </ul>
+        <div class="persona-relevance">
+          <div class="persona-relevance-title">Relevant For:</div>
+          <div class="persona-tags">
+            <span class="persona-tag-small">Financial Planners</span>
+            <span class="persona-tag-small">Operations Managers</span>
+            <span class="persona-tag-small">Sales Heads</span>
+            <span class="persona-tag-small">Account Directors</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Category 2: Data Discovery & Navigation -->
+      <div class="category-card category-2">
+        <div class="category-header">
+          <div class="category-number">2</div>
+          <div class="category-title">
+            <h2>Data Discovery & Navigation</h2>
+            <div class="category-subtitle">Finding & Filtering</div>
+          </div>
+        </div>
+        <div class="category-intent">
+          <strong>Core Intent:</strong> Find, filter, and navigate data efficiently
+        </div>
+        <ul class="capabilities-list">
+          <li class="capability-item">Global search</li>
+          <li class="capability-item">Global filter</li>
+          <li class="capability-item">Global sort</li>
+          <li class="capability-item">Column-level filter</li>
+          <li class="capability-item">Column-level sort</li>
+          <li class="capability-item">Column sort ordering</li>
+          <li class="capability-item">Save filter settings</li>
+          <li class="capability-item">Save sort settings</li>
+        </ul>
+        <div class="persona-relevance">
+          <div class="persona-relevance-title">Relevant For:</div>
+          <div class="persona-tags">
+            <span class="persona-tag-small">Key Account Managers</span>
+            <span class="persona-tag-small">Sales Heads</span>
+            <span class="persona-tag-small">Operations Managers</span>
+            <span class="persona-tag-small">Financial Planners</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Category 3: Data Editing & Updates -->
+      <div class="category-card category-3">
+        <div class="category-header">
+          <div class="category-number">3</div>
+          <div class="category-title">
+            <h2>Data Editing & Updates</h2>
+            <div class="category-subtitle">Modifying Values</div>
+          </div>
+        </div>
+        <div class="category-intent">
+          <strong>Core Intent:</strong> Modify forecast values efficiently and safely
+        </div>
+        <ul class="capabilities-list">
+          <li class="capability-item">Cell editing</li>
+          <li class="capability-item">Mass update</li>
+          <li class="capability-item">Copy/Paste</li>
+          <li class="capability-item">Lock/Unlock cells</li>
+          <li class="capability-item">Apply changes to values, formulas, trends, formatting rules, notes</li>
+          <li class="capability-item">Adjustment notes</li>
+        </ul>
+        <div class="persona-relevance">
+          <div class="persona-relevance-title">Relevant For:</div>
+          <div class="persona-tags">
+            <span class="persona-tag-small">Key Account Managers</span>
+            <span class="persona-tag-small">Financial Planners</span>
+            <span class="persona-tag-small">Operations Managers</span>
+            <span class="persona-tag-small">Sales Heads</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Category 4: Insights & Context -->
+      <div class="category-card category-4">
+        <div class="category-header">
+          <div class="category-number">4</div>
+          <div class="category-title">
+            <h2>Insights & Context</h2>
+            <div class="category-subtitle">Understanding Data</div>
+          </div>
+        </div>
+        <div class="category-intent">
+          <strong>Core Intent:</strong> Understand data meaning, changes, and impacts
+        </div>
+        <ul class="capabilities-list">
+          <li class="capability-item">Cell information</li>
+          <li class="capability-item">Edit history</li>
+          <li class="capability-item">Impact assessment</li>
+          <li class="capability-item">Explainability sources</li>
+          <li class="capability-item">Visual charts</li>
+          <li class="capability-item">Contextual actions</li>
+        </ul>
+        <div class="persona-relevance">
+          <div class="persona-relevance-title">Relevant For:</div>
+          <div class="persona-tags">
+            <span class="persona-tag-small">Account Directors</span>
+            <span class="persona-tag-small">Financial Planners</span>
+            <span class="persona-tag-small">Key Account Managers</span>
+            <span class="persona-tag-small">Operations Managers</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Category 5: Governance & Control -->
+      <div class="category-card category-5">
+        <div class="category-header">
+          <div class="category-number">5</div>
+          <div class="category-title">
+            <h2>Governance & Control</h2>
+            <div class="category-subtitle">Compliance & Accountability</div>
+          </div>
+        </div>
+        <div class="category-intent">
+          <strong>Core Intent:</strong> Ensure data integrity, compliance, and accountability
+        </div>
+        <ul class="capabilities-list">
+          <li class="capability-item">Alerts</li>
+          <li class="capability-item">Approval workflow</li>
+          <li class="capability-item">Lock status</li>
+          <li class="capability-item">Conditional formatting settings</li>
+          <li class="capability-item">Activity feed</li>
+          <li class="capability-item">Save data persistence</li>
+        </ul>
+        <div class="persona-relevance">
+          <div class="persona-relevance-title">Relevant For:</div>
+          <div class="persona-tags">
+            <span class="persona-tag-small">Account Directors</span>
+            <span class="persona-tag-small">Financial Planners</span>
+            <span class="persona-tag-small">Operations Managers</span>
+            <span class="persona-tag-small">Sales Heads</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Category 6: Scenario Planning & Collaboration -->
+      <div class="category-card category-6">
+        <div class="category-header">
+          <div class="category-number">6</div>
+          <div class="category-title">
+            <h2>Scenario Planning & Collaboration</h2>
+            <div class="category-subtitle">Modeling & Sharing</div>
+          </div>
+        </div>
+        <div class="category-intent">
+          <strong>Core Intent:</strong> Model alternatives, compare scenarios, and collaborate
+        </div>
+        <ul class="capabilities-list">
+          <li class="capability-item">Scenario selection</li>
+          <li class="capability-item">Superposition of risks and opportunities</li>
+          <li class="capability-item">What-if analysis</li>
+          <li class="capability-item">Scenario comparison</li>
+          <li class="capability-item">Saving scenarios</li>
+          <li class="capability-item">Activity log</li>
+        </ul>
+        <div class="persona-relevance">
+          <div class="persona-relevance-title">Relevant For:</div>
+          <div class="persona-tags">
+            <span class="persona-tag-small">Financial Planners</span>
+            <span class="persona-tag-small">Account Directors</span>
+            <span class="persona-tag-small">Sales Heads</span>
+            <span class="persona-tag-small">Key Account Managers</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Summary Section -->
+    <div class="summary-section">
+      <h2>Summary: Original 6-Category Grouping</h2>
+      <div class="summary-grid">
+        <div class="summary-item">
+          <div class="summary-item-number">1</div>
+          <div class="summary-item-title">Workspace Configuration & Setup</div>
+          <div class="summary-item-desc">Structure & Organization</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-item-number">2</div>
+          <div class="summary-item-title">Data Discovery & Navigation</div>
+          <div class="summary-item-desc">Finding & Filtering</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-item-number">3</div>
+          <div class="summary-item-title">Data Editing & Updates</div>
+          <div class="summary-item-desc">Modifying Values</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-item-number">4</div>
+          <div class="summary-item-title">Insights & Context</div>
+          <div class="summary-item-desc">Understanding Data</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-item-number">5</div>
+          <div class="summary-item-title">Governance & Control</div>
+          <div class="summary-item-desc">Compliance & Accountability</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-item-number">6</div>
+          <div class="summary-item-title">Scenario Planning & Collaboration</div>
+          <div class="summary-item-desc">Modeling & Sharing</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
