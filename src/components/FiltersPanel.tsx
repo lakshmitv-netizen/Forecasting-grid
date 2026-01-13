@@ -31,37 +31,16 @@ interface FiltersPanelProps {
   onApplyFilters?: (filteredData: MeasureData[]) => void;
 }
 
-const measureSubgroupOptions = [
-  {
-    value: 'Revenue and Quantity Measures'
-  },
-  {
-    value: 'Adjustment Measures'
-  }
-];
-
-interface DimensionLevel {
-  id: string;
-  name: string;
-  hierarchy: string;
-}
-
-const dimensionLevels: DimensionLevel[] = [
-  { id: 'account', name: 'Accounts', hierarchy: 'Account Hierarchy' },
-  { id: 'category', name: 'Category', hierarchy: 'Product Hierarchy' },
-  { id: 'product', name: 'Product', hierarchy: 'Product Hierarchy' }
-];
-
 const FiltersPanel: React.FC<FiltersPanelProps> = ({ 
   isOpen, 
   onClose,
-  selectedMeasureSubgroup: propSelectedMeasureSubgroup,
-  onMeasureSubgroupChange,
+  selectedMeasureSubgroup: _propSelectedMeasureSubgroup,
+  onMeasureSubgroupChange: _onMeasureSubgroupChange,
   selectedDimensionLevels: propSelectedDimensionLevels,
-  onDimensionLevelsChange,
+  onDimensionLevelsChange: _onDimensionLevelsChange,
   data = [],
   showAllPeriods = true,
-  onShowAllPeriodsChange,
+  onShowAllPeriodsChange: _onShowAllPeriodsChange,
   startPeriod = '',
   endPeriod = '',
   onStartPeriodChange,
@@ -76,103 +55,27 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
   ]);
 
   // Local state for filter values (not applied until Apply button is clicked)
-  const [localShowAllPeriods, setLocalShowAllPeriods] = useState(showAllPeriods);
   const [localStartPeriod, setLocalStartPeriod] = useState(startPeriod);
   const [localEndPeriod, setLocalEndPeriod] = useState(endPeriod);
-
-  const [selectedMeasureSubgroup, setSelectedMeasureSubgroup] = useState(
-    propSelectedMeasureSubgroup || measureSubgroupOptions[0].value
-  );
-  const [isMeasureSubgroupDropdownOpen, setIsMeasureSubgroupDropdownOpen] = useState(false);
-  const measureSubgroupDropdownRef = useRef<HTMLDivElement>(null);
-
-  const [selectedDimensionLevels, setSelectedDimensionLevels] = useState<Set<string>>(
-    propSelectedDimensionLevels || new Set(['account', 'category', 'product'])
-  );
-  const [isDimensionDropdownOpen, setIsDimensionDropdownOpen] = useState(false);
-  const dimensionDropdownRef = useRef<HTMLDivElement>(null);
 
   // Track if filters have changed (dirty state)
   const [isDirty, setIsDirty] = useState(false);
 
   // Sync internal state with props
   useEffect(() => {
-    if (propSelectedMeasureSubgroup !== undefined) {
-      setSelectedMeasureSubgroup(propSelectedMeasureSubgroup);
-    }
-  }, [propSelectedMeasureSubgroup]);
-
-  useEffect(() => {
-    if (propSelectedDimensionLevels !== undefined) {
-      setSelectedDimensionLevels(new Set(propSelectedDimensionLevels));
-    }
-  }, [propSelectedDimensionLevels]);
-
-  useEffect(() => {
-    setLocalShowAllPeriods(showAllPeriods);
     setLocalStartPeriod(startPeriod);
     setLocalEndPeriod(endPeriod);
-  }, [showAllPeriods, startPeriod, endPeriod]);
+  }, [startPeriod, endPeriod]);
 
   // Reset dirty state when panel opens
   useEffect(() => {
     if (isOpen) {
       setIsDirty(false);
-      setLocalShowAllPeriods(showAllPeriods);
       setLocalStartPeriod(startPeriod);
       setLocalEndPeriod(endPeriod);
       setOriginalFilters([...filters]);
     }
   }, [isOpen]);
-
-
-  // Handle click outside dropdowns
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (measureSubgroupDropdownRef.current && !measureSubgroupDropdownRef.current.contains(event.target as Node)) {
-        setIsMeasureSubgroupDropdownOpen(false);
-      }
-      if (dimensionDropdownRef.current && !dimensionDropdownRef.current.contains(event.target as Node)) {
-        setIsDimensionDropdownOpen(false);
-      }
-    };
-
-    if (isMeasureSubgroupDropdownOpen || isDimensionDropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isMeasureSubgroupDropdownOpen, isDimensionDropdownOpen]);
-
-  const getSelectedDimensionCount = () => {
-    return selectedDimensionLevels.size;
-  };
-
-  const toggleDimensionLevel = (levelId: string) => {
-    const newSet = new Set(selectedDimensionLevels);
-    if (newSet.has(levelId)) {
-      newSet.delete(levelId);
-    } else {
-      newSet.add(levelId);
-    }
-    setSelectedDimensionLevels(newSet);
-    if (onDimensionLevelsChange) {
-      onDimensionLevelsChange(newSet);
-    }
-  };
-
-  const getHierarchyGroups = () => {
-    const groups: { [key: string]: DimensionLevel[] } = {};
-    dimensionLevels.forEach(level => {
-      if (!groups[level.hierarchy]) {
-        groups[level.hierarchy] = [];
-      }
-      groups[level.hierarchy].push(level);
-    });
-    return groups;
-  };
 
   const [filters, setFilters] = useState<Filter[]>([
     { id: '3', type: 'category', label: 'Filter by Category', value: 'Equals All' },
@@ -400,7 +303,7 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
 
     // Filter by dimension levels first
     filtered = filtered.map((measure: MeasureData) => {
-      const filteredChildren = filterByDimensionLevels(measure.children || [], selectedDimensionLevels);
+      const filteredChildren = filterByDimensionLevels(measure.children || [], propSelectedDimensionLevels || new Set());
       return {
         ...measure,
         children: filteredChildren
@@ -638,120 +541,8 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
 
       {/* Panel Body */}
       <div className="filters-panel-body">
-        {/* Top Section - Dropdowns */}
-        <div className="filters-top-section">
-          <div className="filters-field">
-            <label className="filters-field-label">Measure Subgroup</label>
-            <div className="filters-dropdown-wrapper" ref={measureSubgroupDropdownRef}>
-              <div 
-                className={`filters-dropdown-trigger ${isMeasureSubgroupDropdownOpen ? 'open' : ''}`}
-                onClick={() => setIsMeasureSubgroupDropdownOpen(!isMeasureSubgroupDropdownOpen)}
-              >
-                <span className={selectedMeasureSubgroup ? 'filters-dropdown-value' : 'filters-dropdown-placeholder'}>
-                  {selectedMeasureSubgroup || 'Select Measure Subgroup'}
-                </span>
-                <svg className="filters-input-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </div>
-              {isMeasureSubgroupDropdownOpen && (
-                <div className="filters-dropdown-list">
-                  {measureSubgroupOptions.map((option, index) => (
-                    <div
-                      key={index}
-                      className={`filters-dropdown-option ${selectedMeasureSubgroup === option.value ? 'selected' : ''}`}
-                      onClick={() => {
-                        setSelectedMeasureSubgroup(option.value);
-                        setIsMeasureSubgroupDropdownOpen(false);
-                        // Apply immediately for measure subgroup (existing functionality)
-                        if (onMeasureSubgroupChange) {
-                          onMeasureSubgroupChange(option.value);
-                        }
-                      }}
-                    >
-                      <div className="filters-dropdown-option-title">{option.value}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="filters-field">
-            <label className="filters-field-label">Dimension Levels</label>
-            <div className="filters-dropdown-wrapper" ref={dimensionDropdownRef}>
-              <div 
-                className={`filters-dropdown-trigger ${isDimensionDropdownOpen ? 'open' : ''}`}
-                onClick={() => setIsDimensionDropdownOpen(!isDimensionDropdownOpen)}
-              >
-                <span className={getSelectedDimensionCount() > 0 ? 'filters-dropdown-value' : 'filters-dropdown-placeholder'}>
-                  {getSelectedDimensionCount() > 0 ? `${getSelectedDimensionCount()} Level${getSelectedDimensionCount() !== 1 ? 's' : ''} Selected` : 'Select Dimension Levels'}
-                </span>
-                <svg className="filters-input-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </div>
-              {isDimensionDropdownOpen && (
-                <div className="filters-dropdown-list filters-dimension-dropdown">
-                  {Object.entries(getHierarchyGroups()).map(([hierarchy, levels]) => (
-                    <div key={hierarchy}>
-                      <div className="filters-dropdown-header">{hierarchy}</div>
-                      {levels.map((level) => {
-                        const isSelected = selectedDimensionLevels.has(level.id);
-                        return (
-                          <div
-                            key={level.id}
-                            className="filters-dropdown-checkbox-option"
-                            onClick={() => toggleDimensionLevel(level.id)}
-                          >
-                            <div className={`filters-checkbox-wrapper ${isSelected ? 'checked' : ''}`}>
-                              {isSelected ? (
-                                <svg className="filters-checkbox-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                                </svg>
-                              ) : null}
-                            </div>
-                            <span className="filters-dropdown-checkbox-label">{level.name}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Show all Periods Toggle */}
-          <div className="filters-field filters-field-show-periods">
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <label className="filters-field-label">Show all Periods</label>
-              <button
-                className={`filters-toggle ${localShowAllPeriods ? 'active' : ''}`}
-                onClick={() => {
-                  const newValue = !localShowAllPeriods;
-                  setLocalShowAllPeriods(newValue);
-                  // Apply immediately for show all periods (existing functionality)
-                  if (onShowAllPeriodsChange) {
-                    onShowAllPeriodsChange(newValue);
-                  }
-                }}
-                aria-label="Toggle show all periods"
-              >
-                <div className="filters-toggle-track">
-                  <div className="filters-toggle-thumb"></div>
-                  {showAllPeriods && (
-                    <svg className="filters-toggle-check" fill="none" stroke="white" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                    </svg>
-                  )}
-                </div>
-              </button>
-            </div>
-          </div>
-
           {/* Start and End Period Inputs */}
-          {!localShowAllPeriods && (
+          {!showAllPeriods && (
             <>
               <div className="filters-field">
                 <label className="filters-field-label">Start</label>
@@ -794,7 +585,6 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
               </div>
             </>
           )}
-        </div>
 
         {/* AND Logic Explanation */}
         <div className="filters-and-logic-info">

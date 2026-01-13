@@ -508,9 +508,7 @@
         <ul class="capabilities-list">
           <li class="capability-item"><span class="item-number">2.1</span> Configure hierarchies
             <ul class="capabilities-list" style="margin-top: 8px;">
-              <li class="capability-item sub-item"><span class="item-number">2.1.1</span> Hierarchies to be shown</li>
-              <li class="capability-item sub-item"><span class="item-number">2.1.2</span> Hierarchy order</li>
-              <li class="capability-item sub-item"><span class="item-number">2.1.3</span> Levels to display</li>
+              <li class="capability-item sub-item"><span class="item-number">2.1.1</span> Levels to display</li>
             </ul>
           </li>
           <li class="capability-item"><span class="item-number">2.2</span> Time configuration
@@ -562,7 +560,11 @@
         <ul class="capabilities-list">
           <li class="capability-item"><span class="item-number">3.1</span> Search</li>
           <li class="capability-item"><span class="item-number">3.2</span> Filter</li>
-          <li class="capability-item"><span class="item-number">3.3</span> Sort</li>
+          <li class="capability-item"><span class="item-number">3.3</span> Sort
+            <ul class="capabilities-list" style="margin-top: 8px;">
+              <li class="capability-item sub-item"><span class="item-number">3.3.1</span> Set column sort order</li>
+            </ul>
+          </li>
           <li class="capability-item"><span class="item-number">3.4</span> Chart view</li>
         </ul>
         <div class="persona-relevance">
@@ -658,17 +660,19 @@
           <strong>Core Intent:</strong> Perform actions on single or multiple cells including copy, paste, mass update, and locking
         </div>
         <ul class="capabilities-list">
-          <li class="capability-item"><span class="item-number">6.1</span> Copy</li>
-          <li class="capability-item"><span class="item-number">6.2</span> Paste</li>
-          <li class="capability-item"><span class="item-number">6.3</span> Mass Update</li>
-          <li class="capability-item"><span class="item-number">6.4</span> Lock / unlock</li>
-          <li class="capability-item"><span class="item-number">6.5</span> Apply actions 6.1 to 6.4 on
+          <li class="capability-item"><span class="item-number">6.1</span> Edit</li>
+          <li class="capability-item"><span class="item-number">6.2</span> Enter adjustment note</li>
+          <li class="capability-item"><span class="item-number">6.3</span> Copy</li>
+          <li class="capability-item"><span class="item-number">6.4</span> Paste</li>
+          <li class="capability-item"><span class="item-number">6.5</span> Mass Update</li>
+          <li class="capability-item"><span class="item-number">6.6</span> Lock / unlock</li>
+          <li class="capability-item"><span class="item-number">6.7</span> Apply actions 6.3 to 6.6 on
             <ul class="capabilities-list" style="margin-top: 8px;">
-              <li class="capability-item sub-item"><span class="item-number">6.5.1</span> Formula</li>
-              <li class="capability-item sub-item"><span class="item-number">6.5.2</span> Trend</li>
-              <li class="capability-item sub-item"><span class="item-number">6.5.3</span> Value</li>
-              <li class="capability-item sub-item"><span class="item-number">6.5.4</span> Conditional formatting rule</li>
-              <li class="capability-item sub-item"><span class="item-number">6.5.5</span> Adjustment note</li>
+              <li class="capability-item sub-item"><span class="item-number">6.7.1</span> Formula</li>
+              <li class="capability-item sub-item"><span class="item-number">6.7.2</span> Trend</li>
+              <li class="capability-item sub-item"><span class="item-number">6.7.3</span> Value</li>
+              <li class="capability-item sub-item"><span class="item-number">6.7.4</span> Conditional formatting rule</li>
+              <li class="capability-item sub-item"><span class="item-number">6.7.5</span> Adjustment note</li>
             </ul>
           </li>
         </ul>
@@ -683,70 +687,44 @@
         </div>
       </div>
 
-      <!-- Category 7: Adjustment Notes -->
-      <div class="category-card category-1">
+      <!-- Category 7: Activity & Audit -->
+      <div class="category-card category-2">
         <div class="category-header">
           <div class="category-number">7</div>
           <div class="category-title">
-            <h2>Adjustment Notes</h2>
-            <div class="category-subtitle">Documentation & History</div>
+            <h2>Activity & Audit</h2>
+            <div class="category-subtitle">Tracking, History & Notes</div>
           </div>
         </div>
         <div class="category-intent">
-          <strong>Core Intent:</strong> Add and view adjustment notes for data changes
+          <strong>Core Intent:</strong> Track and audit all data changes, activities, and adjustment notes
         </div>
         <ul class="capabilities-list">
-          <li class="capability-item"><span class="item-number">7.1</span> Add adjustment note</li>
-          <li class="capability-item"><span class="item-number">7.2</span> View adjustment note history</li>
-        </ul>
-        <div class="persona-relevance">
-          <div class="persona-relevance-title">Relevant For:</div>
-          <div class="persona-tags">
-            <span class="persona-tag-small">Key Account Managers</span>
-            <span class="persona-tag-small">Financial Planners</span>
-            <span class="persona-tag-small">Operations Managers</span>
-            <span class="persona-tag-small">Account Directors</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Category 8: Column Actions -->
-      <div class="category-card category-2">
-        <div class="category-header">
-          <div class="category-number">8</div>
-          <div class="category-title">
-            <h2>Column Actions</h2>
-            <div class="category-subtitle">Column-Level Operations</div>
-          </div>
-        </div>
-        <div class="category-intent">
-          <strong>Core Intent:</strong> Filter, sort, and organize columns
-        </div>
-        <ul class="capabilities-list">
-          <li class="capability-item"><span class="item-number">8.1</span> Column-level filter</li>
-          <li class="capability-item"><span class="item-number">8.2</span> Column-level sort
+          <li class="capability-item"><span class="item-number">7.1</span> Open all cell edits / View full activity log</li>
+          <li class="capability-item"><span class="item-number">7.2</span> Activity filtering
             <ul class="capabilities-list" style="margin-top: 8px;">
-              <li class="capability-item sub-item"><span class="item-number">8.2.1</span> Sort preserving hierarchy</li>
-              <li class="capability-item sub-item"><span class="item-number">8.2.2</span> Sort without preserving hierarchy</li>
+              <li class="capability-item sub-item"><span class="item-number">7.2.1</span> Filter edits by users</li>
+              <li class="capability-item sub-item"><span class="item-number">7.2.2</span> Filter edits by time range</li>
+              <li class="capability-item sub-item"><span class="item-number">7.2.3</span> Filter edits by selected cells</li>
             </ul>
           </li>
-          <li class="capability-item"><span class="item-number">8.3</span> Set column sort order</li>
+          <li class="capability-item"><span class="item-number">7.3</span> Add comments</li>
         </ul>
         <div class="persona-relevance">
           <div class="persona-relevance-title">Relevant For:</div>
           <div class="persona-tags">
-            <span class="persona-tag-small">Key Account Managers</span>
-            <span class="persona-tag-small">Sales Heads</span>
-            <span class="persona-tag-small">Operations Managers</span>
+            <span class="persona-tag-small">Account Directors</span>
             <span class="persona-tag-small">Financial Planners</span>
+            <span class="persona-tag-small">Operations Managers</span>
+            <span class="persona-tag-small">Sales Heads</span>
           </div>
         </div>
       </div>
 
-      <!-- Category 9: Table Basic Settings -->
+      <!-- Category 8: Table Basic Settings -->
       <div class="category-card category-3">
         <div class="category-header">
-          <div class="category-number">9</div>
+          <div class="category-number">8</div>
           <div class="category-title">
             <h2>Table Basic Settings</h2>
             <div class="category-subtitle">Layout & Display Controls</div>
@@ -756,16 +734,16 @@
           <strong>Core Intent:</strong> Control table layout, freezing, column widths, and hierarchy display
         </div>
         <ul class="capabilities-list">
-          <li class="capability-item"><span class="item-number">9.1</span> Freeze rows</li>
-          <li class="capability-item"><span class="item-number">9.2</span> Unfreeze rows</li>
-          <li class="capability-item"><span class="item-number">9.3</span> Freeze columns</li>
-          <li class="capability-item"><span class="item-number">9.4</span> Unfreeze columns</li>
-          <li class="capability-item"><span class="item-number">9.5</span> Change column width</li>
-          <li class="capability-item"><span class="item-number">9.6</span> Reset column width</li>
-          <li class="capability-item"><span class="item-number">9.7</span> Hierarchy controls
+          <li class="capability-item"><span class="item-number">8.1</span> Freeze rows</li>
+          <li class="capability-item"><span class="item-number">8.2</span> Unfreeze rows</li>
+          <li class="capability-item"><span class="item-number">8.3</span> Freeze columns</li>
+          <li class="capability-item"><span class="item-number">8.4</span> Unfreeze columns</li>
+          <li class="capability-item"><span class="item-number">8.5</span> Change column width</li>
+          <li class="capability-item"><span class="item-number">8.6</span> Reset column width</li>
+          <li class="capability-item"><span class="item-number">8.7</span> Hierarchy controls
             <ul class="capabilities-list" style="margin-top: 8px;">
-              <li class="capability-item sub-item"><span class="item-number">9.7.1</span> Expand all hierarchies</li>
-              <li class="capability-item sub-item"><span class="item-number">9.7.2</span> Collapse all hierarchies</li>
+              <li class="capability-item sub-item"><span class="item-number">8.7.1</span> Expand all hierarchies</li>
+              <li class="capability-item sub-item"><span class="item-number">8.7.2</span> Collapse all hierarchies</li>
             </ul>
           </li>
         </ul>
@@ -780,10 +758,10 @@
         </div>
       </div>
 
-      <!-- Category 10: Saving & Persistence -->
+      <!-- Category 9: Saving & Persistence -->
       <div class="category-card category-4">
         <div class="category-header">
-          <div class="category-number">10</div>
+          <div class="category-number">9</div>
           <div class="category-title">
             <h2>Saving & Persistence</h2>
             <div class="category-subtitle">Save Settings & Data</div>
@@ -793,13 +771,13 @@
           <strong>Core Intent:</strong> Save data changes and persist configuration settings
         </div>
         <ul class="capabilities-list">
-          <li class="capability-item"><span class="item-number">10.1</span> Save data</li>
-          <li class="capability-item"><span class="item-number">10.2</span> Save filter settings</li>
-          <li class="capability-item"><span class="item-number">10.3</span> Save sort settings (order)</li>
-          <li class="capability-item"><span class="item-number">10.4</span> Save table settings
+          <li class="capability-item"><span class="item-number">9.1</span> Save data</li>
+          <li class="capability-item"><span class="item-number">9.2</span> Save filter settings</li>
+          <li class="capability-item"><span class="item-number">9.3</span> Save sort settings (order)</li>
+          <li class="capability-item"><span class="item-number">9.4</span> Save table settings
             <ul class="capabilities-list" style="margin-top: 8px;">
-              <li class="capability-item sub-item"><span class="item-number">10.4.1</span> Levels</li>
-              <li class="capability-item sub-item"><span class="item-number">10.4.2</span> Hierarchy order</li>
+              <li class="capability-item sub-item"><span class="item-number">9.4.1</span> Levels</li>
+              <li class="capability-item sub-item"><span class="item-number">9.4.2</span> Hierarchy order</li>
             </ul>
           </li>
         </ul>
@@ -814,10 +792,10 @@
         </div>
       </div>
 
-      <!-- Category 11: Sharing -->
+      <!-- Category 10: Sharing -->
       <div class="category-card category-5">
         <div class="category-header">
-          <div class="category-number">11</div>
+          <div class="category-number">10</div>
           <div class="category-title">
             <h2>Sharing</h2>
             <div class="category-subtitle">Collaboration & Distribution</div>
@@ -827,8 +805,8 @@
           <strong>Core Intent:</strong> Share views and data with team members
         </div>
         <ul class="capabilities-list">
-          <li class="capability-item"><span class="item-number">11.1</span> Share view</li>
-          <li class="capability-item"><span class="item-number">11.2</span> Share data</li>
+          <li class="capability-item"><span class="item-number">10.1</span> Share view</li>
+          <li class="capability-item"><span class="item-number">10.2</span> Share data</li>
         </ul>
         <div class="persona-relevance">
           <div class="persona-relevance-title">Relevant For:</div>
@@ -841,10 +819,10 @@
         </div>
       </div>
 
-      <!-- Category 12: Contextual Actions -->
+      <!-- Category 11: Contextual Actions -->
       <div class="category-card category-6">
         <div class="category-header">
-          <div class="category-number">12</div>
+          <div class="category-number">11</div>
           <div class="category-title">
             <h2>Contextual Actions</h2>
             <div class="category-subtitle">Context-Aware Information Display</div>
@@ -854,10 +832,10 @@
           <strong>Core Intent:</strong> Show contextual information based on cell or data state
         </div>
         <ul class="capabilities-list">
-          <li class="capability-item"><span class="item-number">12.1</span> Show affected KPIs</li>
-          <li class="capability-item"><span class="item-number">12.2</span> Show out-of-range cells</li>
-          <li class="capability-item"><span class="item-number">12.3</span> Show approval status</li>
-          <li class="capability-item"><span class="item-number">12.4</span> Show lock status</li>
+          <li class="capability-item"><span class="item-number">11.1</span> Show affected KPIs</li>
+          <li class="capability-item"><span class="item-number">11.2</span> Show out-of-range cells</li>
+          <li class="capability-item"><span class="item-number">11.3</span> Show approval status</li>
+          <li class="capability-item"><span class="item-number">11.4</span> Show lock status</li>
         </ul>
         <div class="persona-relevance">
           <div class="persona-relevance-title">Relevant For:</div>
@@ -870,10 +848,10 @@
         </div>
       </div>
 
-      <!-- Category 13: Conditional Formatting -->
+      <!-- Category 12: Conditional Formatting -->
       <div class="category-card category-1">
         <div class="category-header">
-          <div class="category-number">13</div>
+          <div class="category-number">12</div>
           <div class="category-title">
             <h2>Conditional Formatting</h2>
             <div class="category-subtitle">Visual Data Indicators</div>
@@ -883,8 +861,8 @@
           <strong>Core Intent:</strong> Define visual formatting rules and indicators for data display
         </div>
         <ul class="capabilities-list">
-          <li class="capability-item"><span class="item-number">13.1</span> Define ranges</li>
-          <li class="capability-item"><span class="item-number">13.2</span> Define indicators</li>
+          <li class="capability-item"><span class="item-number">12.1</span> Define ranges</li>
+          <li class="capability-item"><span class="item-number">12.2</span> Define indicators</li>
         </ul>
         <div class="persona-relevance">
           <div class="persona-relevance-title">Relevant For:</div>
@@ -897,37 +875,42 @@
         </div>
       </div>
 
-      <!-- Category 14: Activity & Audit -->
+      <!-- Category 13: Column Actions -->
       <div class="category-card category-2">
         <div class="category-header">
-          <div class="category-number">14</div>
+          <div class="category-number">13</div>
           <div class="category-title">
-            <h2>Activity & Audit</h2>
-            <div class="category-subtitle">Tracking & History</div>
+            <h2>Column Actions</h2>
+            <div class="category-subtitle">Column-Level Operations</div>
           </div>
         </div>
         <div class="category-intent">
-          <strong>Core Intent:</strong> Track and audit all data changes and activities
+          <strong>Core Intent:</strong> Filter, sort, and organize columns
         </div>
         <ul class="capabilities-list">
-          <li class="capability-item"><span class="item-number">14.1</span> Open all cell edits</li>
-          <li class="capability-item"><span class="item-number">14.2</span> View full activity log</li>
+          <li class="capability-item"><span class="item-number">13.1</span> Column-level filter</li>
+          <li class="capability-item"><span class="item-number">13.2</span> Column-level sort
+            <ul class="capabilities-list" style="margin-top: 8px;">
+              <li class="capability-item sub-item"><span class="item-number">13.2.1</span> Sort preserving hierarchy</li>
+              <li class="capability-item sub-item"><span class="item-number">13.2.2</span> Sort without preserving hierarchy</li>
+            </ul>
+          </li>
         </ul>
         <div class="persona-relevance">
           <div class="persona-relevance-title">Relevant For:</div>
           <div class="persona-tags">
-            <span class="persona-tag-small">Account Directors</span>
-            <span class="persona-tag-small">Financial Planners</span>
-            <span class="persona-tag-small">Operations Managers</span>
+            <span class="persona-tag-small">Key Account Managers</span>
             <span class="persona-tag-small">Sales Heads</span>
+            <span class="persona-tag-small">Operations Managers</span>
+            <span class="persona-tag-small">Financial Planners</span>
           </div>
         </div>
       </div>
 
-      <!-- Category 15: Scenario Planning & Analysis -->
+      <!-- Category 14: Scenario Planning & Analysis -->
       <div class="category-card category-3">
         <div class="category-header">
-          <div class="category-number">15</div>
+          <div class="category-number">14</div>
           <div class="category-title">
             <h2>Scenario Planning & Analysis</h2>
             <div class="category-subtitle">Modeling & Comparison</div>
@@ -937,11 +920,11 @@
           <strong>Core Intent:</strong> Model alternatives, compare scenarios, and perform what-if analysis
         </div>
         <ul class="capabilities-list">
-          <li class="capability-item"><span class="item-number">15.1</span> Select scenario</li>
-          <li class="capability-item"><span class="item-number">15.2</span> Superposition of risks and opportunities</li>
-          <li class="capability-item"><span class="item-number">15.3</span> What-if analysis</li>
-          <li class="capability-item"><span class="item-number">15.4</span> Scenario comparison</li>
-          <li class="capability-item"><span class="item-number">15.5</span> Save scenario</li>
+          <li class="capability-item"><span class="item-number">14.1</span> Select scenario</li>
+          <li class="capability-item"><span class="item-number">14.2</span> Superposition of risks and opportunities</li>
+          <li class="capability-item"><span class="item-number">14.3</span> What-if analysis</li>
+          <li class="capability-item"><span class="item-number">14.4</span> Scenario comparison</li>
+          <li class="capability-item"><span class="item-number">14.5</span> Save scenario</li>
         </ul>
         <div class="persona-relevance">
           <div class="persona-relevance-title">Relevant For:</div>
@@ -955,92 +938,9 @@
       </div>
     </div>
 
-    <!-- Screenshot Annotation Section -->
-    <div class="screenshot-section">
-      <h2>Feature Mapping: Cards 1, 2 & 9 in Action</h2>
-      <p>Annotated screenshot showing where features from Card 1 (List View & Data Configuration), Card 2 (Table Configuration), and Card 9 (Table Basic Settings) appear in the interface</p>
-      
-      <div class="screenshot-container">
-        <img src="screenshots/03-settings-panel.png" alt="Table Settings Panel with Annotations">
-        
-        <!-- Card 1 Annotations -->
-        <div class="annotation-badge card-1" style="top: 9%; right: 20%;">
-          <span>1.1</span>
-        </div>
-        <div class="annotation-label card-1" style="top: 12%; right: 14%;">
-          Change list view
-        </div>
-        
-        <!-- Card 2 Annotations -->
-        <div class="annotation-badge card-2" style="top: 20%; right: 20%;">
-          <span>2.3.1</span>
-        </div>
-        <div class="annotation-label card-2" style="top: 23%; right: 11%;">
-          KPI subgroup selection
-        </div>
-        
-        <div class="annotation-badge card-2" style="top: 28%; right: 20%;">
-          <span>2.1.3</span>
-        </div>
-        <div class="annotation-label card-2" style="top: 31%; right: 11%;">
-          Levels to display
-        </div>
-        
-        <div class="annotation-badge card-2" style="top: 36%; right: 20%;">
-          <span>2.2.1</span>
-        </div>
-        <div class="annotation-label card-2" style="top: 39%; right: 11%;">
-          Time granularity
-        </div>
-        
-        <div class="annotation-badge card-2" style="top: 43%; right: 20%;">
-          <span>2.2.4</span>
-        </div>
-        <div class="annotation-label card-2" style="top: 46%; right: 11%;">
-          Show all periods
-        </div>
-        
-        <!-- Card 9 Annotations -->
-        <div class="annotation-badge card-9" style="top: 56%; right: 20%;">
-          <span>9.7.1</span>
-        </div>
-        <div class="annotation-label card-9" style="top: 59%; right: 11%;">
-          Expand all hierarchies
-        </div>
-        
-        <div class="annotation-badge card-9" style="top: 63%; right: 20%;">
-          <span>9.7.2</span>
-        </div>
-        <div class="annotation-label card-9" style="top: 66%; right: 11%;">
-          Collapse all hierarchies
-        </div>
-        
-        <div class="annotation-badge card-9" style="top: 71%; right: 20%;">
-          <span>9.6</span>
-        </div>
-        <div class="annotation-label card-9" style="top: 74%; right: 11%;">
-          Reset column width
-        </div>
-        
-        <div class="annotation-badge card-9" style="top: 79%; right: 20%;">
-          <span>9.4</span>
-        </div>
-        <div class="annotation-label card-9" style="top: 82%; right: 11%;">
-          Freeze columns
-        </div>
-        
-        <div class="annotation-badge card-9" style="top: 87%; right: 20%;">
-          <span>9.5</span>
-        </div>
-        <div class="annotation-label card-9" style="top: 90%; right: 11%;">
-          Change column width
-        </div>
-      </div>
-    </div>
-
     <!-- Summary Section -->
     <div class="summary-section">
-      <h2>Summary: Detailed 15-Category Grouping</h2>
+      <h2>Summary: Detailed 14-Category Grouping</h2>
       <div class="summary-grid">
         <div class="summary-item">
           <div class="summary-item-number">1</div>
@@ -1074,46 +974,41 @@
         </div>
         <div class="summary-item">
           <div class="summary-item-number">7</div>
-          <div class="summary-item-title">Adjustment Notes</div>
-          <div class="summary-item-desc">Documentation & History</div>
+          <div class="summary-item-title">Activity & Audit</div>
+          <div class="summary-item-desc">Tracking, History & Notes</div>
         </div>
         <div class="summary-item">
           <div class="summary-item-number">8</div>
-          <div class="summary-item-title">Column Actions</div>
-          <div class="summary-item-desc">Column-Level Operations</div>
-        </div>
-        <div class="summary-item">
-          <div class="summary-item-number">9</div>
           <div class="summary-item-title">Table Basic Settings</div>
           <div class="summary-item-desc">Layout & Display Controls</div>
         </div>
         <div class="summary-item">
-          <div class="summary-item-number">10</div>
+          <div class="summary-item-number">9</div>
           <div class="summary-item-title">Saving & Persistence</div>
           <div class="summary-item-desc">Save Settings & Data</div>
         </div>
         <div class="summary-item">
-          <div class="summary-item-number">11</div>
+          <div class="summary-item-number">10</div>
           <div class="summary-item-title">Sharing</div>
           <div class="summary-item-desc">Collaboration & Distribution</div>
         </div>
         <div class="summary-item">
-          <div class="summary-item-number">12</div>
+          <div class="summary-item-number">11</div>
           <div class="summary-item-title">Contextual Actions</div>
           <div class="summary-item-desc">Context-Aware Information Display</div>
         </div>
         <div class="summary-item">
-          <div class="summary-item-number">13</div>
+          <div class="summary-item-number">12</div>
           <div class="summary-item-title">Conditional Formatting</div>
           <div class="summary-item-desc">Visual Data Indicators</div>
         </div>
         <div class="summary-item">
-          <div class="summary-item-number">14</div>
-          <div class="summary-item-title">Activity & Audit</div>
-          <div class="summary-item-desc">Tracking & History</div>
+          <div class="summary-item-number">13</div>
+          <div class="summary-item-title">Column Actions</div>
+          <div class="summary-item-desc">Column-Level Operations</div>
         </div>
         <div class="summary-item">
-          <div class="summary-item-number">15</div>
+          <div class="summary-item-number">14</div>
           <div class="summary-item-title">Scenario Planning & Analysis</div>
           <div class="summary-item-desc">Modeling & Comparison</div>
         </div>

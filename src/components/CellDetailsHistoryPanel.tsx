@@ -102,7 +102,7 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
   
   // Multi-cell form state
   const [selectCells, setSelectCells] = useState<string>('Manually');
-  const [selectAction, setSelectAction] = useState<string>('Mass Update');
+  const [selectAction, setSelectAction] = useState<string>('Bulk Edit');
   const [rule, setRule] = useState<string>('Increase');
   const [value, setValue] = useState<string>('20%');
   const [bulkNote, setBulkNote] = useState<string>('');
@@ -418,7 +418,7 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
     'Cell Value': ['Equal to', 'Not equal to', 'Greater than', 'Less than', 'Between']
   };
   const selectActionOptions = [
-    'Mass Update',
+    'Bulk Edit',
     'Copy',
     'Copy Formula',
     'Copy Trend',
@@ -461,13 +461,13 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
           className={`cell-details-history-tab ${activeTab === 'single' ? 'active' : ''}`}
           onClick={() => setActiveTab('single')}
         >
-          History
+          {selectedCells.size === 1 ? 'Cell History' : 'History'}
         </button>
         <button
           className={`cell-details-history-tab ${activeTab === 'multi' ? 'active' : ''}`}
           onClick={() => setActiveTab('multi')}
         >
-          Update
+          {selectedCells.size === 1 ? 'Edit Cell' : 'Bulk Edit'}
         </button>
       </div>
 
@@ -475,7 +475,7 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
       <div className="cell-details-history-panel-body">
         {/* UPDATE TAB */}
         {activeTab === 'multi' && selectedCells.size !== 1 ? (
-          /* Update > Mass Update UI (No selection or multiple cells) */
+          /* Update > Bulk Edit UI (No selection or multiple cells) */
           <div className="cell-details-history-content">
             <div className="cell-details-history-tab-content">
               <div className="cell-details-history-multi-cell-form">
@@ -669,8 +669,8 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                   </div>
                 </div>
 
-                {/* Rule - only show for Mass Update */}
-                {selectAction === 'Mass Update' && (
+                {/* Rule - only show for Bulk Edit */}
+                {selectAction === 'Bulk Edit' && (
                   <div className="cell-details-history-multi-field">
                     <label className="cell-details-history-multi-label">Rule</label>
                     <div className="cell-details-history-dropdown-wrapper" ref={ruleDropdownRef}>
@@ -705,8 +705,8 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                   </div>
                 )}
 
-                {/* Value - only show for Mass Update */}
-                {selectAction === 'Mass Update' && (
+                {/* Value - only show for Bulk Edit */}
+                {selectAction === 'Bulk Edit' && (
                   <div className="cell-details-history-multi-field">
                     <label className="cell-details-history-multi-label">Value</label>
                     <input
@@ -719,8 +719,8 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                   </div>
                 )}
 
-                {/* Bulk Add Adjustment Note - show for Mass Update */}
-                {selectAction === 'Mass Update' && (
+                {/* Bulk Add Adjustment Note - show for Bulk Edit */}
+                {selectAction === 'Bulk Edit' && (
                   <div className="cell-details-history-multi-field">
                     <label className="cell-details-history-multi-label">Bulk Adjustment Note</label>
                     <textarea
@@ -754,7 +754,7 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                     onClick={() => {
                       // Clear form state
                       setSelectCells('Manually');
-                      setSelectAction('Mass Update');
+                      setSelectAction('Bulk Edit');
                       setRule('Increase');
                       setValue('20%');
                       setBulkNote('');
@@ -769,7 +769,7 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                   <button 
                     className="cell-details-history-multi-update-btn"
                     onClick={() => {
-                      if (selectAction === 'Mass Update' && selectedCells.size > 0 && value.trim() && onMassUpdate) {
+                      if (selectAction === 'Bulk Edit' && selectedCells.size > 0 && value.trim() && onMassUpdate) {
                         // ROOT CAUSE FIX: Use selectedCellsOrder directly, filtering to only include currently selected cells
                         // This preserves the EXACT order in which cells were selected
                         // ROOT CAUSE FIX: Use getSelectedCellsOrder if available (always current), otherwise use prop
@@ -779,16 +779,16 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                           ? currentOrder.filter(key => selectedCells.has(key)) // Preserve order, only include selected
                           : Array.from(selectedCells); // Fallback if order not available
                         
-                        console.log('[CellDetailsHistoryPanel] Mass update - orderedKeys:', orderedKeys);
-                        console.log('[CellDetailsHistoryPanel] Mass update - currentOrder (from ref/prop):', currentOrder);
-                        console.log('[CellDetailsHistoryPanel] Mass update - selectedCellsOrder prop:', selectedCellsOrder);
-                        console.log('[CellDetailsHistoryPanel] Mass update - selectedCells Set:', Array.from(selectedCells));
+                        console.log('[CellDetailsHistoryPanel] Bulk edit - orderedKeys:', orderedKeys);
+                        console.log('[CellDetailsHistoryPanel] Bulk edit - currentOrder (from ref/prop):', currentOrder);
+                        console.log('[CellDetailsHistoryPanel] Bulk edit - selectedCellsOrder prop:', selectedCellsOrder);
+                        console.log('[CellDetailsHistoryPanel] Bulk edit - selectedCells Set:', Array.from(selectedCells));
                         
                         // Pass orderedKeys directly - it's already in the correct order
                         onMassUpdate(orderedKeys, rule, value.trim(), bulkNote.trim() || undefined);
                       }
                     }}
-                    disabled={selectAction === 'Mass Update' && (selectedCells.size === 0 || !value.trim())}
+                    disabled={selectAction === 'Bulk Edit' && (selectedCells.size === 0 || !value.trim())}
                   >
                     Update
                   </button>
