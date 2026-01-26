@@ -790,11 +790,28 @@ const DimensionsTimeGrid: React.FC<DimensionsTimeGridProps> = ({
     }
   }, [onFocusedCellChange]);
 
-  const formatValue = (value: number): string => {
-    return value.toLocaleString('en-US', {
+  const formatValue = (value: number, isQuantity?: boolean, measureName?: string): string => {
+    const formatted = value.toLocaleString('en-US', {
       minimumFractionDigits: 0,
       maximumFractionDigits: 0, // No decimals in cell values
     });
+    
+    // Add $ symbol for revenue/currency measures (but not for quantities or percentages)
+    if (!isQuantity && measureName) {
+      const nameLower = measureName.toLowerCase();
+      const isRevenue = nameLower.includes('revenue') || 
+                       nameLower.includes('spend') && !nameLower.includes('%') ||
+                       nameLower === 'revenue';
+      // Don't add $ for percentages, ROI multipliers, or quantities
+      const isPercentage = nameLower.includes('%') || nameLower.includes('percent');
+      const isROI = nameLower.includes('roi');
+      
+      if (isRevenue && !isPercentage && !isROI) {
+        return `$${formatted}`;
+      }
+    }
+    
+    return formatted;
   };
 
   // Handle cell value change

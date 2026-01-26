@@ -584,9 +584,7 @@
 
 .filters-date-input::-webkit-calendar-picker-indicator:hover {
   opacity: 1;
-}
-
-/* AND Logic Info */
+}/* AND Logic Info */
 .filters-and-logic-info {
   display: flex;
   align-items: center;

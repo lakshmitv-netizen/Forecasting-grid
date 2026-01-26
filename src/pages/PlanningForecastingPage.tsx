@@ -156,6 +156,10 @@ const PlanningForecastingPage: React.FC = () => {
                     <label className="planning-info-label">Default Time Granularity</label>
                     <div className="planning-info-value">Months</div>
                   </div>
+                  <div className="planning-info-field">
+                    <label className="planning-info-label">Account</label>
+                    <div className="planning-info-value">MagnaDrive - Michigan Plant</div>
+                  </div>
                 </div>
               )}
               {leftTab === 'grid-config' && (

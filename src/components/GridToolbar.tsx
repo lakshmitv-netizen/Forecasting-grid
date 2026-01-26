@@ -10,6 +10,7 @@ interface GridToolbarProps {
   isSettingsActive?: boolean;
   isFilterActive?: boolean;
   isNotesActive?: boolean;
+  activeFilterCount?: number;
 }
 
 const GridToolbar: React.FC<GridToolbarProps> = ({ 
@@ -20,7 +21,8 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
   onSearchChange,
   isSettingsActive = false,
   isFilterActive = false,
-  isNotesActive = false
+  isNotesActive = false,
+  activeFilterCount = 0
 }) => {
   const [gridSearchInput, setGridSearchInput] = useState<string>(searchValue);
   const searchDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -126,10 +128,13 @@ const GridToolbar: React.FC<GridToolbarProps> = ({
             <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
           </svg>
         </button>
-        <button className={`grid-button-group-item ${isFilterActive ? 'active' : ''}`} title="Filter" onClick={onFilterClick}>
+        <button className={`grid-button-group-item ${isFilterActive ? 'active' : ''}`} title="Filter" onClick={onFilterClick} style={{ position: 'relative' }}>
           <svg fill="currentColor" viewBox="0 0 24 24" width="16" height="16">
             <path d="M4.25 5.61C6.27 8.2 10 13 10 13v6c0 .55.45 1 1 1h2c.55 0 1-.45 1-1v-6s3.72-4.8 5.74-7.39c.51-.66.04-1.61-.79-1.61H5.04c-.83 0-1.3.95-.79 1.61z"/>
           </svg>
+          {activeFilterCount > 0 && (
+            <span className="filter-badge">{activeFilterCount}</span>
+          )}
         </button>
         <button className={`grid-button-group-item ${isNotesActive ? 'active' : ''}`} title="Edit Information" onClick={onNotesClick}>
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">

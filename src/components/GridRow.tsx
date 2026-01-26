@@ -4,6 +4,7 @@ import { GridRow as GridRowType } from '../types';
 import { extractSearchTerms, separateSearchTerms, matchesNumber } from '../utils/searchUtils';
 import { SearchHighlight } from './SearchHighlight';
 import { CellEditHistoryEntry } from '../types/editHistory';
+import FillHandle from './FillHandle';
 import '../styles/components/Grid.css';
 
 interface GridRowProps {
@@ -12,7 +13,7 @@ interface GridRowProps {
   isExpanded: boolean;
   expandedRows: Set<string>;
   onToggleExpand: (id: string) => void;
-  formatValue: (value: number, isQuantity?: boolean) => string;
+  formatValue: (value: number, isQuantity?: boolean, measureName?: string) => string;
   onCellChange?: (rowId: string, monthKey: keyof GridRowType['values'], newValue: number, note?: string) => void;
   visibleTimeKeys?: (keyof GridRowType['values'])[];
   focusedCell?: { rowId: string; monthKey: keyof GridRowType['values'] } | null;
@@ -35,6 +36,9 @@ interface GridRowProps {
   onCellMouseDown?: (cellKey: string, event: React.MouseEvent) => void; // Callback for mouse down (drag selection)
   onCellMouseMove?: (cellKey: string) => void; // Callback for mouse move (drag selection)
   lastSelectedCell?: string | null; // Last selected cell key (for drag handle indicator)
+  onFillHandleDragStart?: (cellKey: string) => void; // Callback when fill handle drag starts
+  onFillHandleDragMove?: (cellKey: string) => void; // Callback when fill handle is dragged
+  onFillHandleDragEnd?: () => void; // Callback when fill handle drag ends
 }
 
 const GridRowComponent: React.FC<GridRowProps> = ({
@@ -66,6 +70,9 @@ const GridRowComponent: React.FC<GridRowProps> = ({
   onCellMouseDown,
   onCellMouseMove,
   lastSelectedCell = null,
+  onFillHandleDragStart,
+  onFillHandleDragMove,
+  onFillHandleDragEnd,
 }) => {
   const hasChildren = row.children && row.children.length > 0;
   const [editingCell, setEditingCell] = useState<{ monthKey: keyof GridRowType['values'] } | null>(null);
@@ -759,7 +766,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                   } else {
                     // Show value change one-liner with buttons inline
                     const delta = newValue - oldValue;
-                    const deltaFormatted = delta >= 0 ? `+${formatValue(delta)}` : formatValue(delta);
+                    const isQuantity = row.name?.toLowerCase().includes('quantity') || false;
+                    const deltaFormatted = delta >= 0 ? `+${formatValue(delta, isQuantity, row.name)}` : formatValue(delta, isQuantity, row.name);
                     const deltaColor = delta >= 0 ? '#2e844a' : '#c23934';
                     
                     return (
@@ -785,12 +793,12 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                           <span style={{
                             textDecoration: 'line-through',
                             color: '#706e6b'
-                          }}>{formatValue(oldValue)}</span>
+                          }}>{formatValue(oldValue, isQuantity, row.name)}</span>
                           <span style={{ color: '#706e6b' }}>→</span>
                           <span style={{
                             fontWeight: '600',
                             color: '#181818'
-                          }}>{formatValue(newValue)}</span>
+                          }}>{formatValue(newValue, isQuantity, row.name)}</span>
                           <span style={{
                             fontWeight: '600',
                             color: deltaColor,
@@ -1155,9 +1163,9 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 style={{ cursor: isEditable ? 'pointer' : 'default', color: deltaColor }}
               >
                 {valueMatchesSearch ? (
-                  <SearchHighlight text={formatValue(currentValue)} searchTerms={otherTerms} />
+                  <SearchHighlight text={formatValue(currentValue, row.name?.toLowerCase().includes('quantity'), row.name)} searchTerms={otherTerms} />
                 ) : (
-                  formatValue(currentValue)
+                  formatValue(currentValue, row.name?.toLowerCase().includes('quantity'), row.name)
                 )}
               </span>
             </div>
@@ -1200,9 +1208,9 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 style={{ cursor: isEditable ? 'pointer' : 'default', color: deltaColor }}
               >
                 {valueMatchesSearch ? (
-                  <SearchHighlight text={formatValue(currentValue)} searchTerms={otherTerms} />
+                  <SearchHighlight text={formatValue(currentValue, row.name?.toLowerCase().includes('quantity'), row.name)} searchTerms={otherTerms} />
                 ) : (
-                  formatValue(currentValue)
+                  formatValue(currentValue, row.name?.toLowerCase().includes('quantity'), row.name)
                 )}
               </span>
             </div>
@@ -1329,9 +1337,9 @@ const GridRowComponent: React.FC<GridRowProps> = ({
             style={{ cursor: isEditable ? 'pointer' : 'default' }}
           >
             {cellValueMatchesSearch ? (
-              <SearchHighlight text={formatValue(cellValue, row.name?.toLowerCase().includes('quantity'))} searchTerms={otherTerms} />
+              <SearchHighlight text={formatValue(cellValue, row.name?.toLowerCase().includes('quantity'), row.name)} searchTerms={otherTerms} />
             ) : (
-              formatValue(cellValue)
+              formatValue(cellValue, row.name?.toLowerCase().includes('quantity'), row.name)
             )}
           </span>
         </div>
@@ -1732,21 +1740,15 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 return renderCellValue(key);
               })()}
               {renderPencilIcon(key, !!isEditable)}
-              {/* Drag handle indicator - show on last selected cell */}
+              {/* Fill handle - show on last selected cell */}
               {lastSelectedCell === cellKey && selectedCells.has(cellKey) && (
-                <div 
-                  className="cell-drag-handle"
-                  onMouseDown={(e) => {
-                    e.stopPropagation();
-                    if (onCellMouseDown) {
-                      onCellMouseDown(cellKey, e);
-                    }
-                  }}
-                >
-                  <svg width="8" height="8" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="4" cy="4" r="1.5" fill="#747474"/>
-                  </svg>
-                </div>
+                <FillHandle
+                  cellKey={cellKey}
+                  cellElement={cellRefs?.current?.get(cellKey) || null}
+                  onDragStart={onFillHandleDragStart}
+                  onDragMove={onFillHandleDragMove}
+                  onDragEnd={onFillHandleDragEnd}
+                />
               )}
             </td>
           );
@@ -1780,6 +1782,10 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               onCellContextMenu={onCellContextMenu}
               selectedCells={selectedCells}
               onCellSelect={onCellSelect}
+              lastSelectedCell={lastSelectedCell}
+              onFillHandleDragStart={onFillHandleDragStart}
+              onFillHandleDragMove={onFillHandleDragMove}
+              onFillHandleDragEnd={onFillHandleDragEnd}
             />
           ))}
         </>

@@ -7,6 +7,7 @@ interface CellEditInfoPopoverProps {
   position: { top: number; left: number };
   isLocked?: boolean;
   lockedValue?: number;
+  measureName?: string; // Measure name to determine if $ symbol should be added
   onViewHistory: () => void;
   onClose: () => void;
 }
@@ -16,6 +17,7 @@ const CellEditInfoPopover: React.FC<CellEditInfoPopoverProps> = ({
   position,
   isLocked = false,
   lockedValue,
+  measureName,
   onViewHistory,
   onClose
 }) => {
@@ -32,7 +34,28 @@ const CellEditInfoPopover: React.FC<CellEditInfoPopoverProps> = ({
 
   const formatNumber = (num: number | undefined) => {
     if (num === undefined) return '-';
-    return num.toLocaleString();
+    const formatted = num.toLocaleString('en-US', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    });
+    
+    // Add $ symbol for revenue/currency measures (but not for quantities or percentages)
+    if (measureName) {
+      const nameLower = measureName.toLowerCase();
+      const isRevenue = nameLower.includes('revenue') || 
+                       nameLower.includes('spend') && !nameLower.includes('%') ||
+                       nameLower === 'revenue';
+      // Don't add $ for percentages, ROI multipliers, or quantities
+      const isPercentage = nameLower.includes('%') || nameLower.includes('percent');
+      const isROI = nameLower.includes('roi');
+      const isQuantity = nameLower.includes('quantity');
+      
+      if (isRevenue && !isPercentage && !isROI && !isQuantity) {
+        return `$${formatted}`;
+      }
+    }
+    
+    return formatted;
   };
 
   // Get user initials

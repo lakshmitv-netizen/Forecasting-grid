@@ -10,7 +10,7 @@ interface TimeDimensionsRowProps {
   isExpanded: boolean;
   expandedRows: Set<string>;
   onToggleExpand: (id: string) => void;
-  formatValue: (value: number, isQuantity?: boolean) => string;
+  formatValue: (value: number, isQuantity?: boolean, measureName?: string) => string;
   measures: Array<{ id: string; name: string }>;
   onCellChange?: (timeKey: string, dimensionId: string, measureId: string, newValue: number) => void;
   focusedCell?: { rowId: string; measureId: string } | null;
@@ -213,14 +213,18 @@ const TimeDimensionsRowComponent: React.FC<TimeDimensionsRowProps> = ({
               {searchTerm && searchTerm.trim() ? (() => {
                 const searchTerms = extractSearchTerms(searchTerm);
                 const { otherTerms } = separateSearchTerms(searchTerms);
-                const valueStr = formatValue(currentValue);
+                const measure = measures.find(m => m.id === measureId);
+                const isQuantity = measure?.name?.toLowerCase().includes('quantity') || false;
+                const valueStr = formatValue(currentValue, isQuantity, measure?.name);
                 return otherTerms.length > 0 && matchesNumber(currentValue, otherTerms) ? (
                   <SearchHighlight text={valueStr} searchTerms={otherTerms} />
                 ) : (
                   valueStr
                 );
               })() : (() => {
-                return formatValue(currentValue);
+                const measure = measures.find(m => m.id === measureId);
+                const isQuantity = measure?.name?.toLowerCase().includes('quantity') || false;
+                return formatValue(currentValue, isQuantity, measure?.name);
               })()}
             </span>
           </div>
@@ -302,14 +306,18 @@ const TimeDimensionsRowComponent: React.FC<TimeDimensionsRowProps> = ({
               {searchTerm && searchTerm.trim() ? (() => {
                 const searchTerms = extractSearchTerms(searchTerm);
                 const { otherTerms } = separateSearchTerms(searchTerms);
-                const valueStr = formatValue(currentValue);
+                const measure = measures.find(m => m.id === measureId);
+                const isQuantity = measure?.name?.toLowerCase().includes('quantity') || false;
+                const valueStr = formatValue(currentValue, isQuantity, measure?.name);
                 return otherTerms.length > 0 && matchesNumber(currentValue, otherTerms) ? (
                   <SearchHighlight text={valueStr} searchTerms={otherTerms} />
                 ) : (
                   valueStr
                 );
               })() : (() => {
-                return formatValue(currentValue);
+                const measure = measures.find(m => m.id === measureId);
+                const isQuantity = measure?.name?.toLowerCase().includes('quantity') || false;
+                return formatValue(currentValue, isQuantity, measure?.name);
               })()}
             </span>
           </div>

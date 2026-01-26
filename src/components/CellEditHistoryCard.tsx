@@ -23,9 +23,10 @@ interface CellEditHistoryCardProps {
   onViewAllChanges?: () => void; // Callback for "View all changes" in multi-cell mode
   editCountForCell?: number; // Number of edits for this cell (to show "View all X changes")
   fullHierarchyPath?: string; // Full hierarchy path for tooltip (e.g., "MagnaDrive > Chassis Components > CHS-100-A")
+  measureName?: string; // Measure name to determine if $ symbol should be added
 }
 
-const CellEditHistoryCard: React.FC<CellEditHistoryCardProps> = ({ entry, replies = [], onAddReply, isLast = false, isFirst = false, cellContext, cellContextAsHeader = false, threadColor, dimensionType, onViewAllChanges, editCountForCell, fullHierarchyPath }) => {
+const CellEditHistoryCard: React.FC<CellEditHistoryCardProps> = ({ entry, replies = [], onAddReply, isLast = false, isFirst = false, cellContext, cellContextAsHeader = false, threadColor, dimensionType, onViewAllChanges, editCountForCell, fullHierarchyPath, measureName }) => {
   const [isExpanded, setIsExpanded] = useState(isFirst);
   const [replyText, setReplyText] = useState('');
   const [showHierarchyTooltip, setShowHierarchyTooltip] = useState(false);
@@ -41,18 +42,35 @@ const CellEditHistoryCard: React.FC<CellEditHistoryCardProps> = ({ entry, replie
   const delta = hasEdit ? (entry.newValue! - entry.oldValue!) : 0;
   const isIncrease = delta > 0;
   
-  const formattedOldValue = hasEdit ? entry.oldValue!.toLocaleString('en-US', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }) : '';
-  const formattedNewValue = hasEdit ? entry.newValue!.toLocaleString('en-US', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }) : '';
-  const formattedDelta = hasEdit ? Math.abs(delta).toLocaleString('en-US', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }) : '';
+  // Helper function to format numbers with $ symbol for revenue measures
+  const formatCurrencyValue = (value: number): string => {
+    const formatted = value.toLocaleString('en-US', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    });
+    
+    // Add $ symbol for revenue/currency measures (but not for quantities or percentages)
+    if (measureName) {
+      const nameLower = measureName.toLowerCase();
+      const isRevenue = nameLower.includes('revenue') || 
+                       nameLower.includes('spend') && !nameLower.includes('%') ||
+                       nameLower === 'revenue';
+      // Don't add $ for percentages, ROI multipliers, or quantities
+      const isPercentage = nameLower.includes('%') || nameLower.includes('percent');
+      const isROI = nameLower.includes('roi');
+      const isQuantity = nameLower.includes('quantity');
+      
+      if (isRevenue && !isPercentage && !isROI && !isQuantity) {
+        return `$${formatted}`;
+      }
+    }
+    
+    return formatted;
+  };
+  
+  const formattedOldValue = hasEdit ? formatCurrencyValue(entry.oldValue!) : '';
+  const formattedNewValue = hasEdit ? formatCurrencyValue(entry.newValue!) : '';
+  const formattedDelta = hasEdit ? formatCurrencyValue(Math.abs(delta)) : '';
 
   // Get user initials from name
   const getUserInitials = (name: string): string => {

@@ -10,7 +10,7 @@ interface DimensionsTimeRowProps {
   isExpanded: boolean;
   expandedRows: Set<string>;
   onToggleExpand: (id: string) => void;
-  formatValue: (value: number, isQuantity?: boolean) => string;
+  formatValue: (value: number, isQuantity?: boolean, measureName?: string) => string;
   measures: Array<{ id: string; name: string }>;
   onCellChange?: (dimensionId: string, timeKey: string | null, measureId: string, newValue: number) => void;
   focusedCell?: { rowId: string; measureId: string } | null;
@@ -210,14 +210,18 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
               {searchTerm && searchTerm.trim() ? (() => {
                 const searchTerms = extractSearchTerms(searchTerm);
                 const { otherTerms } = separateSearchTerms(searchTerms);
-                const valueStr = formatValue(currentValue);
+                const measure = measures.find(m => m.id === measureId);
+                const isQuantity = measure?.name?.toLowerCase().includes('quantity') || false;
+                const valueStr = formatValue(currentValue, isQuantity, measure?.name);
                 return otherTerms.length > 0 && matchesNumber(currentValue, otherTerms) ? (
                   <SearchHighlight text={valueStr} searchTerms={otherTerms} />
                 ) : (
                   valueStr
                 );
               })() : (() => {
-                return formatValue(currentValue);
+                const measure = measures.find(m => m.id === measureId);
+                const isQuantity = measure?.name?.toLowerCase().includes('quantity') || false;
+                return formatValue(currentValue, isQuantity, measure?.name);
               })()}
             </span>
           </div>
@@ -254,13 +258,19 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
             {searchTerm && searchTerm.trim() ? (() => {
               const searchTerms = extractSearchTerms(searchTerm);
               const { otherTerms } = separateSearchTerms(searchTerms);
-              const valueStr = formatValue(currentValue);
+              const measure = measures.find(m => m.id === measureId);
+              const isQuantity = measure?.name?.toLowerCase().includes('quantity') || false;
+              const valueStr = formatValue(currentValue, isQuantity, measure?.name);
               return otherTerms.length > 0 && matchesNumber(currentValue, otherTerms) ? (
                 <SearchHighlight text={valueStr} searchTerms={otherTerms} />
               ) : (
                 valueStr
               );
-            })() : formatValue(currentValue)}
+            })() : (() => {
+              const measure = measures.find(m => m.id === measureId);
+              const isQuantity = measure?.name?.toLowerCase().includes('quantity') || false;
+              return formatValue(currentValue, isQuantity, measure?.name);
+            })()}
           </span>
         </div>
       );
@@ -293,14 +303,18 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
               {searchTerm && searchTerm.trim() ? (() => {
                 const searchTerms = extractSearchTerms(searchTerm);
                 const { otherTerms } = separateSearchTerms(searchTerms);
-                const valueStr = formatValue(currentValue);
+                const measure = measures.find(m => m.id === measureId);
+                const isQuantity = measure?.name?.toLowerCase().includes('quantity') || false;
+                const valueStr = formatValue(currentValue, isQuantity, measure?.name);
                 return otherTerms.length > 0 && matchesNumber(currentValue, otherTerms) ? (
                   <SearchHighlight text={valueStr} searchTerms={otherTerms} />
                 ) : (
                   valueStr
                 );
               })() : (() => {
-                return formatValue(currentValue);
+                const measure = measures.find(m => m.id === measureId);
+                const isQuantity = measure?.name?.toLowerCase().includes('quantity') || false;
+                return formatValue(currentValue, isQuantity, measure?.name);
               })()}
             </span>
           </div>
@@ -318,20 +332,22 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
         style={{ cursor: isEditable ? 'pointer' : 'default' }}
         onDoubleClick={isEditable ? (e) => handleCellValueDoubleClick(measureId, e) : undefined}
       >
-        {searchTerm && searchTerm.trim() ? (() => {
-          const searchTerms = extractSearchTerms(searchTerm);
-          const { otherTerms } = separateSearchTerms(searchTerms);
-          const valueStr = formatValue(currentValue);
-          return otherTerms.length > 0 && matchesNumber(currentValue, otherTerms) ? (
-            <SearchHighlight text={valueStr} searchTerms={otherTerms} />
-          ) : (
-            valueStr
-          );
-        })() : (() => {
-          const measure = measures.find(m => m.id === measureId);
-          const isQuantity = measure?.name?.toLowerCase().includes('quantity') || false;
-          return formatValue(currentValue, isQuantity);
-          })()}
+            {searchTerm && searchTerm.trim() ? (() => {
+              const searchTerms = extractSearchTerms(searchTerm);
+              const { otherTerms } = separateSearchTerms(searchTerms);
+              const measure = measures.find(m => m.id === measureId);
+              const isQuantity = measure?.name?.toLowerCase().includes('quantity') || false;
+              const valueStr = formatValue(currentValue, isQuantity, measure?.name);
+              return otherTerms.length > 0 && matchesNumber(currentValue, otherTerms) ? (
+                <SearchHighlight text={valueStr} searchTerms={otherTerms} />
+              ) : (
+                valueStr
+              );
+            })() : (() => {
+              const measure = measures.find(m => m.id === measureId);
+              const isQuantity = measure?.name?.toLowerCase().includes('quantity') || false;
+              return formatValue(currentValue, isQuantity, measure?.name);
+            })()}
         </span>
       </div>
     );

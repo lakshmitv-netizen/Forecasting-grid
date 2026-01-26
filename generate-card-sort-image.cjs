@@ -5,24 +5,25 @@ async function generateCardSortImage() {
   const browser = await puppeteer.launch({ headless: 'new' });
   const page = await browser.newPage();
   
-  // Set initial viewport
-  await page.setViewport({ width: 1600, height: 1200 });
+  // Set initial viewport with higher resolution for clearer image
+  await page.setViewport({ width: 3200, height: 2400, deviceScaleFactor: 2 });
   
   // Load the HTML file
   const htmlPath = path.join(__dirname, 'card-sort-final-grouping.html');
   await page.goto(`file://${htmlPath}`, { waitUntil: 'networkidle0' });
   
   // Wait for content to render
-  await new Promise(resolve => setTimeout(resolve, 2000));
+  await new Promise(resolve => setTimeout(resolve, 3000));
   
   // Get full page height
   const bodyHandle = await page.$('body');
   const boundingBox = await bodyHandle.boundingBox();
   
-  // Set viewport to full page height
+  // Set viewport to full page height with high resolution
   await page.setViewport({
-    width: 1600,
-    height: Math.ceil(boundingBox.height)
+    width: 3200,
+    height: Math.ceil(boundingBox.height),
+    deviceScaleFactor: 2
   });
   
   // Take full page screenshot as PNG (better quality for detailed content)
@@ -35,12 +36,12 @@ async function generateCardSortImage() {
   
   console.log(`Successfully created: ${outputPath}`);
   
-  // Also create a JPEG version
+  // Also create a JPEG version with maximum quality
   const jpegPath = path.join(__dirname, 'card-sort-final-grouping.jpg');
   await page.screenshot({
     path: jpegPath,
     type: 'jpeg',
-    quality: 95,
+    quality: 100,
     fullPage: true
   });
   

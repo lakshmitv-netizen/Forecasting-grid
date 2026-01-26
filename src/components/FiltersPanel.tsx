@@ -29,6 +29,7 @@ interface FiltersPanelProps {
   onStartPeriodChange?: (period: string) => void;
   onEndPeriodChange?: (period: string) => void;
   onApplyFilters?: (filteredData: MeasureData[]) => void;
+  onActiveFilterCountChange?: (count: number) => void;
 }
 
 const FiltersPanel: React.FC<FiltersPanelProps> = ({ 
@@ -45,7 +46,8 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
   endPeriod = '',
   onStartPeriodChange,
   onEndPeriodChange,
-  onApplyFilters
+  onApplyFilters,
+  onActiveFilterCountChange
 }) => {
   // Track original values for Cancel functionality (only for filter cards)
   const [originalFilters, setOriginalFilters] = useState<Filter[]>([
@@ -96,6 +98,34 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
     filters,
     originalFilters
   ]);
+
+  // Calculate and notify active filter count
+  useEffect(() => {
+    if (!onActiveFilterCountChange) return;
+
+    let count = 0;
+
+    // Count active filter cards (category, product, time)
+    filters.forEach(filter => {
+      if (filter.type === 'category' || filter.type === 'products') {
+        if (filter.value !== 'Equals All' && filter.value !== 'All') {
+          count++;
+        }
+      } else if (filter.type === 'time') {
+        // Time filter is active if it's not the default range
+        if (filter.value !== 'Equals All' && filter.value !== 'All' && !filter.value.includes('Jan 26 to Dec 26')) {
+          count++;
+        }
+      }
+    });
+
+    // Count period filter (active if showAllPeriods is false or if start/end period is set)
+    if (!showAllPeriods || startPeriod || endPeriod) {
+      count++;
+    }
+
+    onActiveFilterCountChange(count);
+  }, [filters, showAllPeriods, startPeriod, endPeriod, onActiveFilterCountChange]);
 
   const [editingProductFilterId, setEditingProductFilterId] = useState<string | null>(null);
   const [editingCategoryFilterId, setEditingCategoryFilterId] = useState<string | null>(null);

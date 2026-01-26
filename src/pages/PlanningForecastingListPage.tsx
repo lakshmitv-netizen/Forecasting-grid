@@ -28,6 +28,7 @@ const PlanningForecastingListPage: React.FC = () => {
   const [newRecord, setNewRecord] = useState({
     name: '',
     adminTemplate: '',
+    account: '',
     startPeriod: '',
     endPeriod: '',
     defaultMeasureSubgroup: 'revenue-quantity',
@@ -169,11 +170,6 @@ const PlanningForecastingListPage: React.FC = () => {
       {/* New Record Modal */}
       {isModalOpen && createPortal(
         <div className="list-page-modal-overlay" onClick={() => setIsModalOpen(false)}>
-          <button className="list-page-modal-close-outside" onClick={() => setIsModalOpen(false)}>
-            <svg viewBox="0 0 24 24" fill="currentColor">
-              <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"/>
-            </svg>
-          </button>
           <div className="list-page-modal" onClick={(e) => e.stopPropagation()}>
             <div className="list-page-modal-header">
               <h2 className="list-page-modal-title">New Plan</h2>
@@ -264,12 +260,31 @@ const PlanningForecastingListPage: React.FC = () => {
                   </select>
                 </div>
               </div>
+              <div className="list-page-modal-row">
+                <div className="list-page-modal-field">
+                  <label className="list-page-modal-label">Select Account</label>
+                  <select 
+                    className="list-page-modal-select"
+                    value={newRecord.account}
+                    onChange={(e) => setNewRecord({...newRecord, account: e.target.value})}
+                  >
+                    <option value="">Select Account</option>
+                    <option value="magnadrive-michigan">MagnaDrive - Michigan Plant</option>
+                    <option value="magnadrive-ohio">MagnaDrive - Ohio Plant</option>
+                    <option value="magnadrive-california">MagnaDrive - California Plant</option>
+                    <option value="acme-corp">ACME Corporation</option>
+                    <option value="tech-solutions">Tech Solutions Inc</option>
+                    <option value="global-manufacturing">Global Manufacturing Co</option>
+                  </select>
+                </div>
+                <div className="list-page-modal-field"></div>
+              </div>
             </div>
             <div className="list-page-modal-footer">
               <button className="list-page-modal-cancel" onClick={() => setIsModalOpen(false)}>
                 Cancel
               </button>
-              <button className="list-page-modal-create">
+              <button className="list-page-modal-create" onClick={() => setIsModalOpen(false)}>
                 Create
               </button>
             </div>

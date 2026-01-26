@@ -1,0 +1,3887 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hierarchy Depth & Data Settings</title>
+  <!-- Salesforce Lightning Design System -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/design-system/2.24.0/styles/salesforce-lightning-design-system.min.css">
+  <style>
+    body {
+      font-family: 'Salesforce Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+      background-color: #f3f3f3;
+      margin: 0;
+      padding: 0;
+    }
+
+    /* Salesforce App Header */
+    .slds-app-header {
+      background-color: white;
+      border-bottom: 1px solid #e5e5e5;
+      height: 50px;
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      position: sticky;
+      top: 0;
+      z-index: 1002;
+    }
+
+    .slds-app-header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .slds-logo {
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .slds-logo svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    .slds-search {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 400px;
+    }
+
+    .slds-search-input {
+      width: 100%;
+      padding: 8px 12px 8px 36px;
+      border: 1px solid #c9c9c9;
+      border-radius: 4px;
+      font-size: 14px;
+      color: #181818;
+    }
+
+    .slds-search-input:focus {
+      outline: none;
+      border-color: #0176d3;
+      box-shadow: 0 0 0 3px rgba(1, 118, 211, 0.1);
+    }
+
+    .slds-search-icon {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 16px;
+      height: 16px;
+      color: #706e6b;
+      pointer-events: none;
+    }
+
+    .slds-app-header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-left: auto;
+    }
+
+    .slds-icon-button {
+      width: 32px;
+      height: 32px;
+      border: none;
+      background: none;
+      cursor: pointer;
+      color: #706e6b;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      position: relative;
+    }
+
+    .slds-icon-button:hover {
+      background-color: #f3f2f2;
+      color: #181818;
+    }
+
+    .slds-notification-badge {
+      position: absolute;
+      top: 2px;
+      right: 2px;
+      width: 16px;
+      height: 16px;
+      background-color: #e74c3c;
+      color: white;
+      border-radius: 50%;
+      font-size: 10px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 2px solid white;
+    }
+
+    .slds-user-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background-color: #0176d3;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    /* Primary Navigation Bar */
+    .slds-primary-nav {
+      background-color: white;
+      border-bottom: 1px solid #e5e5e5;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      position: sticky;
+      top: 50px;
+      z-index: 1001;
+    }
+
+    .slds-app-launcher {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding-right: 16px;
+      margin-right: 16px;
+      border-right: 1px solid #e5e5e5;
+    }
+
+    .slds-app-launcher-icon {
+      width: 20px;
+      height: 20px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 2px;
+    }
+
+    .slds-app-launcher-icon-square {
+      background-color: #706e6b;
+      border-radius: 1px;
+    }
+
+    .slds-app-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: #181818;
+    }
+
+    .slds-nav-list {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .slds-nav-item {
+      position: relative;
+    }
+
+    .slds-nav-link {
+      padding: 12px 16px;
+      font-size: 14px;
+      color: #0176d3;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      border-bottom: 3px solid transparent;
+      transition: all 0.2s;
+    }
+
+    .slds-nav-link:hover {
+      color: #014486;
+      background-color: #f3f2f2;
+    }
+
+    .slds-nav-link.active {
+      color: #0176d3;
+      border-bottom-color: #0176d3;
+      font-weight: 600;
+    }
+
+    .slds-nav-link-arrow {
+      width: 12px;
+      height: 12px;
+      color: #706e6b;
+    }
+
+    .slds-nav-edit-icon {
+      width: 16px;
+      height: 16px;
+      color: #706e6b;
+      cursor: pointer;
+      margin-left: 8px;
+    }
+
+
+    .grid-page-header-left {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      margin-top: 4px;
+      padding-left: 16px;
+    }
+
+    .breadcrumbs-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+
+    .breadcrumbs {
+      font-size: 13px;
+      color: #0050D9;
+      line-height: 18px;
+    }
+
+    .breadcrumbs-link {
+      color: #0050D9;
+      text-decoration: none;
+      cursor: pointer;
+      transition: opacity 0.2s ease;
+    }
+
+    .breadcrumbs-link:hover {
+      opacity: 0.8;
+      text-decoration: underline;
+    }
+
+    .breadcrumbs-separator {
+      margin: 0 8px;
+      color: #0050D9;
+    }
+
+    .grid-page-title {
+      font-size: 22px;
+      font-weight: 400;
+      color: #03234D;
+      line-height: 28px;
+      margin: 0;
+    }
+
+    .grid-page-header-right {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
+      margin-top: 0;
+      margin-right: 12px;
+    }
+
+    .last-refreshed-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .last-refreshed {
+      font-size: 14px;
+      color: #2E2E2E;
+      line-height: 18px;
+      font-weight: 400;
+      white-space: nowrap;
+    }
+
+    .refresh-button {
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: #0050D9;
+      border-radius: 4px;
+      padding: 0;
+    }
+
+    .refresh-button:hover {
+      background-color: #f3f2f2;
+    }
+
+    .refresh-icon {
+      width: 16px;
+      height: 16px;
+    }
+
+    .grid-toolbar-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 4px;
+      padding-left: 16px;
+      padding-right: 12px;
+    }
+
+    .grid-search {
+      position: relative;
+      width: 300px;
+    }
+
+    .grid-search-input {
+      width: 100%;
+      padding: 8px 32px 8px 32px;
+      border: 1px solid #8E8E8E;
+      border-radius: 4px;
+      font-size: 13px;
+      color: #181818;
+      background-color: white;
+    }
+
+    .grid-search-input:focus {
+      outline: none;
+      border-color: #0176d3;
+    }
+
+    .grid-search-icon {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 16px;
+      height: 16px;
+      color: #706e6b;
+      pointer-events: none;
+    }
+
+    .grid-button-group {
+      display: flex;
+      align-items: center;
+      border: 1px solid #8E8E8E;
+      border-radius: 9999px;
+      overflow: hidden;
+    }
+
+    .grid-button-group-item {
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: white;
+      border: none;
+      border-right: 1px solid #8E8E8E;
+      cursor: pointer;
+      color: #0250D9;
+      padding: 0;
+    }
+
+    .grid-button-group-item:last-child {
+      border-right: none;
+    }
+
+    .grid-button-group-item:hover {
+      background-color: #f3f2f2;
+    }
+
+    .grid-button-group-item svg {
+      width: 16px;
+      height: 16px;
+      color: #0250D9;
+      fill: #0250D9;
+    }
+
+    /* Stepper Footer */
+    .stepper-footer {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background-color: white;
+      border-top: 1px solid #e5e5e5;
+      box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.1);
+      padding: 16px 24px;
+      z-index: 1001;
+    }
+
+    .stepper-footer-content {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      position: relative;
+    }
+
+    .stepper-progress {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 400px;
+    }
+
+    .stepper-track {
+      display: flex;
+      align-items: center;
+      position: relative;
+    }
+
+    .stepper-step {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    .stepper-dot {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background-color: #e5e5e5;
+      border: 2px solid #e5e5e5;
+      position: relative;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .stepper-dot.completed {
+      background-color: #0176d3;
+      border-color: #0176d3;
+    }
+
+    .stepper-dot.active {
+      width: 20px;
+      height: 20px;
+      background-color: white;
+      border: 2px solid #0176d3;
+    }
+
+    .stepper-line {
+      height: 2px;
+      background-color: #e5e5e5;
+      flex: 1;
+      min-width: 60px;
+      max-width: 120px;
+      margin: 0 8px;
+    }
+
+    .stepper-line.completed {
+      background-color: #0176d3;
+    }
+
+    .stepper-footer-buttons {
+      display: flex;
+      gap: 12px;
+    }
+
+    /* Duelling Picklist */
+    .duelling-picklist-container {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .duelling-picklist-wrapper {
+      display: flex;
+      gap: 24px;
+      align-items: flex-start;
+      margin-top: 24px;
+    }
+
+    .picklist-column {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .picklist-label {
+      font-size: 14px;
+      font-weight: 600;
+      color: #181818;
+      margin-bottom: 8px;
+    }
+
+    .picklist-box {
+      border: 1px solid #c9c9c9;
+      border-radius: 4px;
+      min-height: 300px;
+      max-height: 400px;
+      overflow-y: auto;
+      background-color: white;
+    }
+
+    .picklist-item {
+      padding: 10px 12px;
+      cursor: pointer;
+      border-bottom: 1px solid #f3f2f2;
+      font-size: 14px;
+      color: #181818;
+      transition: background-color 0.2s;
+    }
+
+    .picklist-item:hover {
+      background-color: #f3f2f2;
+    }
+
+    .picklist-item.selected {
+      background-color: #e8f4f8;
+      color: #0176d3;
+    }
+
+    .picklist-item:last-child {
+      border-bottom: none;
+    }
+
+    .picklist-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      justify-content: center;
+      padding-top: 120px;
+    }
+
+    .picklist-button {
+      padding: 8px 12px;
+      font-size: 14px;
+      border: 1px solid #c9c9c9;
+      border-radius: 4px;
+      background-color: white;
+      color: #181818;
+      cursor: pointer;
+      min-width: 80px;
+      transition: all 0.2s;
+    }
+
+    .picklist-button:hover:not(:disabled) {
+      background-color: #f3f2f2;
+      border-color: #0176d3;
+    }
+
+    .picklist-button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .step-container {
+      display: none;
+    }
+
+    .step-container.active {
+      display: block;
+    }
+
+    .page-header-section {
+      background-color: white;
+      padding: 24px 24px 24px 16px;
+      border-bottom: 1px solid #e5e5e5;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: row;
+      height: calc(100vh - 280px);
+      background-color: #f3f3f3;
+      overflow: hidden;
+      margin-bottom: 80px;
+    }
+
+    .step2-container {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      padding: 24px;
+    }
+
+    .users-dropdown-container {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .step2-content-row {
+      display: flex;
+      flex-direction: row;
+      gap: 24px;
+      align-items: flex-start;
+      width: 100%;
+    }
+
+    .users-dropdown-label {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      color: #080707;
+      margin-bottom: 8px;
+    }
+
+    .users-dropdown-container .slds-select {
+      width: 300px;
+      min-height: 32px;
+      padding: 0 12px;
+      font-size: 14px;
+      border: 1px solid #dddbda;
+      border-radius: 4px;
+      background-color: white;
+      color: #080707;
+    }
+
+    .users-dropdown-container .slds-select:focus {
+      outline: none;
+      border-color: #1589ee;
+      box-shadow: 0 0 3px #1589ee;
+    }
+
+    /* Left Panel */
+    .left-panel {
+      width: 300px;
+      min-width: 300px;
+      max-width: 300px;
+      background-color: white;
+      border-right: 1px solid #e5e5e5;
+      padding: 24px;
+      overflow-y: auto;
+      flex-shrink: 0;
+    }
+
+    .page-header {
+      margin: 0;
+    }
+
+    .page-title {
+      font-size: 20px;
+      font-weight: 400;
+      color: #03234D;
+      margin: 0 0 8px 0;
+    }
+
+    .page-subtitle {
+      font-size: 13px;
+      color: #706e6b;
+      margin: 0 0 16px 0;
+      line-height: 1.5;
+    }
+
+    .template-info {
+      font-size: 12px;
+      color: #706e6b;
+      padding: 12px;
+      background-color: #fafaf9;
+      border-radius: 4px;
+      margin: 0;
+    }
+
+    .combined-hierarchy-block {
+      display: flex;
+      background-color: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .hierarchies-section {
+      width: 300px;
+      min-width: 300px;
+      max-width: 300px;
+      padding: 24px;
+      background-color: white;
+      border-right: 1px solid #e5e5e5;
+      flex-shrink: 0;
+    }
+
+    .hierarchies-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #706e6b;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #e5e5e5;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .hierarchy-item {
+      padding: 12px;
+      margin-bottom: 4px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      color: #181818;
+      transition: background-color 0.2s;
+    }
+
+    .hierarchy-item:hover {
+      background-color: #f3f2f2;
+    }
+
+    .hierarchy-item.active {
+      background-color: #ecebea;
+      font-weight: 600;
+    }
+
+    /* Right Panel */
+    .right-panel {
+      flex: 1;
+      min-width: 0;
+      padding: 24px;
+      overflow-y: auto;
+      background-color: #f3f3f3;
+    }
+
+    .config-and-preview-wrapper {
+      display: flex;
+      gap: 24px;
+      align-items: flex-start;
+    }
+
+    .hierarchy-config-section {
+      flex: 1;
+      min-width: 0;
+      padding: 24px;
+    }
+
+    .preview-section-step2 {
+      background-color: white;
+      border-radius: 8px;
+      padding: 24px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    }
+
+    .preview-section-step2-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #181818;
+      margin-bottom: 16px;
+    }
+
+    .preview-grid {
+      border: 1px solid #e5e5e5;
+      border-radius: 4px;
+      overflow: hidden;
+      background-color: white;
+    }
+
+    .preview-grid-header {
+      background-color: #f3f2f2;
+      display: flex;
+      border-bottom: 1px solid #e5e5e5;
+    }
+
+    .preview-grid-header-cell {
+      padding: 10px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #181818;
+      border-right: 1px solid #e5e5e5;
+      min-width: 120px;
+    }
+
+    .preview-grid-header-cell:last-child {
+      border-right: none;
+    }
+
+    .preview-grid-row {
+      display: flex;
+      border-bottom: 1px solid #e5e5e5;
+    }
+
+    .preview-grid-row:last-child {
+      border-bottom: none;
+    }
+
+    .preview-grid-row.parent {
+      background-color: #fafaf9;
+      font-weight: 600;
+    }
+
+    .preview-grid-row.child {
+      background-color: white;
+    }
+
+    .preview-grid-cell {
+      padding: 10px 12px;
+      font-size: 13px;
+      color: #181818;
+      border-right: 1px solid #e5e5e5;
+      min-width: 120px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .preview-grid-cell:first-child {
+      position: relative;
+    }
+
+    .preview-grid-row.child-level-1 .preview-grid-cell:first-child {
+      padding-left: 40px;
+    }
+
+    .preview-grid-row.child-level-2 .preview-grid-cell:first-child {
+      padding-left: 64px;
+    }
+
+    .preview-grid-row.child-level-3 .preview-grid-cell:first-child {
+      padding-left: 88px;
+    }
+
+    .preview-grid-row.child-level-4 .preview-grid-cell:first-child {
+      padding-left: 112px;
+    }
+
+    .preview-grid-row.child-level-5 .preview-grid-cell:first-child {
+      padding-left: 136px;
+    }
+
+    .preview-grid-row.child-level-6 .preview-grid-cell:first-child {
+      padding-left: 160px;
+    }
+
+    .preview-grid-row.child-level-7 .preview-grid-cell:first-child {
+      padding-left: 184px;
+    }
+
+    .preview-grid-row.child-level-8 .preview-grid-cell:first-child {
+      padding-left: 208px;
+    }
+
+    .chevron-icon {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #706e6b;
+      font-size: 12px;
+      margin-right: 4px;
+      user-select: none;
+    }
+
+    .preview-grid-row.parent .chevron-icon {
+      color: #0176d3;
+      cursor: pointer;
+    }
+
+    .preview-grid-row.parent.expanded .chevron-icon::before {
+      content: '▼';
+      display: block;
+    }
+
+    .preview-grid-row.parent.collapsed .chevron-icon::before {
+      content: '▶';
+      display: block;
+    }
+
+    .preview-grid-row.child .chevron-icon {
+      width: 16px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .preview-grid-cell:last-child {
+      border-right: none;
+    }
+
+    .config-title {
+      font-size: 18px;
+      font-weight: 400;
+      color: #03234D;
+      margin: 0 0 8px 0;
+    }
+
+    .config-subtitle {
+      font-size: 13px;
+      color: #706e6b;
+      margin: 0 0 24px 0;
+    }
+
+    .level-item {
+      display: flex;
+      align-items: center;
+      padding: 16px;
+      border-bottom: 1px solid #e5e5e5;
+    }
+
+    .level-item:last-child {
+      border-bottom: none;
+    }
+
+    .level-checkbox {
+      margin-right: 16px;
+    }
+
+    .level-info {
+      flex: 1;
+    }
+
+    .level-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: #181818;
+      margin-bottom: 4px;
+    }
+
+    .level-count {
+      font-size: 12px;
+      color: #706e6b;
+    }
+
+    .level-action {
+      margin-left: 16px;
+    }
+
+    .slds-button_neutral {
+      background-color: white;
+      border: 1px solid #c9c9c9;
+      color: #181818;
+    }
+
+    .slds-button_neutral:disabled {
+      background-color: #f3f2f2;
+      border-color: #e5e5e5;
+      color: #c9c9c9;
+      cursor: not-allowed;
+    }
+
+    /* Modal Overlay */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9000;
+      backdrop-filter: blur(4px);
+    }
+
+    .modal-container {
+      background-color: white;
+      border-radius: 8px;
+      width: 600px;
+      max-width: 90vw;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+    }
+
+    .modal-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid #e5e5e5;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-title {
+      font-size: 18px;
+      font-weight: 400;
+      color: #03234D;
+      margin: 0;
+    }
+
+    .modal-subtitle {
+      font-size: 13px;
+      color: #706e6b;
+      margin: 4px 0 0 0;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px;
+      color: #706e6b;
+      font-size: 20px;
+      line-height: 1;
+    }
+
+    .modal-close:hover {
+      color: #181818;
+    }
+
+    .modal-body {
+      padding: 24px;
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .form-group {
+      margin-bottom: 24px;
+    }
+
+    .form-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #181818;
+      margin-bottom: 8px;
+      display: block;
+    }
+
+    .listview-input-wrapper {
+      position: relative;
+    }
+
+    .listview-input {
+      width: 100%;
+      padding: 8px 40px 8px 12px;
+      border: 1px solid #c9c9c9;
+      border-radius: 4px;
+      font-size: 14px;
+      color: #181818;
+      cursor: pointer;
+    }
+
+    .listview-input:focus {
+      outline: none;
+      border-color: #0176d3;
+      box-shadow: 0 0 0 3px rgba(1, 118, 211, 0.1);
+    }
+
+    .search-icon {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 16px;
+      height: 16px;
+      color: #706e6b;
+      pointer-events: none;
+    }
+
+    .listview-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background-color: white;
+      border: 1px solid #c9c9c9;
+      border-radius: 4px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      margin-top: 4px;
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 1000;
+      display: none;
+    }
+
+    .listview-dropdown.show {
+      display: block;
+    }
+
+    .listview-option {
+      padding: 10px 12px;
+      cursor: pointer;
+      font-size: 14px;
+      color: #181818;
+      border-bottom: 1px solid #f3f2f2;
+    }
+
+    .listview-option:hover {
+      background-color: #f3f2f2;
+    }
+
+    .listview-option:last-child {
+      border-bottom: none;
+    }
+
+    .preview-section {
+      margin-top: 24px;
+    }
+
+    .preview-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #181818;
+      margin-bottom: 8px;
+      display: block;
+    }
+
+    .preview-box {
+      background-color: #fafaf9;
+      border: 1px solid #e5e5e5;
+      border-radius: 4px;
+      padding: 16px;
+      min-height: 200px;
+      max-height: 300px;
+      overflow-y: auto;
+      color: #706e6b;
+      font-size: 14px;
+    }
+
+    .preview-box.empty {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .preview-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    .preview-table thead {
+      background-color: #f3f2f2;
+      border-bottom: 2px solid #e5e5e5;
+    }
+
+    .preview-table th {
+      padding: 10px 12px;
+      text-align: left;
+      font-weight: 600;
+      color: #181818;
+      font-size: 13px;
+    }
+
+    .preview-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #e5e5e5;
+      color: #181818;
+    }
+
+    .preview-table tbody tr:hover {
+      background-color: #fafaf9;
+    }
+
+    .preview-table tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    .modal-footer {
+      padding: 16px 24px;
+      border-top: 1px solid #e5e5e5;
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      background-color: #fafaf9;
+    }
+
+    .slds-button {
+      padding: 8px 16px;
+      font-size: 14px;
+      border-radius: 4px;
+      border: 1px solid;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+
+    .slds-button_neutral {
+      background-color: white;
+      border-color: #c9c9c9;
+      color: #181818;
+    }
+
+    .slds-button_neutral:hover {
+      background-color: #f3f2f2;
+    }
+
+    .slds-button_brand {
+      background-color: #0176d3;
+      border-color: #0176d3;
+      color: white;
+    }
+
+    .slds-button_brand:hover {
+      background-color: #014486;
+      border-color: #014486;
+    }
+  </style>
+</head>
+<body>
+  <!-- Salesforce App Header -->
+  <div class="slds-app-header">
+    <div class="slds-app-header-left">
+      <div class="slds-logo">
+        <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M24.5 14.5c0-3.59-2.91-6.5-6.5-6.5-1.33 0-2.57.4-3.6 1.08-1.1-2.88-3.95-4.83-7.15-4.83-4.42 0-8 3.58-8 8 0 .55.45 1 1 1s1-.45 1-1c0-3.31 2.69-6 6-6 2.64 0 4.9 1.71 5.68 4.1.2.61.76 1.02 1.4 1.02.13 0 .26-.02.38-.05.65-.17 1.33-.27 2.04-.27 3.03 0 5.5 2.47 5.5 5.5 0 .55.45 1 1 1s1-.45 1-1z" fill="#0176d3"/>
+          <path d="M26.5 16.5c0-2.76-2.24-5-5-5-.74 0-1.44.2-2.04.55-.37-1.96-2.1-3.42-4.21-3.42-2.31 0-4.18 1.87-4.18 4.18 0 .28.23.5.5.5s.5-.22.5-.5c0-1.76 1.42-3.18 3.18-3.18 1.5 0 2.78 1.04 3.1 2.5.1.46.5.8.97.8.06 0 .12-.01.18-.02.44-.11.9-.17 1.37-.17 2.21 0 4 1.79 4 4 0 .28.22.5.5.5s.5-.22.5-.5z" fill="#0176d3"/>
+        </svg>
+      </div>
+    </div>
+    <div class="slds-search">
+      <svg class="slds-search-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+      </svg>
+      <input type="text" class="slds-search-input" placeholder="Search...">
+    </div>
+    <div class="slds-app-header-right">
+      <button class="slds-icon-button" title="Favorites">
+        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+        </svg>
+      </button>
+      <button class="slds-icon-button" title="New">
+        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+        </svg>
+      </button>
+      <button class="slds-icon-button" title="Upload">
+        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+        </svg>
+      </button>
+      <button class="slds-icon-button" title="Help">
+        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      </button>
+      <button class="slds-icon-button" title="Setup">
+        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      </button>
+      <button class="slds-icon-button" title="Notifications" style="position: relative;">
+        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+        </svg>
+        <span class="slds-notification-badge">2</span>
+      </button>
+      <div class="slds-user-avatar">U</div>
+    </div>
+  </div>
+
+  <!-- Primary Navigation Bar -->
+  <div class="slds-primary-nav">
+    <div class="slds-app-launcher">
+      <div class="slds-app-launcher-icon">
+        <div class="slds-app-launcher-icon-square"></div>
+        <div class="slds-app-launcher-icon-square"></div>
+        <div class="slds-app-launcher-icon-square"></div>
+        <div class="slds-app-launcher-icon-square"></div>
+        <div class="slds-app-launcher-icon-square"></div>
+        <div class="slds-app-launcher-icon-square"></div>
+        <div class="slds-app-launcher-icon-square"></div>
+        <div class="slds-app-launcher-icon-square"></div>
+        <div class="slds-app-launcher-icon-square"></div>
+      </div>
+      <span class="slds-app-name">Manufacturing Cloud</span>
+    </div>
+    <ul class="slds-nav-list">
+      <li class="slds-nav-item"><a href="#" class="slds-nav-link">Home</a></li>
+      <li class="slds-nav-item"><a href="#" class="slds-nav-link">Analytics</a></li>
+      <li class="slds-nav-item">
+        <a href="#" class="slds-nav-link">
+          Opportunities
+          <svg class="slds-nav-link-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </a>
+      </li>
+      <li class="slds-nav-item">
+        <a href="#" class="slds-nav-link">
+          Leads
+          <svg class="slds-nav-link-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </a>
+      </li>
+      <li class="slds-nav-item">
+        <a href="#" class="slds-nav-link">
+          Tasks
+          <svg class="slds-nav-link-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </a>
+      </li>
+      <li class="slds-nav-item"><a href="#" class="slds-nav-link active">Planning & Forecasting</a></li>
+      <li class="slds-nav-item">
+        <a href="#" class="slds-nav-link">
+          Accounts
+          <svg class="slds-nav-link-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </a>
+      </li>
+      <li class="slds-nav-item">
+        <svg class="slds-nav-edit-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+        </svg>
+      </li>
+    </ul>
+  </div>
+
+  <!-- Page Header Section -->
+  <div class="page-header-section">
+    <div class="page-header">
+      <h1 class="page-title" id="pageTitle">Setup the data for your grid</h1>
+      <p class="page-subtitle" id="pageSubtitle">Select the hierarchies you want to include in your grid</p>
+    </div>
+  </div>
+
+  <!-- Step 1: Select Hierarchies -->
+  <div class="step-container active" id="step1">
+    <div class="duelling-picklist-container">
+      <div class="duelling-picklist-wrapper">
+        <div class="picklist-column">
+          <label class="picklist-label">Available Hierarchies</label>
+          <div class="picklist-box" id="availableHierarchies">
+            <div class="picklist-item" data-value="account">Account</div>
+            <div class="picklist-item" data-value="product">Product</div>
+            <div class="picklist-item" data-value="users">Users</div>
+            <div class="picklist-item" data-value="regions">Regions</div>
+          </div>
+        </div>
+        <div class="picklist-controls">
+          <button class="picklist-button" onclick="moveToSelected()" id="moveRightBtn" disabled>
+            &gt;
+          </button>
+          <button class="picklist-button" onclick="moveToAvailable()" id="moveLeftBtn" disabled>
+            &lt;
+          </button>
+        </div>
+        <div class="picklist-column">
+          <label class="picklist-label">Selected Hierarchies</label>
+          <div style="display: flex; gap: 8px;">
+            <div class="picklist-box" id="selectedHierarchies" style="flex: 1;">
+              <!-- Selected items will appear here -->
+            </div>
+            <div class="picklist-controls" style="padding-top: 0; align-items: flex-start; padding-top: 8px;">
+              <button class="picklist-button" onclick="moveSelectedUp()" id="moveUpBtn" disabled>
+                ▲
+              </button>
+              <button class="picklist-button" onclick="moveSelectedDown()" id="moveDownBtn" disabled>
+                ▼
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 2: Hierarchy Depth & Data Settings -->
+  <div class="step-container" id="step2">
+    <!-- Main Content (where grid would be) -->
+    <div class="container step2-container">
+    <!-- Users Dropdown -->
+    <div class="users-dropdown-container">
+      <label for="usersDropdown" class="users-dropdown-label">Users</label>
+      <div class="slds-form-element">
+        <div class="slds-form-element__control">
+          <div class="slds-select_container">
+            <select class="slds-select" id="usersDropdown" name="users">
+              <option value="">--None--</option>
+              <option value="joe">Joe</option>
+              <option value="john">John</option>
+              <option value="ron">Ron</option>
+              <option value="sarah">Sarah</option>
+              <option value="mike">Mike</option>
+              <option value="emily">Emily</option>
+              <option value="david">David</option>
+              <option value="lisa">Lisa</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Content Row -->
+    <div class="step2-content-row">
+      <!-- Combined Block -->
+      <div class="combined-hierarchy-block">
+      <!-- Hierarchies List Section -->
+      <div class="hierarchies-section">
+        <div class="hierarchies-title">HIERARCHIES</div>
+        <div id="hierarchiesList">
+          <!-- Will be populated dynamically from selectedHierarchies -->
+        </div>
+      </div>
+
+      <!-- Hierarchy Configuration Section -->
+      <div class="hierarchy-config-section">
+        <h2 class="config-title" id="configTitle">Account Hierarchy:</h2>
+        <p class="config-subtitle" id="configSubtitle">Select Hierarchy Depth and records to be shown at each level</p>
+
+          <div class="level-item">
+            <div class="level-checkbox">
+              <input type="checkbox" id="level1" class="slds-checkbox" onchange="toggleLevel(1)">
+              <label for="level1" class="slds-checkbox__label"></label>
+            </div>
+            <div class="level-info">
+              <div class="level-name" id="level1-name">Enterprise</div>
+              <div class="level-count"></div>
+            </div>
+            <div class="level-action">
+              <button class="slds-button slds-button_neutral" onclick="openSelectRecordsModal(1)" disabled>
+                Select records
+              </button>
+            </div>
+          </div>
+
+          <div class="level-item">
+            <div class="level-checkbox">
+              <input type="checkbox" id="level2" class="slds-checkbox" onchange="toggleLevel(2)">
+              <label for="level2" class="slds-checkbox__label"></label>
+            </div>
+            <div class="level-info">
+              <div class="level-name" id="level2-name">Division</div>
+              <div class="level-count"></div>
+            </div>
+            <div class="level-action">
+              <button class="slds-button slds-button_neutral" onclick="openSelectRecordsModal(2)" disabled>
+                Select records
+              </button>
+            </div>
+          </div>
+
+          <div class="level-item">
+            <div class="level-checkbox">
+              <input type="checkbox" id="level3" class="slds-checkbox" onchange="toggleLevel(3)">
+              <label for="level3" class="slds-checkbox__label"></label>
+            </div>
+            <div class="level-info">
+              <div class="level-name" id="level3-name">Business Unit</div>
+              <div class="level-count"></div>
+            </div>
+            <div class="level-action">
+              <button class="slds-button slds-button_neutral" onclick="openSelectRecordsModal(3)" disabled>
+                Select records
+              </button>
+            </div>
+          </div>
+
+          <div class="level-item">
+            <div class="level-checkbox">
+              <input type="checkbox" id="level4" class="slds-checkbox" onchange="toggleLevel(4)">
+              <label for="level4" class="slds-checkbox__label"></label>
+            </div>
+            <div class="level-info">
+              <div class="level-name" id="level4-name">Account Group</div>
+              <div class="level-count"></div>
+            </div>
+            <div class="level-action">
+              <button class="slds-button slds-button_neutral" onclick="openSelectRecordsModal(4)" disabled>
+                Select records
+              </button>
+            </div>
+          </div>
+
+          <div class="level-item">
+            <div class="level-checkbox">
+              <input type="checkbox" id="level5" class="slds-checkbox" onchange="toggleLevel(5)">
+              <label for="level5" class="slds-checkbox__label"></label>
+            </div>
+            <div class="level-info">
+              <div class="level-name" id="level5-name">Account</div>
+              <div class="level-count"></div>
+            </div>
+            <div class="level-action">
+              <button class="slds-button slds-button_neutral" onclick="openSelectRecordsModal(5)" disabled>
+                Select records
+              </button>
+            </div>
+        </div>
+      </div>
+      </div>
+
+      <!-- Preview Section -->
+      <div class="preview-section-step2">
+        <h3 class="preview-section-step2-title" id="previewTitle">Preview</h3>
+        <div class="preview-grid" id="gridPreview">
+          <!-- Preview will be populated dynamically -->
+        </div>
+      </div>
+    </div>
+    </div>
+  </div>
+
+  <!-- Stepper Footer -->
+  <div class="stepper-footer">
+    <div class="stepper-footer-content">
+      <div class="stepper-progress">
+        <div class="stepper-track">
+          <div class="stepper-step completed">
+            <div class="stepper-dot completed">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M10 3L4.5 8.5L2 6" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+          </div>
+          <div class="stepper-line completed"></div>
+          <div class="stepper-step active">
+            <div class="stepper-dot active"></div>
+          </div>
+        </div>
+      </div>
+      <div class="stepper-footer-buttons">
+        <button class="slds-button slds-button_neutral" onclick="goToPreviousStep()" id="previousBtn">
+          Previous
+        </button>
+        <button class="slds-button slds-button_brand" onclick="currentStep === 2 ? saveSettings() : goToNextStep()" id="nextBtn">
+          <span id="nextBtnText">Next</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal -->
+  <div id="selectRecordsModal" class="modal-overlay" style="display: none;" onclick="closeModalOnOverlay(event)">
+    <div class="modal-container" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title" id="modalTitle">Enterprise</h2>
+          <p class="modal-subtitle" id="modalSubtitle"></p>
+        </div>
+        <button class="modal-close" onclick="closeModal()" aria-label="Close">×</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label" id="modalListLabel">Enterprise List:</label>
+          <div class="listview-input-wrapper">
+            <input 
+              type="text" 
+              class="listview-input" 
+              placeholder="Select Listview"
+              id="listviewInput"
+              readonly
+              onclick="toggleListviewDropdown()"
+            >
+            <svg class="search-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+            <div class="listview-dropdown" id="listviewDropdown">
+              <!-- Options will be populated dynamically -->
+            </div>
+          </div>
+        </div>
+
+        <div class="preview-section">
+          <label class="preview-label" id="previewLabel">Preview</label>
+          <div class="preview-box empty" id="previewBox">
+            <span>Select a listview to preview</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="slds-button slds-button_neutral" onclick="closeModal()">
+          Cancel
+        </button>
+        <button class="slds-button slds-button_brand" onclick="saveSelection()">
+          Save
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Step management
+    let currentStep = 1;
+    let selectedHierarchies = [];
+      // Store selected listviews for each hierarchy level: { hierarchy: { level: listviewName } }
+      let selectedListviews = {};
+      // Store enabled (checked) levels for each hierarchy: { hierarchy: { level: true/false } }
+      let enabledLevelsPerHierarchy = {};
+
+    // Hierarchy display names
+    const hierarchyDisplayNames = {
+      account: 'Account',
+      product: 'Product',
+      users: 'Users',
+      regions: 'Regions'
+    };
+
+    // Duelling picklist functions
+    function initDuellingPicklist() {
+      // Use event delegation for better performance and to handle dynamically added items
+      const availableBox = document.getElementById('availableHierarchies');
+      const selectedBox = document.getElementById('selectedHierarchies');
+      
+      // Remove existing listeners to avoid duplicates
+      if (availableBox) {
+        availableBox.addEventListener('click', function(e) {
+          const item = e.target.closest('.picklist-item');
+          if (item && item.parentElement === availableBox) {
+            // Deselect all items in available box first
+            availableBox.querySelectorAll('.picklist-item').forEach(i => {
+              i.classList.remove('selected');
+            });
+            // Select clicked item
+            item.classList.add('selected');
+            updateMoveButtons();
+          }
+        });
+      }
+
+      if (selectedBox) {
+        selectedBox.addEventListener('click', function(e) {
+          const item = e.target.closest('.picklist-item');
+          if (item && item.parentElement === selectedBox) {
+            // Deselect all items in selected box first
+            selectedBox.querySelectorAll('.picklist-item').forEach(i => {
+              i.classList.remove('selected');
+            });
+            // Select clicked item
+            item.classList.add('selected');
+            updateMoveButtons();
+            updateOrderButtons();
+          }
+        });
+      }
+      
+      // Initialize button states
+      updateMoveButtons();
+      updateOrderButtons();
+    }
+
+    function updateMoveButtons() {
+      const availableSelected = document.querySelectorAll('#availableHierarchies .picklist-item.selected');
+      const selectedSelected = document.querySelectorAll('#selectedHierarchies .picklist-item.selected');
+      
+      const moveRightBtn = document.getElementById('moveRightBtn');
+      const moveLeftBtn = document.getElementById('moveLeftBtn');
+      
+      if (moveRightBtn) {
+        moveRightBtn.disabled = availableSelected.length === 0;
+      }
+      if (moveLeftBtn) {
+        moveLeftBtn.disabled = selectedSelected.length === 0;
+      }
+    }
+
+    function moveToSelected() {
+      const availableBox = document.getElementById('availableHierarchies');
+      const selectedBox = document.getElementById('selectedHierarchies');
+      const selectedItems = availableBox.querySelectorAll('.picklist-item.selected');
+      
+      if (selectedItems.length === 0) return;
+      
+      selectedItems.forEach(item => {
+        item.classList.remove('selected');
+        const value = item.getAttribute('data-value');
+        selectedHierarchies.push(value);
+        
+        const newItem = createSelectedItem(value);
+        selectedBox.appendChild(newItem);
+        item.remove();
+      });
+      
+      updateMoveButtons();
+      updateOrderButtons();
+    }
+
+    function createSelectedItem(value) {
+      const newItem = document.createElement('div');
+      newItem.className = 'picklist-item';
+      newItem.setAttribute('data-value', value);
+      newItem.textContent = hierarchyDisplayNames[value];
+      // Event listener is handled by delegation in initDuellingPicklist
+      
+      return newItem;
+    }
+
+    function moveSelectedUp() {
+      const selectedBox = document.getElementById('selectedHierarchies');
+      const selectedItem = selectedBox.querySelector('.picklist-item.selected');
+      
+      if (!selectedItem) return;
+      
+      const items = Array.from(selectedBox.querySelectorAll('.picklist-item'));
+      const currentIndex = items.indexOf(selectedItem);
+      
+      if (currentIndex > 0) {
+        const value = selectedItem.getAttribute('data-value');
+        const prevValue = items[currentIndex - 1].getAttribute('data-value');
+        
+        // Swap in array
+        const arrayIndex = selectedHierarchies.indexOf(value);
+        const prevArrayIndex = selectedHierarchies.indexOf(prevValue);
+        [selectedHierarchies[arrayIndex], selectedHierarchies[prevArrayIndex]] = 
+          [selectedHierarchies[prevArrayIndex], selectedHierarchies[arrayIndex]];
+        
+        // Swap in DOM
+        selectedBox.insertBefore(selectedItem, items[currentIndex - 1]);
+        updateOrderButtons();
+      }
+    }
+
+    function moveSelectedDown() {
+      const selectedBox = document.getElementById('selectedHierarchies');
+      const selectedItem = selectedBox.querySelector('.picklist-item.selected');
+      
+      if (!selectedItem) return;
+      
+      const items = Array.from(selectedBox.querySelectorAll('.picklist-item'));
+      const currentIndex = items.indexOf(selectedItem);
+      
+      if (currentIndex < items.length - 1) {
+        const value = selectedItem.getAttribute('data-value');
+        const nextValue = items[currentIndex + 1].getAttribute('data-value');
+        
+        // Swap in array
+        const arrayIndex = selectedHierarchies.indexOf(value);
+        const nextArrayIndex = selectedHierarchies.indexOf(nextValue);
+        [selectedHierarchies[arrayIndex], selectedHierarchies[nextArrayIndex]] = 
+          [selectedHierarchies[nextArrayIndex], selectedHierarchies[arrayIndex]];
+        
+        // Swap in DOM
+        if (currentIndex + 2 < items.length) {
+          selectedBox.insertBefore(selectedItem, items[currentIndex + 2]);
+        } else {
+          selectedBox.appendChild(selectedItem);
+        }
+        updateOrderButtons();
+      }
+    }
+
+    function updateOrderButtons() {
+      const selectedBox = document.getElementById('selectedHierarchies');
+      const selectedItem = selectedBox.querySelector('.picklist-item.selected');
+      const items = Array.from(selectedBox.querySelectorAll('.picklist-item'));
+      const moveUpBtn = document.getElementById('moveUpBtn');
+      const moveDownBtn = document.getElementById('moveDownBtn');
+      
+      if (!selectedItem) {
+        if (moveUpBtn) moveUpBtn.disabled = true;
+        if (moveDownBtn) moveDownBtn.disabled = true;
+        return;
+      }
+      
+      const currentIndex = items.indexOf(selectedItem);
+      
+      if (moveUpBtn) moveUpBtn.disabled = currentIndex === 0;
+      if (moveDownBtn) moveDownBtn.disabled = currentIndex === items.length - 1;
+    }
+
+    function populateHierarchiesList() {
+      const hierarchiesList = document.getElementById('hierarchiesList');
+      if (!hierarchiesList) return;
+      
+      hierarchiesList.innerHTML = '';
+      
+      selectedHierarchies.forEach((hierarchy, index) => {
+        const item = document.createElement('div');
+        item.className = 'hierarchy-item';
+        if (index === 0) {
+          item.classList.add('active');
+        }
+        item.setAttribute('data-hierarchy', hierarchy);
+        item.textContent = hierarchyDisplayNames[hierarchy];
+        item.onclick = function() {
+          selectHierarchy(hierarchy, this);
+        };
+        hierarchiesList.appendChild(item);
+      });
+    }
+
+    function moveToAvailable() {
+      const availableBox = document.getElementById('availableHierarchies');
+      const selectedBox = document.getElementById('selectedHierarchies');
+      const selectedItems = selectedBox.querySelectorAll('.picklist-item.selected');
+      
+      if (selectedItems.length === 0) return;
+      
+      selectedItems.forEach(item => {
+        item.classList.remove('selected');
+        const value = item.getAttribute('data-value');
+        selectedHierarchies = selectedHierarchies.filter(h => h !== value);
+        
+        const newItem = document.createElement('div');
+        newItem.className = 'picklist-item';
+        newItem.setAttribute('data-value', value);
+        newItem.textContent = hierarchyDisplayNames[value];
+        // Event listener is handled by delegation in initDuellingPicklist
+        availableBox.appendChild(newItem);
+        item.remove();
+      });
+      
+      updateMoveButtons();
+      updateOrderButtons();
+    }
+
+    function goToStep(step) {
+      currentStep = step;
+      
+      // Hide all steps
+      document.querySelectorAll('.step-container').forEach(container => {
+        container.classList.remove('active');
+      });
+      
+      // Show current step
+      document.getElementById(`step${step}`).classList.add('active');
+      
+      // Update page title and subtitle
+      const pageTitle = document.getElementById('pageTitle');
+      const pageSubtitle = document.getElementById('pageSubtitle');
+      
+      if (step === 1) {
+        pageTitle.textContent = 'Setup the data for your grid';
+        pageSubtitle.textContent = 'Select the hierarchies you want to include in your grid';
+      } else if (step === 2) {
+        pageTitle.textContent = 'Hierarchy Depth & Data Settings';
+        
+        // Update subtitle with selected hierarchies
+        if (selectedHierarchies && selectedHierarchies.length > 0) {
+          const hierarchyNames = selectedHierarchies.map(h => {
+            return hierarchyLevels[h]?.name || h.charAt(0).toUpperCase() + h.slice(1);
+          });
+          
+          let hierarchyText = '';
+          if (hierarchyNames.length === 1) {
+            hierarchyText = hierarchyNames[0];
+          } else if (hierarchyNames.length === 2) {
+            hierarchyText = `${hierarchyNames[0]} and ${hierarchyNames[1]}`;
+          } else {
+            const lastHierarchy = hierarchyNames.pop();
+            hierarchyText = hierarchyNames.join(', ') + ' and ' + lastHierarchy;
+          }
+          
+          pageSubtitle.textContent = `1000+ Records spread across the levels of ${hierarchyText} hierarchies.`;
+        } else {
+          pageSubtitle.textContent = '1000+ Records spread across the levels of selected hierarchies.';
+        }
+        
+        populateHierarchiesList();
+        // Disable all level buttons initially
+        for (let i = 1; i <= 5; i++) {
+          const checkbox = document.getElementById(`level${i}`);
+          const button = checkbox.closest('.level-item').querySelector('button');
+          if (checkbox && !checkbox.checked && button) {
+            button.disabled = true;
+          }
+        }
+        updateGridPreview();
+        // Select first hierarchy by default
+        if (selectedHierarchies.length > 0) {
+          setTimeout(() => {
+            const firstHierarchy = selectedHierarchies[0];
+            const firstItem = document.querySelector(`[data-hierarchy="${firstHierarchy}"]`);
+            if (firstItem) {
+              selectHierarchy(firstHierarchy, firstItem);
+            }
+          }, 100);
+        }
+      }
+      
+      // Update footer buttons
+      const previousBtn = document.getElementById('previousBtn');
+      const nextBtn = document.getElementById('nextBtn');
+      const nextBtnText = document.getElementById('nextBtnText');
+      
+      if (previousBtn) {
+        previousBtn.disabled = step === 1;
+        if (step === 1) {
+          previousBtn.style.opacity = '0.5';
+          previousBtn.style.cursor = 'not-allowed';
+        } else {
+          previousBtn.style.opacity = '1';
+          previousBtn.style.cursor = 'pointer';
+        }
+      }
+      if (nextBtnText) {
+        nextBtnText.textContent = step === 2 ? 'Save' : 'Next';
+      }
+      
+      // Update stepper
+      updateStepper(step);
+    }
+
+
+    function updateStepper(step) {
+      // Update stepper dots
+      const stepperSteps = document.querySelectorAll('.stepper-step');
+      
+      stepperSteps.forEach((stepEl, index) => {
+        const stepNum = index + 1;
+        if (stepNum < step) {
+          stepEl.classList.add('completed');
+          stepEl.classList.remove('active');
+        } else if (stepNum === step) {
+          stepEl.classList.add('active');
+          stepEl.classList.remove('completed');
+        } else {
+          stepEl.classList.remove('active', 'completed');
+        }
+      });
+      
+      // Update stepper lines
+      const stepperLines = document.querySelectorAll('.stepper-line');
+      stepperLines.forEach((line, index) => {
+        if (index + 1 < step) {
+          line.classList.add('completed');
+        } else {
+          line.classList.remove('completed');
+        }
+      });
+    }
+
+    function goToPreviousStep() {
+      if (currentStep > 1) {
+        goToStep(currentStep - 1);
+      }
+    }
+
+    function goToNextStep() {
+      if (currentStep === 1 && selectedHierarchies.length === 0) {
+        alert('Please select at least one hierarchy');
+        return;
+      }
+      if (currentStep < 2) {
+        goToStep(currentStep + 1);
+      }
+    }
+
+    // Hierarchy level names configuration
+    const hierarchyLevels = {
+      account: {
+        name: 'Account',
+        levels: ['Enterprise', 'Division', 'Business Unit', 'Account Group', 'Account'],
+        listviews: ['All Accounts', 'Enterprise Accounts', 'Top 100 Accounts', 'Active Accounts', 'Enterprise - North Region', 'Enterprise Systems', 'Cloud Services Group', 'Financial Services Corp.']
+      },
+      product: {
+        name: 'Product',
+        levels: ['Category', 'Subcategory', 'Product Line', 'Product Family', 'SKU'],
+        listviews: ['All Categories', 'Electronics', 'Clothing', 'Home & Garden', 'Sports & Outdoors', 'Automotive', 'Health & Beauty', 'Food & Beverage']
+      },
+      users: {
+        name: 'Users',
+        levels: ['Role', 'Team', 'Department', 'Manager', 'User'],
+        listviews: ['All Users', 'Sales Team', 'Marketing Team', 'Support Team', 'Management', 'Administrators', 'Developers', 'Analysts']
+      },
+      regions: {
+        name: 'Regions',
+        levels: ['Country', 'State', 'City', 'District', 'Zone'],
+        listviews: ['All Regions', 'North America', 'Europe', 'Asia Pacific', 'Latin America', 'Middle East & Africa', 'United States', 'Canada']
+      }
+    };
+
+    let currentHierarchy = 'account';
+
+    function selectHierarchy(hierarchy, element) {
+      currentHierarchy = hierarchy;
+      
+      // Update active state
+      document.querySelectorAll('.hierarchy-item').forEach(item => {
+        item.classList.remove('active');
+      });
+      element.classList.add('active');
+      
+      // Update hierarchy title with user's name
+      const configTitle = document.getElementById('configTitle');
+      const configSubtitle = document.getElementById('configSubtitle');
+      const usersDropdown = document.getElementById('usersDropdown');
+      let titleText = `${hierarchyLevels[hierarchy].name} Hierarchy:`;
+      let subtitleText = 'Select Hierarchy Depth and records to be shown at each level';
+      
+      if (usersDropdown && usersDropdown.value && usersDropdown.value !== '') {
+        const userName = usersDropdown.value.charAt(0).toUpperCase() + usersDropdown.value.slice(1);
+        titleText = `${userName}'s ${hierarchyLevels[hierarchy].name} Hierarchy:`;
+        subtitleText = `${userName}, select Hierarchy Depth and records to be shown at each level`;
+      }
+      
+      configTitle.textContent = titleText;
+      if (configSubtitle) {
+        configSubtitle.textContent = subtitleText;
+      }
+      
+      // Update level names
+      const levels = hierarchyLevels[hierarchy].levels;
+      const counts = {
+        1: 10,
+        2: 100,
+        3: 200,
+        4: 400,
+        5: 800
+      };
+      
+      for (let i = 1; i <= 5; i++) {
+        const levelNameEl = document.getElementById(`level${i}-name`);
+        if (levelNameEl) {
+          levelNameEl.textContent = levels[i - 1];
+        }
+        
+        // Auto-select first listview if none selected
+        if (!selectedListviews[hierarchy]) {
+          selectedListviews[hierarchy] = {};
+        }
+        if (!selectedListviews[hierarchy][i]) {
+          const firstListview = hierarchyLevels[hierarchy].listviews[0];
+          if (firstListview) {
+            selectedListviews[hierarchy][i] = firstListview;
+          }
+        }
+        
+        // Initialize enabled state tracking for this hierarchy
+        if (!enabledLevelsPerHierarchy[hierarchy]) {
+          enabledLevelsPerHierarchy[hierarchy] = {};
+        }
+        
+        // Update checkbox state based on stored enabled state for this hierarchy
+        const checkbox = document.getElementById(`level${i}`);
+        if (checkbox) {
+          // If enabled state is not set, default to unchecked
+          const isEnabled = enabledLevelsPerHierarchy[hierarchy][i] !== undefined 
+            ? enabledLevelsPerHierarchy[hierarchy][i] 
+            : false;
+          checkbox.checked = isEnabled;
+          
+          // Update button state
+          const button = checkbox.closest('.level-item').querySelector('button');
+          if (button) {
+            button.disabled = !isEnabled;
+          }
+        }
+        
+        // Update level count display - show listview name if selected, otherwise just count
+        const levelCountEl = document.getElementById(`level${i}`).closest('.level-item').querySelector('.level-count');
+        if (levelCountEl) {
+          const selectedListview = selectedListviews[hierarchy]?.[i];
+          if (selectedListview) {
+            levelCountEl.textContent = selectedListview;
+          } else {
+            levelCountEl.textContent = '';
+          }
+        }
+      }
+      
+      // Update grid preview
+      updateGridPreview();
+    }
+
+    function toggleLevel(level) {
+      const checkbox = document.getElementById(`level${level}`);
+      const button = checkbox.closest('.level-item').querySelector('button');
+      
+      // Store enabled state for current hierarchy
+      if (!enabledLevelsPerHierarchy[currentHierarchy]) {
+        enabledLevelsPerHierarchy[currentHierarchy] = {};
+      }
+      enabledLevelsPerHierarchy[currentHierarchy][level] = checkbox.checked;
+      
+      if (!checkbox.checked) {
+        button.disabled = true;
+      } else {
+        button.disabled = false;
+      }
+      
+      // Update grid preview when levels change
+      updateGridPreview();
+    }
+
+    function openSelectRecordsModal(level) {
+      const modal = document.getElementById('selectRecordsModal');
+      const modalTitle = document.getElementById('modalTitle');
+      const modalSubtitle = document.getElementById('modalSubtitle');
+      const modalListLabel = document.getElementById('modalListLabel');
+      const listviewInput = document.getElementById('listviewInput');
+      const dropdown = document.getElementById('listviewDropdown');
+      const previewBox = document.getElementById('previewBox');
+      const previewLabel = document.getElementById('previewLabel');
+      
+      const levels = hierarchyLevels[currentHierarchy].levels;
+      const levelName = levels[level - 1];
+      
+      // Update modal content based on level
+      modalTitle.textContent = levelName;
+      modalListLabel.textContent = `${levelName} List:`;
+      
+      // Update placeholder text based on level name
+      listviewInput.placeholder = `Select ${levelName} Listview`;
+      
+      // Update preview label
+      previewLabel.textContent = `Preview ${levelName}`;
+      
+      // Check if there's already a selected listview for this level
+      const existingListview = selectedListviews[currentHierarchy]?.[level];
+      if (existingListview) {
+        listviewInput.value = existingListview;
+        const previewData = getPreviewData(existingListview, currentHierarchy, level);
+        displayPreview(previewData);
+      } else {
+        // Reset input and preview
+        listviewInput.value = '';
+        previewBox.innerHTML = `<span>Select a listview to preview ${levelName.toLowerCase()}</span>`;
+        previewBox.classList.add('empty');
+      }
+      
+      // Populate dropdown with hierarchy-specific options
+      populateListviewDropdown();
+      
+      // Update modal subtitle with count and listview name if available
+      const counts = {
+        1: 10,
+        2: 100,
+        3: 200,
+        4: 400,
+        5: 800
+      };
+      
+      if (existingListview) {
+        modalSubtitle.textContent = existingListview;
+      } else {
+        modalSubtitle.textContent = '';
+      }
+      
+      modal.style.display = 'flex';
+    }
+
+    function populateListviewDropdown() {
+      const dropdown = document.getElementById('listviewDropdown');
+      const listviews = hierarchyLevels[currentHierarchy].listviews || [];
+      
+      dropdown.innerHTML = '';
+      
+      listviews.forEach(listview => {
+        const option = document.createElement('div');
+        option.className = 'listview-option';
+        option.textContent = listview;
+        option.onclick = () => selectListview(listview);
+        dropdown.appendChild(option);
+      });
+    }
+
+    function closeModal() {
+      document.getElementById('selectRecordsModal').style.display = 'none';
+    }
+
+    function closeModalOnOverlay(event) {
+      if (event.target.classList.contains('modal-overlay')) {
+        closeModal();
+      }
+    }
+
+    function saveSelection() {
+      // Get the current level being edited
+      const listviewInput = document.getElementById('listviewInput');
+      const listviewName = listviewInput.value;
+      
+      if (!listviewName) {
+        alert('Please select a listview');
+        return;
+      }
+      
+      // Find which level is currently being edited (stored in modal)
+      const modalTitle = document.getElementById('modalTitle').textContent;
+      const levels = hierarchyLevels[currentHierarchy].levels;
+      const levelIndex = levels.indexOf(modalTitle);
+      
+      if (levelIndex !== -1) {
+        // Store the selected listview for this hierarchy and level
+        if (!selectedListviews[currentHierarchy]) {
+          selectedListviews[currentHierarchy] = {};
+        }
+        selectedListviews[currentHierarchy][levelIndex + 1] = listviewName;
+        
+        // Update the level count display with listview name
+        const previewData = getPreviewData(listviewName, currentHierarchy, levelIndex + 1);
+        const count = previewData.length;
+        const levelCountEl = document.getElementById(`level${levelIndex + 1}`).closest('.level-item').querySelector('.level-count');
+        if (levelCountEl) {
+          levelCountEl.textContent = listviewName;
+        }
+      }
+      
+      // Update grid preview
+      updateGridPreview();
+      
+      closeModal();
+    }
+
+
+    function saveSettings() {
+      // Save settings logic
+      console.log('Saving hierarchy depth settings...');
+      console.log('Selected hierarchies:', selectedHierarchies);
+      // Add save logic here
+      alert('Settings saved successfully!');
+    }
+
+    function toggleListviewDropdown() {
+      const dropdown = document.getElementById('listviewDropdown');
+      dropdown.classList.toggle('show');
+    }
+
+    function selectListview(listviewName) {
+      const input = document.getElementById('listviewInput');
+      const dropdown = document.getElementById('listviewDropdown');
+      const previewBox = document.getElementById('previewBox');
+      
+      input.value = listviewName;
+      dropdown.classList.remove('show');
+      
+      // Show preview based on selected listview
+      // Get current level from modal
+      const modalTitle = document.getElementById('modalTitle').textContent;
+      const levels = hierarchyLevels[currentHierarchy].levels;
+      const levelIndex = levels.indexOf(modalTitle);
+      const level = levelIndex !== -1 ? levelIndex + 1 : 1;
+      const previewData = getPreviewData(listviewName, currentHierarchy, level);
+      displayPreview(previewData);
+    }
+
+    function getPreviewData(listviewName, hierarchy, level) {
+      // Use hierarchy and level if provided, otherwise fall back to currentHierarchy
+      const h = hierarchy || currentHierarchy;
+      const l = level || 1;
+      
+      // Sample preview data based on hierarchy type, level, and listview with multiple columns
+      const previewDataByHierarchyAndLevel = {
+        account: {
+          1: { // Enterprise level
+            'All Accounts': [
+              { name: 'Acme Corporation', type: 'Enterprise', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Global Industries Inc.', type: 'Enterprise', status: 'Active', region: 'Europe', industry: 'Manufacturing' },
+              { name: 'Tech Solutions Ltd.', type: 'Enterprise', status: 'Active', region: 'Asia Pacific', industry: 'Technology' },
+              { name: 'Manufacturing Co.', type: 'Mid-Market', status: 'Active', region: 'North America', industry: 'Manufacturing' },
+              { name: 'Enterprise Systems', type: 'Enterprise', status: 'Active', region: 'North America', industry: 'Technology' }
+            ],
+            'Enterprise Accounts': [
+              { name: 'Acme Corporation', type: 'Enterprise', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Global Industries Inc.', type: 'Enterprise', status: 'Active', region: 'Europe', industry: 'Manufacturing' },
+              { name: 'Tech Solutions Ltd.', type: 'Enterprise', status: 'Active', region: 'Asia Pacific', industry: 'Technology' },
+              { name: 'Enterprise Systems', type: 'Enterprise', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Cloud Services Group', type: 'Enterprise', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Financial Services Corp.', type: 'Enterprise', status: 'Active', region: 'North America', industry: 'Finance' }
+            ],
+            'Top 100 Accounts': [
+              { name: 'Acme Corporation', type: 'Enterprise', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Global Industries Inc.', type: 'Enterprise', status: 'Active', region: 'Europe', industry: 'Manufacturing' },
+              { name: 'Tech Solutions Ltd.', type: 'Enterprise', status: 'Active', region: 'Asia Pacific', industry: 'Technology' },
+              { name: 'Enterprise Systems', type: 'Enterprise', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Cloud Services Group', type: 'Enterprise', status: 'Active', region: 'North America', industry: 'Technology' }
+            ],
+            'Active Accounts': [
+              { name: 'Acme Corporation', type: 'Enterprise', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Tech Solutions Ltd.', type: 'Enterprise', status: 'Active', region: 'Asia Pacific', industry: 'Technology' },
+              { name: 'Cloud Services Group', type: 'Enterprise', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Healthcare Solutions', type: 'Enterprise', status: 'Active', region: 'North America', industry: 'Healthcare' }
+            ],
+            'Enterprise - North Region': [
+              { name: 'Acme Corporation', type: 'Enterprise', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Global Industries Inc.', type: 'Enterprise', status: 'Active', region: 'North America', industry: 'Manufacturing' },
+              { name: 'Tech Solutions Ltd.', type: 'Enterprise', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Enterprise Systems', type: 'Enterprise', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Cloud Services Group', type: 'Enterprise', status: 'Active', region: 'North America', industry: 'Technology' }
+            ],
+            'Enterprise Systems': [
+              { name: 'Enterprise Systems', type: 'Enterprise', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Enterprise Solutions', type: 'Enterprise', status: 'Active', region: 'Europe', industry: 'Technology' },
+              { name: 'Enterprise Tech', type: 'Enterprise', status: 'Active', region: 'Asia Pacific', industry: 'Technology' },
+              { name: 'Enterprise Corp.', type: 'Enterprise', status: 'Active', region: 'North America', industry: 'Technology' }
+            ],
+            'Cloud Services Group': [
+              { name: 'Cloud Services Group', type: 'Enterprise', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Cloud Solutions Inc.', type: 'Enterprise', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Cloud Tech Ltd.', type: 'Mid-Market', status: 'Active', region: 'Europe', industry: 'Technology' },
+              { name: 'Cloud Innovations', type: 'Enterprise', status: 'Active', region: 'North America', industry: 'Technology' }
+            ],
+            'Financial Services Corp.': [
+              { name: 'Financial Services Corp.', type: 'Enterprise', status: 'Active', region: 'North America', industry: 'Finance' },
+              { name: 'Finance Solutions', type: 'Mid-Market', status: 'Active', region: 'North America', industry: 'Finance' },
+              { name: 'Financial Group', type: 'Enterprise', status: 'Active', region: 'Europe', industry: 'Finance' },
+              { name: 'Banking Services Inc.', type: 'Enterprise', status: 'Active', region: 'North America', industry: 'Finance' }
+            ]
+          },
+          2: { // Division level
+            'All Accounts': [
+              { name: 'North Division', type: 'Division', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'South Division', type: 'Division', status: 'Active', region: 'North America', industry: 'Manufacturing' },
+              { name: 'East Division', type: 'Division', status: 'Active', region: 'Europe', industry: 'Technology' },
+              { name: 'West Division', type: 'Division', status: 'Active', region: 'Asia Pacific', industry: 'Technology' },
+              { name: 'Central Division', type: 'Division', status: 'Active', region: 'North America', industry: 'Healthcare' }
+            ],
+            'Enterprise Accounts': [
+              { name: 'Enterprise North Division', type: 'Division', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Enterprise South Division', type: 'Division', status: 'Active', region: 'North America', industry: 'Manufacturing' },
+              { name: 'Enterprise East Division', type: 'Division', status: 'Active', region: 'Europe', industry: 'Technology' },
+              { name: 'Enterprise West Division', type: 'Division', status: 'Active', region: 'Asia Pacific', industry: 'Technology' }
+            ],
+            'Top 100 Accounts': [
+              { name: 'Premium North Division', type: 'Division', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Premium South Division', type: 'Division', status: 'Active', region: 'North America', industry: 'Manufacturing' },
+              { name: 'Premium East Division', type: 'Division', status: 'Active', region: 'Europe', industry: 'Technology' }
+            ],
+            'Active Accounts': [
+              { name: 'Active North Division', type: 'Division', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Active South Division', type: 'Division', status: 'Active', region: 'North America', industry: 'Manufacturing' },
+              { name: 'Active East Division', type: 'Division', status: 'Active', region: 'Europe', industry: 'Technology' }
+            ],
+            'Enterprise - North Region': [
+              { name: 'North Region Division A', type: 'Division', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'North Region Division B', type: 'Division', status: 'Active', region: 'North America', industry: 'Manufacturing' },
+              { name: 'North Region Division C', type: 'Division', status: 'Active', region: 'North America', industry: 'Technology' }
+            ],
+            'Enterprise Systems': [
+              { name: 'Enterprise Systems Division', type: 'Division', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Enterprise Solutions Division', type: 'Division', status: 'Active', region: 'Europe', industry: 'Technology' },
+              { name: 'Enterprise Tech Division', type: 'Division', status: 'Active', region: 'Asia Pacific', industry: 'Technology' }
+            ],
+            'Cloud Services Group': [
+              { name: 'Cloud Services Division', type: 'Division', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Cloud Solutions Division', type: 'Division', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Cloud Infrastructure Division', type: 'Division', status: 'Active', region: 'Europe', industry: 'Technology' }
+            ],
+            'Financial Services Corp.': [
+              { name: 'Financial Services Division', type: 'Division', status: 'Active', region: 'North America', industry: 'Finance' },
+              { name: 'Finance Solutions Division', type: 'Division', status: 'Active', region: 'North America', industry: 'Finance' },
+              { name: 'Banking Division', type: 'Division', status: 'Active', region: 'Europe', industry: 'Finance' }
+            ]
+          },
+          3: { // Business Unit level
+            'All Accounts': [
+              { name: 'Business Unit A', type: 'Business Unit', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Business Unit B', type: 'Business Unit', status: 'Active', region: 'North America', industry: 'Manufacturing' },
+              { name: 'Business Unit C', type: 'Business Unit', status: 'Active', region: 'Europe', industry: 'Technology' },
+              { name: 'Business Unit D', type: 'Business Unit', status: 'Active', region: 'Asia Pacific', industry: 'Healthcare' }
+            ],
+            'Enterprise Accounts': [
+              { name: 'Enterprise BU Alpha', type: 'Business Unit', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Enterprise BU Beta', type: 'Business Unit', status: 'Active', region: 'North America', industry: 'Manufacturing' },
+              { name: 'Enterprise BU Gamma', type: 'Business Unit', status: 'Active', region: 'Europe', industry: 'Technology' }
+            ],
+            'Top 100 Accounts': [
+              { name: 'Premium BU One', type: 'Business Unit', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Premium BU Two', type: 'Business Unit', status: 'Active', region: 'North America', industry: 'Manufacturing' },
+              { name: 'Premium BU Three', type: 'Business Unit', status: 'Active', region: 'Europe', industry: 'Technology' }
+            ],
+            'Active Accounts': [
+              { name: 'Active BU North', type: 'Business Unit', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Active BU South', type: 'Business Unit', status: 'Active', region: 'North America', industry: 'Manufacturing' }
+            ],
+            'Enterprise - North Region': [
+              { name: 'North Region BU 1', type: 'Business Unit', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'North Region BU 2', type: 'Business Unit', status: 'Active', region: 'North America', industry: 'Manufacturing' }
+            ],
+            'Enterprise Systems': [
+              { name: 'Enterprise Systems BU', type: 'Business Unit', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Enterprise Solutions BU', type: 'Business Unit', status: 'Active', region: 'Europe', industry: 'Technology' }
+            ],
+            'Cloud Services Group': [
+              { name: 'Cloud Services BU', type: 'Business Unit', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Cloud Solutions BU', type: 'Business Unit', status: 'Active', region: 'North America', industry: 'Technology' }
+            ],
+            'Financial Services Corp.': [
+              { name: 'Financial Services BU', type: 'Business Unit', status: 'Active', region: 'North America', industry: 'Finance' },
+              { name: 'Finance Solutions BU', type: 'Business Unit', status: 'Active', region: 'North America', industry: 'Finance' }
+            ]
+          },
+          4: { // Account Group level
+            'All Accounts': [
+              { name: 'Account Group 1', type: 'Account Group', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Account Group 2', type: 'Account Group', status: 'Active', region: 'North America', industry: 'Manufacturing' },
+              { name: 'Account Group 3', type: 'Account Group', status: 'Active', region: 'Europe', industry: 'Technology' },
+              { name: 'Account Group 4', type: 'Account Group', status: 'Active', region: 'Asia Pacific', industry: 'Healthcare' }
+            ],
+            'Enterprise Accounts': [
+              { name: 'Enterprise Account Group A', type: 'Account Group', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Enterprise Account Group B', type: 'Account Group', status: 'Active', region: 'North America', industry: 'Manufacturing' },
+              { name: 'Enterprise Account Group C', type: 'Account Group', status: 'Active', region: 'Europe', industry: 'Technology' }
+            ],
+            'Top 100 Accounts': [
+              { name: 'Top Account Group 1', type: 'Account Group', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Top Account Group 2', type: 'Account Group', status: 'Active', region: 'North America', industry: 'Manufacturing' }
+            ],
+            'Active Accounts': [
+              { name: 'Active Account Group Alpha', type: 'Account Group', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Active Account Group Beta', type: 'Account Group', status: 'Active', region: 'North America', industry: 'Manufacturing' }
+            ],
+            'Enterprise - North Region': [
+              { name: 'North Region Group 1', type: 'Account Group', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'North Region Group 2', type: 'Account Group', status: 'Active', region: 'North America', industry: 'Manufacturing' }
+            ],
+            'Enterprise Systems': [
+              { name: 'Enterprise Systems Group', type: 'Account Group', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Enterprise Solutions Group', type: 'Account Group', status: 'Active', region: 'Europe', industry: 'Technology' }
+            ],
+            'Cloud Services Group': [
+              { name: 'Cloud Services Group', type: 'Account Group', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Cloud Solutions Group', type: 'Account Group', status: 'Active', region: 'North America', industry: 'Technology' }
+            ],
+            'Financial Services Corp.': [
+              { name: 'Financial Services Group', type: 'Account Group', status: 'Active', region: 'North America', industry: 'Finance' },
+              { name: 'Finance Solutions Group', type: 'Account Group', status: 'Active', region: 'North America', industry: 'Finance' }
+            ]
+          },
+          5: { // Account level
+            'All Accounts': [
+              { name: 'Acme Corporation - Main', type: 'Account', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Global Industries - HQ', type: 'Account', status: 'Active', region: 'North America', industry: 'Manufacturing' },
+              { name: 'Tech Solutions - Primary', type: 'Account', status: 'Active', region: 'Europe', industry: 'Technology' },
+              { name: 'Manufacturing Co. - Main', type: 'Account', status: 'Active', region: 'North America', industry: 'Manufacturing' }
+            ],
+            'Enterprise Accounts': [
+              { name: 'Acme Corporation Enterprise', type: 'Account', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Global Industries Enterprise', type: 'Account', status: 'Active', region: 'North America', industry: 'Manufacturing' },
+              { name: 'Tech Solutions Enterprise', type: 'Account', status: 'Active', region: 'Europe', industry: 'Technology' },
+              { name: 'Enterprise Systems Account', type: 'Account', status: 'Active', region: 'North America', industry: 'Technology' }
+            ],
+            'Top 100 Accounts': [
+              { name: 'Acme Corporation - Top Account', type: 'Account', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Global Industries - Top Account', type: 'Account', status: 'Active', region: 'North America', industry: 'Manufacturing' },
+              { name: 'Tech Solutions - Top Account', type: 'Account', status: 'Active', region: 'Europe', industry: 'Technology' }
+            ],
+            'Active Accounts': [
+              { name: 'Acme Corporation - Active', type: 'Account', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Cloud Services - Active', type: 'Account', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Healthcare Solutions - Active', type: 'Account', status: 'Active', region: 'North America', industry: 'Healthcare' }
+            ],
+            'Enterprise - North Region': [
+              { name: 'Acme Corporation - North', type: 'Account', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Global Industries - North', type: 'Account', status: 'Active', region: 'North America', industry: 'Manufacturing' },
+              { name: 'Enterprise Systems - North', type: 'Account', status: 'Active', region: 'North America', industry: 'Technology' }
+            ],
+            'Enterprise Systems': [
+              { name: 'Enterprise Systems Account', type: 'Account', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Enterprise Solutions Account', type: 'Account', status: 'Active', region: 'Europe', industry: 'Technology' },
+              { name: 'Enterprise Tech Account', type: 'Account', status: 'Active', region: 'Asia Pacific', industry: 'Technology' }
+            ],
+            'Cloud Services Group': [
+              { name: 'Cloud Services Account', type: 'Account', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Cloud Solutions Account', type: 'Account', status: 'Active', region: 'North America', industry: 'Technology' },
+              { name: 'Cloud Infrastructure Account', type: 'Account', status: 'Active', region: 'Europe', industry: 'Technology' }
+            ],
+            'Financial Services Corp.': [
+              { name: 'Financial Services Account', type: 'Account', status: 'Active', region: 'North America', industry: 'Finance' },
+              { name: 'Finance Solutions Account', type: 'Account', status: 'Active', region: 'North America', industry: 'Finance' },
+              { name: 'Banking Services Account', type: 'Account', status: 'Active', region: 'Europe', industry: 'Finance' }
+            ]
+          }
+        },
+        product: {
+          1: { // Category level
+            'All Categories': [
+              { name: 'Electronics', sku: 'CAT-001', price: '$0', stock: 'N/A', description: 'Electronic products' },
+              { name: 'Clothing', sku: 'CAT-002', price: '$0', stock: 'N/A', description: 'Apparel and accessories' },
+              { name: 'Home & Garden', sku: 'CAT-003', price: '$0', stock: 'N/A', description: 'Home improvement items' },
+              { name: 'Sports & Outdoors', sku: 'CAT-004', price: '$0', stock: 'N/A', description: 'Sports equipment and outdoor gear' },
+              { name: 'Automotive', sku: 'CAT-005', price: '$0', stock: 'N/A', description: 'Automotive parts and accessories' }
+            ],
+            'Electronics': [
+              { name: 'Electronics', sku: 'CAT-001', price: '$0', stock: 'N/A', description: 'Electronic products' },
+              { name: 'Consumer Electronics', sku: 'CAT-001A', price: '$0', stock: 'N/A', description: 'Consumer electronic devices' },
+              { name: 'Enterprise Electronics', sku: 'CAT-001B', price: '$0', stock: 'N/A', description: 'Enterprise electronic solutions' }
+            ],
+            'Clothing': [
+              { name: 'Clothing', sku: 'CAT-002', price: '$0', stock: 'N/A', description: 'Apparel and accessories' },
+              { name: 'Men\'s Clothing', sku: 'CAT-002A', price: '$0', stock: 'N/A', description: 'Men\'s apparel' },
+              { name: 'Women\'s Clothing', sku: 'CAT-002B', price: '$0', stock: 'N/A', description: 'Women\'s apparel' }
+            ],
+            'Home & Garden': [
+              { name: 'Home & Garden', sku: 'CAT-003', price: '$0', stock: 'N/A', description: 'Home improvement items' },
+              { name: 'Furniture', sku: 'CAT-003A', price: '$0', stock: 'N/A', description: 'Home furniture' },
+              { name: 'Garden Tools', sku: 'CAT-003B', price: '$0', stock: 'N/A', description: 'Gardening equipment' }
+            ],
+            'Sports & Outdoors': [
+              { name: 'Sports & Outdoors', sku: 'CAT-004', price: '$0', stock: 'N/A', description: 'Sports equipment and outdoor gear' },
+              { name: 'Fitness Equipment', sku: 'CAT-004A', price: '$0', stock: 'N/A', description: 'Exercise and fitness gear' },
+              { name: 'Outdoor Gear', sku: 'CAT-004B', price: '$0', stock: 'N/A', description: 'Camping and hiking equipment' }
+            ],
+            'Automotive': [
+              { name: 'Automotive', sku: 'CAT-005', price: '$0', stock: 'N/A', description: 'Automotive parts and accessories' },
+              { name: 'Car Parts', sku: 'CAT-005A', price: '$0', stock: 'N/A', description: 'Vehicle components' },
+              { name: 'Accessories', sku: 'CAT-005B', price: '$0', stock: 'N/A', description: 'Car accessories' }
+            ],
+            'Health & Beauty': [
+              { name: 'Health & Beauty', sku: 'CAT-006', price: '$0', stock: 'N/A', description: 'Health and beauty products' },
+              { name: 'Skincare', sku: 'CAT-006A', price: '$0', stock: 'N/A', description: 'Skincare products' },
+              { name: 'Cosmetics', sku: 'CAT-006B', price: '$0', stock: 'N/A', description: 'Makeup and cosmetics' }
+            ],
+            'Food & Beverage': [
+              { name: 'Food & Beverage', sku: 'CAT-007', price: '$0', stock: 'N/A', description: 'Food and drink products' },
+              { name: 'Beverages', sku: 'CAT-007A', price: '$0', stock: 'N/A', description: 'Drinks and beverages' },
+              { name: 'Snacks', sku: 'CAT-007B', price: '$0', stock: 'N/A', description: 'Snack foods' }
+            ]
+          },
+          2: { // Subcategory level
+            'All Categories': [
+              { name: 'Consumer Electronics', sku: 'SUBCAT-001', price: '$0', stock: 'N/A', description: 'Consumer electronic products' },
+              { name: 'Enterprise Electronics', sku: 'SUBCAT-002', price: '$0', stock: 'N/A', description: 'Enterprise electronic products' },
+              { name: 'Men\'s Apparel', sku: 'SUBCAT-003', price: '$0', stock: 'N/A', description: 'Men\'s clothing subcategory' },
+              { name: 'Women\'s Apparel', sku: 'SUBCAT-004', price: '$0', stock: 'N/A', description: 'Women\'s clothing subcategory' },
+              { name: 'Furniture', sku: 'SUBCAT-005', price: '$0', stock: 'N/A', description: 'Home furniture subcategory' }
+            ],
+            'Electronics': [
+              { name: 'Consumer Electronics', sku: 'SUBCAT-001', price: '$0', stock: 'N/A', description: 'Consumer electronic products' },
+              { name: 'Enterprise Electronics', sku: 'SUBCAT-002', price: '$0', stock: 'N/A', description: 'Enterprise electronic products' },
+              { name: 'Mobile Devices', sku: 'SUBCAT-001A', price: '$0', stock: 'N/A', description: 'Smartphones and tablets' }
+            ],
+            'Clothing': [
+              { name: 'Men\'s Apparel', sku: 'SUBCAT-003', price: '$0', stock: 'N/A', description: 'Men\'s clothing subcategory' },
+              { name: 'Women\'s Apparel', sku: 'SUBCAT-004', price: '$0', stock: 'N/A', description: 'Women\'s clothing subcategory' },
+              { name: 'Accessories', sku: 'SUBCAT-003A', price: '$0', stock: 'N/A', description: 'Fashion accessories' }
+            ],
+            'Home & Garden': [
+              { name: 'Furniture', sku: 'SUBCAT-005', price: '$0', stock: 'N/A', description: 'Home furniture subcategory' },
+              { name: 'Garden Tools', sku: 'SUBCAT-005A', price: '$0', stock: 'N/A', description: 'Gardening equipment' },
+              { name: 'Home Decor', sku: 'SUBCAT-005B', price: '$0', stock: 'N/A', description: 'Decorative items' }
+            ],
+            'Sports & Outdoors': [
+              { name: 'Fitness Equipment', sku: 'SUBCAT-004A', price: '$0', stock: 'N/A', description: 'Exercise equipment' },
+              { name: 'Outdoor Gear', sku: 'SUBCAT-004B', price: '$0', stock: 'N/A', description: 'Camping gear' },
+              { name: 'Athletic Wear', sku: 'SUBCAT-004C', price: '$0', stock: 'N/A', description: 'Sports clothing' }
+            ],
+            'Automotive': [
+              { name: 'Car Parts', sku: 'SUBCAT-005A', price: '$0', stock: 'N/A', description: 'Vehicle components' },
+              { name: 'Accessories', sku: 'SUBCAT-005B', price: '$0', stock: 'N/A', description: 'Car accessories' },
+              { name: 'Tires & Wheels', sku: 'SUBCAT-005C', price: '$0', stock: 'N/A', description: 'Tires and wheel accessories' }
+            ],
+            'Health & Beauty': [
+              { name: 'Skincare', sku: 'SUBCAT-006A', price: '$0', stock: 'N/A', description: 'Skincare products' },
+              { name: 'Cosmetics', sku: 'SUBCAT-006B', price: '$0', stock: 'N/A', description: 'Makeup products' },
+              { name: 'Hair Care', sku: 'SUBCAT-006C', price: '$0', stock: 'N/A', description: 'Hair care products' }
+            ],
+            'Food & Beverage': [
+              { name: 'Beverages', sku: 'SUBCAT-007A', price: '$0', stock: 'N/A', description: 'Drinks and beverages' },
+              { name: 'Snacks', sku: 'SUBCAT-007B', price: '$0', stock: 'N/A', description: 'Snack foods' },
+              { name: 'Frozen Foods', sku: 'SUBCAT-007C', price: '$0', stock: 'N/A', description: 'Frozen food products' }
+            ]
+          },
+          3: { // Product Line level
+            'All Categories': [
+              { name: 'Smartphones', sku: 'PL-001', price: '$299-$1299', stock: '1,250', description: 'Mobile phones' },
+              { name: 'Laptops', sku: 'PL-002', price: '$499-$2999', stock: '850', description: 'Portable computers' },
+              { name: 'Men\'s Shirts', sku: 'PL-003', price: '$19-$99', stock: '2,500', description: 'Men\'s shirts product line' },
+              { name: 'Dining Sets', sku: 'PL-004', price: '$199-$899', stock: '320', description: 'Dining room furniture' },
+              { name: 'Running Shoes', sku: 'PL-005', price: '$49-$199', stock: '1,800', description: 'Athletic footwear' }
+            ],
+            'Electronics': [
+              { name: 'Smartphones', sku: 'PL-001', price: '$299-$1299', stock: '1,250', description: 'Mobile phones' },
+              { name: 'Laptops', sku: 'PL-002', price: '$499-$2999', stock: '850', description: 'Portable computers' },
+              { name: 'Tablets', sku: 'PL-001A', price: '$199-$899', stock: '650', description: 'Tablet devices' },
+              { name: 'Smart Watches', sku: 'PL-001B', price: '$99-$599', stock: '420', description: 'Wearable devices' }
+            ],
+            'Clothing': [
+              { name: 'Men\'s Shirts', sku: 'PL-003', price: '$19-$99', stock: '2,500', description: 'Men\'s shirts product line' },
+              { name: 'Women\'s Dresses', sku: 'PL-003A', price: '$29-$149', stock: '1,800', description: 'Women\'s dresses' },
+              { name: 'Jeans', sku: 'PL-003B', price: '$39-$129', stock: '2,200', description: 'Denim jeans' }
+            ],
+            'Home & Garden': [
+              { name: 'Dining Sets', sku: 'PL-004', price: '$199-$899', stock: '320', description: 'Dining room furniture' },
+              { name: 'Garden Tools Set', sku: 'PL-004A', price: '$49-$199', stock: '580', description: 'Gardening tool sets' },
+              { name: 'Outdoor Furniture', sku: 'PL-004B', price: '$299-$1,299', stock: '240', description: 'Patio furniture' }
+            ],
+            'Sports & Outdoors': [
+              { name: 'Running Shoes', sku: 'PL-005', price: '$49-$199', stock: '1,800', description: 'Athletic footwear' },
+              { name: 'Camping Tents', sku: 'PL-005A', price: '$79-$399', stock: '450', description: 'Camping tents' },
+              { name: 'Yoga Mats', sku: 'PL-005B', price: '$19-$89', stock: '1,200', description: 'Exercise mats' }
+            ],
+            'Automotive': [
+              { name: 'Engine Parts', sku: 'PL-006A', price: '$49-$899', stock: '680', description: 'Engine components' },
+              { name: 'Car Audio', sku: 'PL-006B', price: '$99-$599', stock: '320', description: 'Car stereo systems' },
+              { name: 'Tire Sets', sku: 'PL-006C', price: '$299-$899', stock: '540', description: 'Tire packages' }
+            ],
+            'Health & Beauty': [
+              { name: 'Skincare Sets', sku: 'PL-007A', price: '$29-$199', stock: '850', description: 'Skincare product sets' },
+              { name: 'Makeup Kits', sku: 'PL-007B', price: '$19-$149', stock: '1,100', description: 'Cosmetic kits' },
+              { name: 'Hair Care Products', sku: 'PL-007C', price: '$9-$49', stock: '1,500', description: 'Hair care items' }
+            ],
+            'Food & Beverage': [
+              { name: 'Soft Drinks', sku: 'PL-008A', price: '$2-$12', stock: '5,000', description: 'Carbonated beverages' },
+              { name: 'Snack Packs', sku: 'PL-008B', price: '$3-$15', stock: '3,200', description: 'Snack variety packs' },
+              { name: 'Frozen Meals', sku: 'PL-008C', price: '$4-$18', stock: '2,800', description: 'Frozen food items' }
+            ]
+          },
+          4: { // Product Family level
+            'All Categories': [
+              { name: 'Premium Smartphone Family', sku: 'PF-001', price: '$299-$999', stock: '800', description: 'High-end smartphone models' },
+              { name: 'Professional Laptop Family', sku: 'PF-002', price: '$499-$1499', stock: '600', description: 'Business laptop series' },
+              { name: 'Classic Shirt Collection', sku: 'PF-003', price: '$19-$99', stock: '1,200', description: 'Classic men\'s shirts' }
+            ],
+            'Electronics': [
+              { name: 'Premium Smartphone Family', sku: 'PF-001', price: '$299-$999', stock: '800', description: 'High-end smartphone models' },
+              { name: 'Professional Laptop Family', sku: 'PF-002', price: '$499-$1499', stock: '600', description: 'Business laptop series' },
+              { name: 'Tablet Pro Series', sku: 'PF-001A', price: '$199-$899', stock: '450', description: 'Professional tablets' }
+            ],
+            'Clothing': [
+              { name: 'Classic Shirt Collection', sku: 'PF-003', price: '$19-$99', stock: '1,200', description: 'Classic men\'s shirts' },
+              { name: 'Designer Dress Line', sku: 'PF-003A', price: '$29-$149', stock: '950', description: 'Designer dresses' },
+              { name: 'Premium Denim Collection', sku: 'PF-003B', price: '$39-$129', stock: '1,100', description: 'High-quality jeans' }
+            ],
+            'Home & Garden': [
+              { name: 'Modern Dining Collection', sku: 'PF-004A', price: '$199-$899', stock: '320', description: 'Contemporary dining sets' },
+              { name: 'Professional Garden Tools', sku: 'PF-004B', price: '$49-$199', stock: '580', description: 'Professional gardening equipment' },
+              { name: 'Luxury Outdoor Furniture', sku: 'PF-004C', price: '$299-$1,299', stock: '240', description: 'Premium patio furniture' }
+            ],
+            'Sports & Outdoors': [
+              { name: 'Elite Running Series', sku: 'PF-005A', price: '$49-$199', stock: '1,800', description: 'Professional running shoes' },
+              { name: 'Adventure Camping Gear', sku: 'PF-005B', price: '$79-$399', stock: '450', description: 'High-quality camping equipment' },
+              { name: 'Premium Yoga Collection', sku: 'PF-005C', price: '$19-$89', stock: '1,200', description: 'Professional yoga mats' }
+            ],
+            'Automotive': [
+              { name: 'Performance Engine Parts', sku: 'PF-006A', price: '$49-$899', stock: '680', description: 'High-performance components' },
+              { name: 'Premium Car Audio', sku: 'PF-006B', price: '$99-$599', stock: '320', description: 'High-end stereo systems' },
+              { name: 'All-Season Tire Line', sku: 'PF-006C', price: '$299-$899', stock: '540', description: 'Premium tire sets' }
+            ],
+            'Health & Beauty': [
+              { name: 'Luxury Skincare Collection', sku: 'PF-007A', price: '$29-$199', stock: '850', description: 'Premium skincare products' },
+              { name: 'Professional Makeup Line', sku: 'PF-007B', price: '$19-$149', stock: '1,100', description: 'Professional cosmetics' },
+              { name: 'Elite Hair Care Series', sku: 'PF-007C', price: '$9-$49', stock: '1,500', description: 'Premium hair products' }
+            ],
+            'Food & Beverage': [
+              { name: 'Premium Beverage Line', sku: 'PF-008A', price: '$2-$12', stock: '5,000', description: 'High-quality drinks' },
+              { name: 'Gourmet Snack Collection', sku: 'PF-008B', price: '$3-$15', stock: '3,200', description: 'Premium snack foods' },
+              { name: 'Organic Frozen Meals', sku: 'PF-008C', price: '$4-$18', stock: '2,800', description: 'Organic frozen food' }
+            ]
+          },
+          5: { // SKU level
+            'All Categories': [
+              { name: 'iPhone 15 Pro 256GB', sku: 'SKU-001', price: '$999', stock: '250', description: 'Apple iPhone 15 Pro' },
+              { name: 'MacBook Pro M3', sku: 'SKU-002', price: '$1,999', stock: '180', description: 'Apple MacBook Pro' },
+              { name: 'Classic White Shirt M', sku: 'SKU-003', price: '$49', stock: '320', description: 'Men\'s classic white shirt' }
+            ],
+            'Electronics': [
+              { name: 'iPhone 15 Pro 256GB', sku: 'SKU-001', price: '$999', stock: '250', description: 'Apple iPhone 15 Pro' },
+              { name: 'MacBook Pro M3', sku: 'SKU-002', price: '$1,999', stock: '180', description: 'Apple MacBook Pro' },
+              { name: 'iPad Pro 12.9"', sku: 'SKU-001A', price: '$799', stock: '150', description: 'Apple iPad Pro' },
+              { name: 'Apple Watch Series 9', sku: 'SKU-001B', price: '$399', stock: '220', description: 'Apple Watch' }
+            ],
+            'Clothing': [
+              { name: 'Classic White Shirt M', sku: 'SKU-003', price: '$49', stock: '320', description: 'Men\'s classic white shirt' },
+              { name: 'Designer Dress Size 8', sku: 'SKU-003A', price: '$89', stock: '180', description: 'Designer evening dress' },
+              { name: 'Premium Jeans 32x32', sku: 'SKU-003B', price: '$79', stock: '250', description: 'Premium denim jeans' }
+            ],
+            'Home & Garden': [
+              { name: '6-Piece Dining Set Oak', sku: 'SKU-004A', price: '$599', stock: '45', description: 'Oak dining room set' },
+              { name: 'Professional Tool Set', sku: 'SKU-004B', price: '$129', stock: '120', description: '10-piece garden tool set' },
+              { name: 'Patio Sofa Set', sku: 'SKU-004C', price: '$899', stock: '35', description: '3-piece outdoor sofa set' }
+            ],
+            'Sports & Outdoors': [
+              { name: 'Nike Air Max Running Shoes', sku: 'SKU-005A', price: '$129', stock: '280', description: 'Men\'s running shoes size 10' },
+              { name: '4-Person Camping Tent', sku: 'SKU-005B', price: '$249', stock: '85', description: 'Weatherproof camping tent' },
+              { name: 'Premium Yoga Mat', sku: 'SKU-005C', price: '$39', stock: '195', description: 'Non-slip yoga mat' }
+            ],
+            'Automotive': [
+              { name: 'Performance Air Filter', sku: 'SKU-006A', price: '$49', stock: '145', description: 'High-performance air filter' },
+              { name: 'Premium Car Stereo', sku: 'SKU-006B', price: '$399', stock: '65', description: 'Touchscreen car stereo' },
+              { name: 'All-Season Tire Set', sku: 'SKU-006C', price: '$599', stock: '120', description: 'Set of 4 all-season tires' }
+            ],
+            'Health & Beauty': [
+              { name: 'Anti-Aging Serum', sku: 'SKU-007A', price: '$79', stock: '185', description: 'Premium skincare serum' },
+              { name: 'Professional Makeup Palette', sku: 'SKU-007B', price: '$59', stock: '220', description: '20-color makeup palette' },
+              { name: 'Volumizing Shampoo', sku: 'SKU-007C', price: '$19', stock: '350', description: 'Professional hair care' }
+            ],
+            'Food & Beverage': [
+              { name: 'Premium Cola 12-Pack', sku: 'SKU-008A', price: '$8', stock: '1,200', description: 'Premium cola beverages' },
+              { name: 'Gourmet Snack Mix', sku: 'SKU-008B', price: '$12', stock: '850', description: 'Variety snack pack' },
+              { name: 'Organic Frozen Meal', sku: 'SKU-008C', price: '$7', stock: '650', description: 'Organic frozen dinner' }
+            ]
+          }
+        },
+        users: {
+          1: { // Role level
+            'All Users': [
+              { name: 'Sales', email: 'sales@company.com', role: 'Role', department: 'Sales', status: 'Active' },
+              { name: 'Marketing', email: 'marketing@company.com', role: 'Role', department: 'Marketing', status: 'Active' },
+              { name: 'Support', email: 'support@company.com', role: 'Role', department: 'Support', status: 'Active' },
+              { name: 'Management', email: 'management@company.com', role: 'Role', department: 'Management', status: 'Active' }
+            ],
+            'Sales Team': [
+              { name: 'Sales', email: 'sales@company.com', role: 'Role', department: 'Sales', status: 'Active' },
+              { name: 'Sales Operations', email: 'sales.ops@company.com', role: 'Role', department: 'Sales', status: 'Active' },
+              { name: 'Sales Enablement', email: 'sales.enablement@company.com', role: 'Role', department: 'Sales', status: 'Active' }
+            ],
+            'Marketing Team': [
+              { name: 'Marketing', email: 'marketing@company.com', role: 'Role', department: 'Marketing', status: 'Active' },
+              { name: 'Digital Marketing', email: 'digital.marketing@company.com', role: 'Role', department: 'Marketing', status: 'Active' },
+              { name: 'Content Marketing', email: 'content.marketing@company.com', role: 'Role', department: 'Marketing', status: 'Active' }
+            ],
+            'Support Team': [
+              { name: 'Support', email: 'support@company.com', role: 'Role', department: 'Support', status: 'Active' },
+              { name: 'Technical Support', email: 'tech.support@company.com', role: 'Role', department: 'Support', status: 'Active' },
+              { name: 'Customer Success', email: 'customer.success@company.com', role: 'Role', department: 'Support', status: 'Active' }
+            ],
+            'Management': [
+              { name: 'Management', email: 'management@company.com', role: 'Role', department: 'Management', status: 'Active' },
+              { name: 'Executive Leadership', email: 'executives@company.com', role: 'Role', department: 'Management', status: 'Active' },
+              { name: 'Senior Management', email: 'senior.mgmt@company.com', role: 'Role', department: 'Management', status: 'Active' }
+            ],
+            'Administrators': [
+              { name: 'System Administrators', email: 'sysadmin@company.com', role: 'Role', department: 'IT', status: 'Active' },
+              { name: 'Database Administrators', email: 'dbadmin@company.com', role: 'Role', department: 'IT', status: 'Active' },
+              { name: 'Network Administrators', email: 'networkadmin@company.com', role: 'Role', department: 'IT', status: 'Active' }
+            ],
+            'Developers': [
+              { name: 'Software Developers', email: 'developers@company.com', role: 'Role', department: 'Engineering', status: 'Active' },
+              { name: 'Frontend Developers', email: 'frontend@company.com', role: 'Role', department: 'Engineering', status: 'Active' },
+              { name: 'Backend Developers', email: 'backend@company.com', role: 'Role', department: 'Engineering', status: 'Active' }
+            ],
+            'Analysts': [
+              { name: 'Business Analysts', email: 'business.analysts@company.com', role: 'Role', department: 'Analytics', status: 'Active' },
+              { name: 'Data Analysts', email: 'data.analysts@company.com', role: 'Role', department: 'Analytics', status: 'Active' },
+              { name: 'Financial Analysts', email: 'financial.analysts@company.com', role: 'Role', department: 'Finance', status: 'Active' }
+            ]
+          },
+          2: { // Team level
+            'All Users': [
+              { name: 'North Sales', email: 'north.sales@company.com', role: 'Team', department: 'Sales', status: 'Active' },
+              { name: 'South Sales', email: 'south.sales@company.com', role: 'Team', department: 'Sales', status: 'Active' },
+              { name: 'East Sales', email: 'east.sales@company.com', role: 'Team', department: 'Sales', status: 'Active' }
+            ],
+            'Sales Team': [
+              { name: 'North Sales', email: 'north.sales@company.com', role: 'Team', department: 'Sales', status: 'Active' },
+              { name: 'South Sales', email: 'south.sales@company.com', role: 'Team', department: 'Sales', status: 'Active' },
+              { name: 'Enterprise Sales', email: 'enterprise.sales@company.com', role: 'Team', department: 'Sales', status: 'Active' }
+            ],
+            'Marketing Team': [
+              { name: 'Digital Marketing Team', email: 'digital.marketing@company.com', role: 'Team', department: 'Marketing', status: 'Active' },
+              { name: 'Content Marketing Team', email: 'content.marketing@company.com', role: 'Team', department: 'Marketing', status: 'Active' },
+              { name: 'Product Marketing Team', email: 'product.marketing@company.com', role: 'Team', department: 'Marketing', status: 'Active' }
+            ],
+            'Support Team': [
+              { name: 'Tier 1 Support', email: 'tier1.support@company.com', role: 'Team', department: 'Support', status: 'Active' },
+              { name: 'Tier 2 Support', email: 'tier2.support@company.com', role: 'Team', department: 'Support', status: 'Active' },
+              { name: 'Escalation Team', email: 'escalation@company.com', role: 'Team', department: 'Support', status: 'Active' }
+            ],
+            'Management': [
+              { name: 'Executive Team', email: 'executives@company.com', role: 'Team', department: 'Management', status: 'Active' },
+              { name: 'Senior Leadership', email: 'senior.leadership@company.com', role: 'Team', department: 'Management', status: 'Active' }
+            ],
+            'Administrators': [
+              { name: 'IT Operations Team', email: 'it.ops@company.com', role: 'Team', department: 'IT', status: 'Active' },
+              { name: 'Infrastructure Team', email: 'infrastructure@company.com', role: 'Team', department: 'IT', status: 'Active' }
+            ],
+            'Developers': [
+              { name: 'Frontend Team', email: 'frontend.team@company.com', role: 'Team', department: 'Engineering', status: 'Active' },
+              { name: 'Backend Team', email: 'backend.team@company.com', role: 'Team', department: 'Engineering', status: 'Active' },
+              { name: 'Mobile Team', email: 'mobile.team@company.com', role: 'Team', department: 'Engineering', status: 'Active' }
+            ],
+            'Analysts': [
+              { name: 'Business Intelligence Team', email: 'bi.team@company.com', role: 'Team', department: 'Analytics', status: 'Active' },
+              { name: 'Data Science Team', email: 'data.science@company.com', role: 'Team', department: 'Analytics', status: 'Active' }
+            ]
+          },
+          3: { // Department level
+            'All Users': [
+              { name: 'Sales Department', email: 'sales.dept@company.com', role: 'Department', department: 'Sales', status: 'Active' },
+              { name: 'Marketing Department', email: 'marketing.dept@company.com', role: 'Department', department: 'Marketing', status: 'Active' },
+              { name: 'Support Department', email: 'support.dept@company.com', role: 'Department', department: 'Support', status: 'Active' }
+            ],
+            'Sales Team': [
+              { name: 'Sales Department', email: 'sales.dept@company.com', role: 'Department', department: 'Sales', status: 'Active' },
+              { name: 'Sales Operations Dept', email: 'sales.ops.dept@company.com', role: 'Department', department: 'Sales', status: 'Active' }
+            ],
+            'Marketing Team': [
+              { name: 'Marketing Department', email: 'marketing.dept@company.com', role: 'Department', department: 'Marketing', status: 'Active' },
+              { name: 'Digital Marketing Dept', email: 'digital.marketing.dept@company.com', role: 'Department', department: 'Marketing', status: 'Active' }
+            ],
+            'Support Team': [
+              { name: 'Support Department', email: 'support.dept@company.com', role: 'Department', department: 'Support', status: 'Active' },
+              { name: 'Customer Success Dept', email: 'customer.success.dept@company.com', role: 'Department', department: 'Support', status: 'Active' }
+            ],
+            'Management': [
+              { name: 'Executive Department', email: 'executive.dept@company.com', role: 'Department', department: 'Management', status: 'Active' },
+              { name: 'Operations Department', email: 'operations.dept@company.com', role: 'Department', department: 'Management', status: 'Active' }
+            ],
+            'Administrators': [
+              { name: 'IT Department', email: 'it.dept@company.com', role: 'Department', department: 'IT', status: 'Active' },
+              { name: 'Infrastructure Dept', email: 'infrastructure.dept@company.com', role: 'Department', department: 'IT', status: 'Active' }
+            ],
+            'Developers': [
+              { name: 'Engineering Department', email: 'engineering.dept@company.com', role: 'Department', department: 'Engineering', status: 'Active' },
+              { name: 'Product Development', email: 'product.dev@company.com', role: 'Department', department: 'Engineering', status: 'Active' }
+            ],
+            'Analysts': [
+              { name: 'Analytics Department', email: 'analytics.dept@company.com', role: 'Department', department: 'Analytics', status: 'Active' },
+              { name: 'Business Intelligence', email: 'bi.dept@company.com', role: 'Department', department: 'Analytics', status: 'Active' }
+            ]
+          },
+          4: { // Manager level
+            'All Users': [
+              { name: 'Sales Manager', email: 'sales.manager@company.com', role: 'Manager', department: 'Sales', status: 'Active' },
+              { name: 'Marketing Manager', email: 'marketing.manager@company.com', role: 'Manager', department: 'Marketing', status: 'Active' },
+              { name: 'Support Manager', email: 'support.manager@company.com', role: 'Manager', department: 'Support', status: 'Active' }
+            ],
+            'Sales Team': [
+              { name: 'Sales Manager', email: 'sales.manager@company.com', role: 'Manager', department: 'Sales', status: 'Active' },
+              { name: 'Regional Sales Manager', email: 'regional.sales.mgr@company.com', role: 'Manager', department: 'Sales', status: 'Active' },
+              { name: 'Enterprise Sales Manager', email: 'enterprise.sales.mgr@company.com', role: 'Manager', department: 'Sales', status: 'Active' }
+            ],
+            'Marketing Team': [
+              { name: 'Marketing Manager', email: 'marketing.manager@company.com', role: 'Manager', department: 'Marketing', status: 'Active' },
+              { name: 'Digital Marketing Manager', email: 'digital.mktg.mgr@company.com', role: 'Manager', department: 'Marketing', status: 'Active' }
+            ],
+            'Support Team': [
+              { name: 'Support Manager', email: 'support.manager@company.com', role: 'Manager', department: 'Support', status: 'Active' },
+              { name: 'Customer Success Manager', email: 'cs.manager@company.com', role: 'Manager', department: 'Support', status: 'Active' }
+            ],
+            'Management': [
+              { name: 'VP of Sales', email: 'vp.sales@company.com', role: 'Manager', department: 'Management', status: 'Active' },
+              { name: 'VP of Marketing', email: 'vp.marketing@company.com', role: 'Manager', department: 'Management', status: 'Active' },
+              { name: 'VP of Operations', email: 'vp.operations@company.com', role: 'Manager', department: 'Management', status: 'Active' }
+            ],
+            'Administrators': [
+              { name: 'IT Manager', email: 'it.manager@company.com', role: 'Manager', department: 'IT', status: 'Active' },
+              { name: 'Infrastructure Manager', email: 'infra.manager@company.com', role: 'Manager', department: 'IT', status: 'Active' }
+            ],
+            'Developers': [
+              { name: 'Engineering Manager', email: 'eng.manager@company.com', role: 'Manager', department: 'Engineering', status: 'Active' },
+              { name: 'Development Manager', email: 'dev.manager@company.com', role: 'Manager', department: 'Engineering', status: 'Active' }
+            ],
+            'Analysts': [
+              { name: 'Analytics Manager', email: 'analytics.manager@company.com', role: 'Manager', department: 'Analytics', status: 'Active' },
+              { name: 'BI Manager', email: 'bi.manager@company.com', role: 'Manager', department: 'Analytics', status: 'Active' }
+            ]
+          },
+          5: { // User level
+            'All Users': [
+              { name: 'John Smith', email: 'john.smith@company.com', role: 'User', department: 'Sales', status: 'Active' },
+              { name: 'Jane Doe', email: 'jane.doe@company.com', role: 'User', department: 'Marketing', status: 'Active' },
+              { name: 'Mike Johnson', email: 'mike.johnson@company.com', role: 'User', department: 'Support', status: 'Active' }
+            ],
+            'Sales Team': [
+              { name: 'John Smith', email: 'john.smith@company.com', role: 'User', department: 'Sales', status: 'Active' },
+              { name: 'Sarah Williams', email: 'sarah.williams@company.com', role: 'User', department: 'Sales', status: 'Active' },
+              { name: 'David Brown', email: 'david.brown@company.com', role: 'User', department: 'Sales', status: 'Active' }
+            ],
+            'Marketing Team': [
+              { name: 'Jane Doe', email: 'jane.doe@company.com', role: 'User', department: 'Marketing', status: 'Active' },
+              { name: 'Emily Davis', email: 'emily.davis@company.com', role: 'User', department: 'Marketing', status: 'Active' },
+              { name: 'Chris Wilson', email: 'chris.wilson@company.com', role: 'User', department: 'Marketing', status: 'Active' }
+            ],
+            'Support Team': [
+              { name: 'Mike Johnson', email: 'mike.johnson@company.com', role: 'User', department: 'Support', status: 'Active' },
+              { name: 'Lisa Anderson', email: 'lisa.anderson@company.com', role: 'User', department: 'Support', status: 'Active' },
+              { name: 'Tom Martinez', email: 'tom.martinez@company.com', role: 'User', department: 'Support', status: 'Active' }
+            ],
+            'Management': [
+              { name: 'Robert Taylor', email: 'robert.taylor@company.com', role: 'User', department: 'Management', status: 'Active' },
+              { name: 'Patricia Thomas', email: 'patricia.thomas@company.com', role: 'User', department: 'Management', status: 'Active' }
+            ],
+            'Administrators': [
+              { name: 'Admin User 1', email: 'admin1@company.com', role: 'User', department: 'IT', status: 'Active' },
+              { name: 'Admin User 2', email: 'admin2@company.com', role: 'User', department: 'IT', status: 'Active' }
+            ],
+            'Developers': [
+              { name: 'Dev User 1', email: 'dev1@company.com', role: 'User', department: 'Engineering', status: 'Active' },
+              { name: 'Dev User 2', email: 'dev2@company.com', role: 'User', department: 'Engineering', status: 'Active' }
+            ],
+            'Analysts': [
+              { name: 'Analyst User 1', email: 'analyst1@company.com', role: 'User', department: 'Analytics', status: 'Active' },
+              { name: 'Analyst User 2', email: 'analyst2@company.com', role: 'User', department: 'Analytics', status: 'Active' }
+            ]
+          }
+        },
+        regions: {
+          1: { // Country level
+            'All Regions': [
+              { name: 'United States', country: 'USA', population: '331M', timezone: 'EST/PST', currency: 'USD' },
+              { name: 'Canada', country: 'Canada', population: '38M', timezone: 'EST/PST', currency: 'CAD' },
+              { name: 'United Kingdom', country: 'UK', population: '67M', timezone: 'GMT', currency: 'GBP' },
+              { name: 'Germany', country: 'Germany', population: '83M', timezone: 'CET', currency: 'EUR' }
+            ],
+            'North America': [
+              { name: 'United States', country: 'USA', population: '331M', timezone: 'EST/PST', currency: 'USD' },
+              { name: 'Canada', country: 'Canada', population: '38M', timezone: 'EST/PST', currency: 'CAD' },
+              { name: 'Mexico', country: 'Mexico', population: '128M', timezone: 'CST', currency: 'MXN' }
+            ],
+            'Europe': [
+              { name: 'United Kingdom', country: 'UK', population: '67M', timezone: 'GMT', currency: 'GBP' },
+              { name: 'Germany', country: 'Germany', population: '83M', timezone: 'CET', currency: 'EUR' },
+              { name: 'France', country: 'France', population: '68M', timezone: 'CET', currency: 'EUR' },
+              { name: 'Italy', country: 'Italy', population: '60M', timezone: 'CET', currency: 'EUR' }
+            ],
+            'Asia Pacific': [
+              { name: 'China', country: 'China', population: '1.4B', timezone: 'CST', currency: 'CNY' },
+              { name: 'Japan', country: 'Japan', population: '125M', timezone: 'JST', currency: 'JPY' },
+              { name: 'India', country: 'India', population: '1.4B', timezone: 'IST', currency: 'INR' },
+              { name: 'Australia', country: 'Australia', population: '26M', timezone: 'AEST', currency: 'AUD' }
+            ],
+            'Latin America': [
+              { name: 'Brazil', country: 'Brazil', population: '215M', timezone: 'BRT', currency: 'BRL' },
+              { name: 'Argentina', country: 'Argentina', population: '46M', timezone: 'ART', currency: 'ARS' },
+              { name: 'Chile', country: 'Chile', population: '19M', timezone: 'CLT', currency: 'CLP' }
+            ],
+            'Middle East & Africa': [
+              { name: 'United Arab Emirates', country: 'UAE', population: '10M', timezone: 'GST', currency: 'AED' },
+              { name: 'Saudi Arabia', country: 'Saudi Arabia', population: '35M', timezone: 'AST', currency: 'SAR' },
+              { name: 'South Africa', country: 'South Africa', population: '60M', timezone: 'SAST', currency: 'ZAR' }
+            ],
+            'United States': [
+              { name: 'United States', country: 'USA', population: '331M', timezone: 'EST/PST', currency: 'USD' }
+            ],
+            'Canada': [
+              { name: 'Canada', country: 'Canada', population: '38M', timezone: 'EST/PST', currency: 'CAD' }
+            ]
+          },
+          2: { // State level
+            'All Regions': [
+              { name: 'California', country: 'USA', population: '39M', timezone: 'PST', currency: 'USD' },
+              { name: 'New York', country: 'USA', population: '20M', timezone: 'EST', currency: 'USD' },
+              { name: 'Texas', country: 'USA', population: '30M', timezone: 'CST', currency: 'USD' }
+            ],
+            'North America': [
+              { name: 'California', country: 'USA', population: '39M', timezone: 'PST', currency: 'USD' },
+              { name: 'New York', country: 'USA', population: '20M', timezone: 'EST', currency: 'USD' },
+              { name: 'Ontario', country: 'Canada', population: '15M', timezone: 'EST', currency: 'CAD' }
+            ],
+            'Europe': [
+              { name: 'England', country: 'UK', population: '56M', timezone: 'GMT', currency: 'GBP' },
+              { name: 'Bavaria', country: 'Germany', population: '13M', timezone: 'CET', currency: 'EUR' },
+              { name: 'Île-de-France', country: 'France', population: '12M', timezone: 'CET', currency: 'EUR' }
+            ],
+            'Asia Pacific': [
+              { name: 'Guangdong', country: 'China', population: '126M', timezone: 'CST', currency: 'CNY' },
+              { name: 'Tokyo', country: 'Japan', population: '14M', timezone: 'JST', currency: 'JPY' },
+              { name: 'Maharashtra', country: 'India', population: '124M', timezone: 'IST', currency: 'INR' }
+            ],
+            'Latin America': [
+              { name: 'São Paulo', country: 'Brazil', population: '46M', timezone: 'BRT', currency: 'BRL' },
+              { name: 'Buenos Aires', country: 'Argentina', population: '15M', timezone: 'ART', currency: 'ARS' }
+            ],
+            'Middle East & Africa': [
+              { name: 'Dubai', country: 'UAE', population: '3.4M', timezone: 'GST', currency: 'AED' },
+              { name: 'Riyadh', country: 'Saudi Arabia', population: '7.7M', timezone: 'AST', currency: 'SAR' }
+            ],
+            'United States': [
+              { name: 'California', country: 'USA', population: '39M', timezone: 'PST', currency: 'USD' },
+              { name: 'New York', country: 'USA', population: '20M', timezone: 'EST', currency: 'USD' },
+              { name: 'Texas', country: 'USA', population: '30M', timezone: 'CST', currency: 'USD' },
+              { name: 'Florida', country: 'USA', population: '22M', timezone: 'EST', currency: 'USD' }
+            ],
+            'Canada': [
+              { name: 'Ontario', country: 'Canada', population: '15M', timezone: 'EST', currency: 'CAD' },
+              { name: 'Quebec', country: 'Canada', population: '8.5M', timezone: 'EST', currency: 'CAD' },
+              { name: 'British Columbia', country: 'Canada', population: '5.1M', timezone: 'PST', currency: 'CAD' }
+            ]
+          },
+          3: { // City level
+            'All Regions': [
+              { name: 'Los Angeles', country: 'USA', population: '4M', timezone: 'PST', currency: 'USD' },
+              { name: 'New York City', country: 'USA', population: '8M', timezone: 'EST', currency: 'USD' },
+              { name: 'Chicago', country: 'USA', population: '2.7M', timezone: 'CST', currency: 'USD' }
+            ],
+            'North America': [
+              { name: 'Los Angeles', country: 'USA', population: '4M', timezone: 'PST', currency: 'USD' },
+              { name: 'New York City', country: 'USA', population: '8M', timezone: 'EST', currency: 'USD' },
+              { name: 'Toronto', country: 'Canada', population: '2.9M', timezone: 'EST', currency: 'CAD' }
+            ],
+            'Europe': [
+              { name: 'London', country: 'UK', population: '9M', timezone: 'GMT', currency: 'GBP' },
+              { name: 'Berlin', country: 'Germany', population: '3.7M', timezone: 'CET', currency: 'EUR' },
+              { name: 'Paris', country: 'France', population: '2.1M', timezone: 'CET', currency: 'EUR' }
+            ],
+            'Asia Pacific': [
+              { name: 'Shanghai', country: 'China', population: '24M', timezone: 'CST', currency: 'CNY' },
+              { name: 'Tokyo', country: 'Japan', population: '14M', timezone: 'JST', currency: 'JPY' },
+              { name: 'Mumbai', country: 'India', population: '20M', timezone: 'IST', currency: 'INR' }
+            ],
+            'Latin America': [
+              { name: 'São Paulo', country: 'Brazil', population: '12M', timezone: 'BRT', currency: 'BRL' },
+              { name: 'Buenos Aires', country: 'Argentina', population: '3M', timezone: 'ART', currency: 'ARS' }
+            ],
+            'Middle East & Africa': [
+              { name: 'Dubai', country: 'UAE', population: '3.4M', timezone: 'GST', currency: 'AED' },
+              { name: 'Riyadh', country: 'Saudi Arabia', population: '7.7M', timezone: 'AST', currency: 'SAR' },
+              { name: 'Johannesburg', country: 'South Africa', population: '5.6M', timezone: 'SAST', currency: 'ZAR' }
+            ],
+            'United States': [
+              { name: 'Los Angeles', country: 'USA', population: '4M', timezone: 'PST', currency: 'USD' },
+              { name: 'New York City', country: 'USA', population: '8M', timezone: 'EST', currency: 'USD' },
+              { name: 'Chicago', country: 'USA', population: '2.7M', timezone: 'CST', currency: 'USD' }
+            ],
+            'Canada': [
+              { name: 'Toronto', country: 'Canada', population: '2.9M', timezone: 'EST', currency: 'CAD' },
+              { name: 'Montreal', country: 'Canada', population: '1.8M', timezone: 'EST', currency: 'CAD' },
+              { name: 'Vancouver', country: 'Canada', population: '675K', timezone: 'PST', currency: 'CAD' }
+            ]
+          },
+          4: { // District level
+            'All Regions': [
+              { name: 'Downtown District', country: 'USA', population: '500K', timezone: 'PST', currency: 'USD' },
+              { name: 'Financial District', country: 'USA', population: '600K', timezone: 'EST', currency: 'USD' },
+              { name: 'Business District', country: 'USA', population: '450K', timezone: 'CST', currency: 'USD' }
+            ],
+            'North America': [
+              { name: 'Downtown LA', country: 'USA', population: '500K', timezone: 'PST', currency: 'USD' },
+              { name: 'Manhattan', country: 'USA', population: '1.6M', timezone: 'EST', currency: 'USD' },
+              { name: 'Downtown Toronto', country: 'Canada', population: '300K', timezone: 'EST', currency: 'CAD' }
+            ],
+            'Europe': [
+              { name: 'City of London', country: 'UK', population: '9K', timezone: 'GMT', currency: 'GBP' },
+              { name: 'Mitte', country: 'Germany', population: '85K', timezone: 'CET', currency: 'EUR' },
+              { name: '1st Arrondissement', country: 'France', population: '17K', timezone: 'CET', currency: 'EUR' }
+            ],
+            'Asia Pacific': [
+              { name: 'Pudong', country: 'China', population: '5.5M', timezone: 'CST', currency: 'CNY' },
+              { name: 'Chiyoda', country: 'Japan', population: '66K', timezone: 'JST', currency: 'JPY' },
+              { name: 'South Mumbai', country: 'India', population: '3.2M', timezone: 'IST', currency: 'INR' }
+            ],
+            'Latin America': [
+              { name: 'Centro', country: 'Brazil', population: '1.2M', timezone: 'BRT', currency: 'BRL' },
+              { name: 'Microcentro', country: 'Argentina', population: '500K', timezone: 'ART', currency: 'ARS' }
+            ],
+            'Middle East & Africa': [
+              { name: 'Downtown Dubai', country: 'UAE', population: '200K', timezone: 'GST', currency: 'AED' },
+              { name: 'Al Olaya', country: 'Saudi Arabia', population: '150K', timezone: 'AST', currency: 'SAR' }
+            ],
+            'United States': [
+              { name: 'Downtown District', country: 'USA', population: '500K', timezone: 'PST', currency: 'USD' },
+              { name: 'Financial District', country: 'USA', population: '600K', timezone: 'EST', currency: 'USD' }
+            ],
+            'Canada': [
+              { name: 'Financial District', country: 'Canada', population: '300K', timezone: 'EST', currency: 'CAD' },
+              { name: 'Old Montreal', country: 'Canada', population: '85K', timezone: 'EST', currency: 'CAD' }
+            ]
+          },
+          5: { // Zone level
+            'All Regions': [
+              { name: 'Zone A - Central', country: 'USA', population: '100K', timezone: 'PST', currency: 'USD' },
+              { name: 'Zone B - North', country: 'USA', population: '120K', timezone: 'EST', currency: 'USD' },
+              { name: 'Zone C - South', country: 'USA', population: '95K', timezone: 'CST', currency: 'USD' }
+            ],
+            'North America': [
+              { name: 'Zone A - Central', country: 'USA', population: '100K', timezone: 'PST', currency: 'USD' },
+              { name: 'Zone B - North', country: 'USA', population: '120K', timezone: 'EST', currency: 'USD' },
+              { name: 'Zone 1 - Downtown', country: 'Canada', population: '80K', timezone: 'EST', currency: 'CAD' }
+            ],
+            'Europe': [
+              { name: 'Zone 1 - Central', country: 'UK', population: '50K', timezone: 'GMT', currency: 'GBP' },
+              { name: 'Zone A - Mitte', country: 'Germany', population: '40K', timezone: 'CET', currency: 'EUR' },
+              { name: 'Zone 1 - Louvre', country: 'France', population: '15K', timezone: 'CET', currency: 'EUR' }
+            ],
+            'Asia Pacific': [
+              { name: 'Zone A - Lujiazui', country: 'China', population: '200K', timezone: 'CST', currency: 'CNY' },
+              { name: 'Zone 1 - Marunouchi', country: 'Japan', population: '30K', timezone: 'JST', currency: 'JPY' },
+              { name: 'Zone A - Nariman Point', country: 'India', population: '150K', timezone: 'IST', currency: 'INR' }
+            ],
+            'Latin America': [
+              { name: 'Zone 1 - Centro', country: 'Brazil', population: '300K', timezone: 'BRT', currency: 'BRL' },
+              { name: 'Zone A - Microcentro', country: 'Argentina', population: '150K', timezone: 'ART', currency: 'ARS' }
+            ],
+            'Middle East & Africa': [
+              { name: 'Zone A - Business Bay', country: 'UAE', population: '50K', timezone: 'GST', currency: 'AED' },
+              { name: 'Zone 1 - King Fahd', country: 'Saudi Arabia', population: '40K', timezone: 'AST', currency: 'SAR' }
+            ],
+            'United States': [
+              { name: 'Zone A - Central', country: 'USA', population: '100K', timezone: 'PST', currency: 'USD' },
+              { name: 'Zone B - North', country: 'USA', population: '120K', timezone: 'EST', currency: 'USD' }
+            ],
+            'Canada': [
+              { name: 'Zone 1 - Financial', country: 'Canada', population: '80K', timezone: 'EST', currency: 'CAD' },
+              { name: 'Zone 2 - Old Port', country: 'Canada', population: '25K', timezone: 'EST', currency: 'CAD' }
+            ]
+          }
+        }
+      };
+      
+      const hierarchyData = previewDataByHierarchyAndLevel[h] || {};
+      const levelData = hierarchyData[l] || {};
+      return levelData[listviewName] || [];
+    }
+
+    function displayPreview(data) {
+      const previewBox = document.getElementById('previewBox');
+      
+      if (!data || data.length === 0) {
+        previewBox.innerHTML = '<span>No records found</span>';
+        previewBox.classList.add('empty');
+        return;
+      }
+      
+      previewBox.classList.remove('empty');
+      
+      // Determine columns based on hierarchy type
+      const columns = getPreviewColumns();
+      
+      const table = document.createElement('table');
+      table.className = 'preview-table';
+      
+      // Create header
+      const thead = document.createElement('thead');
+      const headerRow = document.createElement('tr');
+      columns.forEach(col => {
+        const th = document.createElement('th');
+        th.textContent = col.label;
+        headerRow.appendChild(th);
+      });
+      thead.appendChild(headerRow);
+      table.appendChild(thead);
+      
+      // Create body
+      const tbody = document.createElement('tbody');
+      data.forEach(row => {
+        const tr = document.createElement('tr');
+        columns.forEach(col => {
+          const td = document.createElement('td');
+          td.textContent = row[col.key] || '-';
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      
+      previewBox.innerHTML = '';
+      previewBox.appendChild(table);
+    }
+
+    function getPreviewColumns() {
+      const columnMap = {
+        account: [
+          { key: 'name', label: 'Account Name' },
+          { key: 'type', label: 'Type' },
+          { key: 'status', label: 'Status' },
+          { key: 'region', label: 'Region' },
+          { key: 'industry', label: 'Industry' }
+        ],
+        product: [
+          { key: 'name', label: 'Category/Product' },
+          { key: 'sku', label: 'SKU' },
+          { key: 'price', label: 'Price' },
+          { key: 'stock', label: 'Stock' },
+          { key: 'description', label: 'Description' }
+        ],
+        users: [
+          { key: 'name', label: 'Name' },
+          { key: 'email', label: 'Email' },
+          { key: 'role', label: 'Role' },
+          { key: 'department', label: 'Department' },
+          { key: 'status', label: 'Status' }
+        ],
+        regions: [
+          { key: 'name', label: 'Region' },
+          { key: 'country', label: 'Country' },
+          { key: 'population', label: 'Population' },
+          { key: 'timezone', label: 'Timezone' },
+          { key: 'currency', label: 'Currency' }
+        ]
+      };
+      
+      return columnMap[currentHierarchy] || [{ key: 'name', label: 'Name' }];
+    }
+
+    function updateGridPreview() {
+      const previewContainer = document.getElementById('gridPreview');
+      if (!previewContainer || currentStep !== 2) return;
+      
+      if (!data || data.length === 0) {
+        previewBox.innerHTML = '<span>No records found</span>';
+        previewBox.classList.add('empty');
+        return;
+      }
+      
+      previewBox.classList.remove('empty');
+      
+      // Determine columns based on hierarchy type
+      const columns = getPreviewColumns();
+      
+      const table = document.createElement('table');
+      table.className = 'preview-table';
+      
+      // Create header
+      const thead = document.createElement('thead');
+      const headerRow = document.createElement('tr');
+      columns.forEach(col => {
+        const th = document.createElement('th');
+        th.textContent = col.label;
+        headerRow.appendChild(th);
+      });
+      thead.appendChild(headerRow);
+      table.appendChild(thead);
+      
+      // Create body
+      const tbody = document.createElement('tbody');
+      data.forEach(row => {
+        const tr = document.createElement('tr');
+        columns.forEach(col => {
+          const td = document.createElement('td');
+          td.textContent = row[col.key] || '-';
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      
+      previewBox.innerHTML = '';
+      previewBox.appendChild(table);
+    }
+
+    function getPreviewColumns() {
+      const columnMap = {
+        account: [
+          { key: 'name', label: 'Account Name' },
+          { key: 'type', label: 'Type' },
+          { key: 'status', label: 'Status' },
+          { key: 'region', label: 'Region' },
+          { key: 'industry', label: 'Industry' }
+        ],
+        product: [
+          { key: 'name', label: 'Category/Product' },
+          { key: 'sku', label: 'SKU' },
+          { key: 'price', label: 'Price' },
+          { key: 'stock', label: 'Stock' },
+          { key: 'description', label: 'Description' }
+        ],
+        users: [
+          { key: 'name', label: 'Name' },
+          { key: 'email', label: 'Email' },
+          { key: 'role', label: 'Role' },
+          { key: 'department', label: 'Department' },
+          { key: 'status', label: 'Status' }
+        ],
+        regions: [
+          { key: 'name', label: 'Region' },
+          { key: 'country', label: 'Country' },
+          { key: 'population', label: 'Population' },
+          { key: 'timezone', label: 'Timezone' },
+          { key: 'currency', label: 'Currency' }
+        ]
+      };
+      
+      return columnMap[currentHierarchy] || [{ key: 'name', label: 'Name' }];
+    }
+
+    function updateGridPreview() {
+      const previewContainer = document.getElementById('gridPreview');
+      if (!previewContainer || currentStep !== 2) return;
+
+      // Get enabled levels for all selected hierarchies
+      const enabledLevels = {};
+      let totalColumns = 0;
+      let hasAnyEnabledLevels = false;
+      
+      selectedHierarchies.forEach(hierarchy => {
+        const levels = [];
+        
+        // Check stored enabled state for this hierarchy, or use current checkbox state if it's the selected hierarchy
+        for (let i = 1; i <= 5; i++) {
+          let isEnabled = false;
+          
+          if (hierarchy === currentHierarchy) {
+            // Current hierarchy - check actual checkbox state
+            const checkbox = document.getElementById(`level${i}`);
+            isEnabled = checkbox && checkbox.checked;
+            // Also store it for future reference
+            if (!enabledLevelsPerHierarchy[hierarchy]) {
+              enabledLevelsPerHierarchy[hierarchy] = {};
+            }
+            enabledLevelsPerHierarchy[hierarchy][i] = isEnabled;
+          } else {
+            // Other hierarchy - use stored state
+            isEnabled = enabledLevelsPerHierarchy[hierarchy]?.[i] === true;
+          }
+          
+          if (isEnabled) {
+            levels.push(hierarchyLevels[hierarchy].levels[i - 1]);
+            totalColumns++;
+            hasAnyEnabledLevels = true;
+          }
+        }
+        
+        enabledLevels[hierarchy] = levels;
+      });
+
+      // Show empty state if no levels are enabled
+      if (!hasAnyEnabledLevels || selectedHierarchies.length === 0) {
+        previewContainer.innerHTML = `
+          <div style="padding: 60px 24px; text-align: center; color: #706e6b;">
+            <div style="font-size: 14px; margin-bottom: 8px;">No hierarchy levels selected</div>
+            <div style="font-size: 12px; color: #999;">Select hierarchy levels to see preview</div>
+          </div>
+        `;
+        return;
+      }
+
+      // Build header row - single column for hierarchy, then measures
+      const headerRow = document.createElement('div');
+      headerRow.className = 'preview-grid-header';
+      
+      // Single column header for hierarchy
+      const hierarchyHeader = document.createElement('div');
+      hierarchyHeader.className = 'preview-grid-header-cell';
+      hierarchyHeader.style.flex = '1';
+      hierarchyHeader.textContent = 'Hierarchy';
+      headerRow.appendChild(hierarchyHeader);
+      
+      // Add measure columns
+      const measureHeader = document.createElement('div');
+      measureHeader.className = 'preview-grid-header-cell';
+      measureHeader.style.minWidth = '120px';
+      measureHeader.textContent = 'Revenue';
+      headerRow.appendChild(measureHeader);
+      
+      const measureHeader2 = document.createElement('div');
+      measureHeader2.className = 'preview-grid-header-cell';
+      measureHeader2.style.minWidth = '120px';
+      measureHeader2.textContent = 'Units';
+      headerRow.appendChild(measureHeader2);
+
+      previewContainer.innerHTML = '';
+      previewContainer.appendChild(headerRow);
+
+      // Generate hierarchical data structure
+      const hierarchicalData = generateHierarchicalData(enabledLevels);
+      
+      // Store row data for collapse/expand functionality
+      const rowDataMap = new Map();
+      
+      // Render hierarchical rows
+      hierarchicalData.forEach((row, index) => {
+        const rowClasses = [
+          row.isParent ? 'parent' : 'child',
+          row.level > 0 ? 'child-level-' + row.level : '',
+          row.isParent && row.expanded ? 'expanded' : '',
+          row.isParent && !row.expanded ? 'collapsed' : ''
+        ].filter(c => c).join(' ');
+        const dataRow = document.createElement('div');
+        dataRow.className = `preview-grid-row ${rowClasses}`;
+        dataRow.setAttribute('data-row-index', index);
+        
+        // Hide children that are not expanded
+        if (row.level > 0) {
+          // Check if parent is expanded
+          let parentExpanded = true;
+          for (let i = index - 1; i >= 0; i--) {
+            const prevRow = hierarchicalData[i];
+            if (prevRow.level < row.level) {
+              parentExpanded = prevRow.expanded || false;
+              break;
+            }
+          }
+          if (!parentExpanded) {
+            dataRow.style.display = 'none';
+          }
+        }
+        
+        // Store row data
+        rowDataMap.set(index, {
+          row: row,
+          element: dataRow,
+          expanded: row.expanded || false,
+          children: []
+        });
+        
+        // Single cell showing the hierarchy value with chevron
+        const hierarchyCell = document.createElement('div');
+        hierarchyCell.className = 'preview-grid-cell';
+        hierarchyCell.style.flex = '1';
+        hierarchyCell.style.cursor = row.isParent ? 'pointer' : 'default';
+        
+        // Add chevron for parent rows
+        if (row.isParent) {
+          const chevron = document.createElement('span');
+          chevron.className = 'chevron-icon';
+          chevron.classList.add(row.expanded ? 'expanded' : 'collapsed');
+          chevron.style.cursor = 'pointer';
+          hierarchyCell.appendChild(chevron);
+          
+          // Add click handler to toggle expand/collapse
+          hierarchyCell.addEventListener('click', () => toggleRow(index, rowDataMap, hierarchicalData));
+        } else {
+          // Empty space for alignment on child rows
+          const spacer = document.createElement('span');
+          spacer.className = 'chevron-icon';
+          hierarchyCell.appendChild(spacer);
+        }
+        
+        const textNode = document.createTextNode(row.displayValue || '-');
+        hierarchyCell.appendChild(textNode);
+        dataRow.appendChild(hierarchyCell);
+        
+        // Add measure cells
+        const measureCell1 = document.createElement('div');
+        measureCell1.className = 'preview-grid-cell';
+        measureCell1.style.minWidth = '120px';
+        measureCell1.textContent = row.revenue || '-';
+        dataRow.appendChild(measureCell1);
+        
+        const measureCell2 = document.createElement('div');
+        measureCell2.className = 'preview-grid-cell';
+        measureCell2.style.minWidth = '120px';
+        measureCell2.textContent = row.units || '-';
+        dataRow.appendChild(measureCell2);
+
+        previewContainer.appendChild(dataRow);
+      });
+      
+      // Build parent-child relationships
+      hierarchicalData.forEach((row, index) => {
+        if (row.isParent && row.expanded) {
+          const parentData = rowDataMap.get(index);
+          // Find children (next rows with higher level until we hit same or lower level)
+          for (let i = index + 1; i < hierarchicalData.length; i++) {
+            const childRow = hierarchicalData[i];
+            if (childRow.level <= row.level) break;
+            if (childRow.level === row.level + 1) {
+              parentData.children.push(i);
+            }
+          }
+        }
+      });
+    }
+
+    function toggleRow(rowIndex, rowDataMap, hierarchicalData) {
+      const rowData = rowDataMap.get(rowIndex);
+      if (!rowData || !rowData.row.isParent) return;
+      
+      const rowElement = rowData.element;
+      const wasExpanded = rowData.expanded;
+      const newExpanded = !wasExpanded;
+      
+      // Update row data
+      rowData.expanded = newExpanded;
+      
+      // Update chevron icon
+      const chevron = rowElement.querySelector('.chevron-icon');
+      if (chevron) {
+        chevron.classList.remove('expanded', 'collapsed');
+        chevron.classList.add(newExpanded ? 'expanded' : 'collapsed');
+      }
+      
+      // Update row class
+      rowElement.classList.remove('expanded', 'collapsed');
+      rowElement.classList.add(newExpanded ? 'expanded' : 'collapsed');
+      
+      // Show/hide children
+      if (newExpanded) {
+        // Show children
+        showChildren(rowIndex, rowDataMap, hierarchicalData, rowElement);
+      } else {
+        // Hide children
+        hideChildren(rowIndex, rowDataMap, hierarchicalData);
+      }
+    }
+
+    function showChildren(parentIndex, rowDataMap, hierarchicalData, parentElement) {
+      const parentData = rowDataMap.get(parentIndex);
+      const parentLevel = parentData.row.level;
+      
+      // Find and show all direct children
+      for (let i = parentIndex + 1; i < hierarchicalData.length; i++) {
+        const childRow = hierarchicalData[i];
+        const childData = rowDataMap.get(i);
+        
+        // Stop if we hit same or lower level
+        if (childRow.level <= parentLevel) break;
+        
+        // Show direct children (level + 1)
+        if (childRow.level === parentLevel + 1) {
+          childData.element.style.display = 'flex';
+          parentData.children.push(i);
+          
+          // Recursively show children if they were expanded
+          if (childData.row.isParent && childData.expanded) {
+            showChildren(i, rowDataMap, hierarchicalData, childData.element);
+          }
+        }
+      }
+    }
+
+    function hideChildren(parentIndex, rowDataMap, hierarchicalData) {
+      const parentData = rowDataMap.get(parentIndex);
+      const parentLevel = parentData.row.level;
+      
+      // Hide all descendants
+      for (let i = parentIndex + 1; i < hierarchicalData.length; i++) {
+        const childRow = hierarchicalData[i];
+        const childData = rowDataMap.get(i);
+        
+        // Stop if we hit same or lower level
+        if (childRow.level <= parentLevel) break;
+        
+        // Hide all descendants
+        if (childRow.level > parentLevel) {
+          childData.element.style.display = 'none';
+          // Recursively mark as hidden
+          if (childData.row.isParent) {
+            hideChildren(i, rowDataMap, hierarchicalData);
+          }
+        }
+      }
+      
+      // Clear children array
+      parentData.children = [];
+    }
+
+    function generateHierarchicalData(enabledLevels) {
+      const rows = [];
+      
+      // Helper function to get listview items for a level
+      function getListviewItems(hierarchy, level) {
+        const listviewName = selectedListviews[hierarchy]?.[level];
+        if (listviewName) {
+          const previewData = getPreviewData(listviewName, hierarchy, level);
+          // Extract just the names from the preview data objects
+          return previewData.map(item => item.name || item);
+        }
+        // Default fallback data
+        const defaultData = {
+          account: {
+            1: ['Acme Corp', 'Global Inc', 'Tech Solutions'],
+            2: ['North Division', 'South Division', 'East Division'],
+            3: ['Business Unit A', 'Business Unit B', 'Business Unit C'],
+            4: ['Account Group 1', 'Account Group 2'],
+            5: ['Account 1', 'Account 2', 'Account 3']
+          },
+          product: {
+            1: ['Electronics', 'Clothing'],
+            2: ['Consumer Electronics', 'Enterprise Electronics'],
+            3: ['Smartphones', 'Laptops'],
+            4: ['Product Line A', 'Product Line B'],
+            5: ['SKU-001', 'SKU-002']
+          },
+          users: {
+            1: ['Sales', 'Marketing'],
+            2: ['North Sales', 'South Sales'],
+            3: ['Team Alpha', 'Team Beta'],
+            4: ['Manager A', 'Manager B'],
+            5: ['User 1', 'User 2']
+          },
+          regions: {
+            1: ['North America', 'Europe'],
+            2: ['United States', 'Canada'],
+            3: ['California', 'New York'],
+            4: ['District 1', 'District 2'],
+            5: ['Zone A', 'Zone B']
+          }
+        };
+        return defaultData[hierarchy]?.[level] || [`${hierarchyLevels[hierarchy].levels[level - 1]} 1`];
+      }
+
+      if (selectedHierarchies.length === 0) return rows;
+
+      // Recursive function to build hierarchy
+      function buildHierarchy(hierarchyIndex, levelIndex, parentValues, depth, isFirstItem = true) {
+        const currentHierarchy = selectedHierarchies[hierarchyIndex];
+        const currentLevels = enabledLevels[currentHierarchy] || [];
+        
+        if (levelIndex >= currentLevels.length) {
+          // Reached leaf of current hierarchy
+          if (hierarchyIndex < selectedHierarchies.length - 1) {
+            // Attach next hierarchy to this leaf
+            buildHierarchy(hierarchyIndex + 1, 0, parentValues, depth, isFirstItem);
+          } else {
+            // This is the final leaf - add a data row
+            const displayValue = parentValues[currentHierarchy]?.[currentLevels.length - 1] || '';
+            rows.push({
+              isParent: false,
+              level: depth,
+              values: parentValues,
+              displayValue: displayValue,
+              revenue: '$' + (100000 + Math.floor(Math.random() * 500000)).toLocaleString(),
+              units: (500 + Math.floor(Math.random() * 2000)).toLocaleString(),
+              expanded: false
+            });
+          }
+          return;
+        }
+
+        // Get all items from the selected listview for this level
+        const levelItems = getListviewItems(currentHierarchy, levelIndex + 1);
+        
+        levelItems.forEach((itemValue, itemIndex) => {
+          const isFirst = isFirstItem && itemIndex === 0;
+          
+          // Create values for this row
+          const rowValues = {};
+          selectedHierarchies.forEach((h, hIdx) => {
+            rowValues[h] = [];
+            const hLevels = enabledLevels[h];
+            
+            if (hIdx < hierarchyIndex) {
+              // Copy parent values from previous hierarchies
+              hLevels.forEach((l, lIdx) => {
+                rowValues[h][lIdx] = parentValues[h]?.[lIdx] || '';
+              });
+            } else if (hIdx === hierarchyIndex) {
+              // Current hierarchy - fill up to current level
+              hLevels.forEach((l, lIdx) => {
+                if (lIdx < levelIndex) {
+                  // Copy from parent
+                  rowValues[h][lIdx] = parentValues[h]?.[lIdx] || '';
+                } else if (lIdx === levelIndex) {
+                  // Current level value
+                  rowValues[h][lIdx] = itemValue;
+                } else {
+                  rowValues[h][lIdx] = '';
+                }
+              });
+            } else {
+              // Future hierarchies - empty
+              hLevels.forEach((l, lIdx) => {
+                rowValues[h][lIdx] = '';
+              });
+            }
+          });
+
+          // Determine if this is a parent row (has children)
+          const hasMoreLevels = levelIndex < currentLevels.length - 1;
+          const hasNextHierarchy = hierarchyIndex < selectedHierarchies.length - 1;
+          const isParent = hasMoreLevels || hasNextHierarchy;
+          
+          // Add row - expand only if it's the first item in the expanded path
+          if (isParent) {
+            rows.push({
+              isParent: true,
+              level: depth,
+              values: rowValues,
+              displayValue: itemValue,
+              revenue: levelIndex === 0 ? '$2,500,000' : levelIndex === 1 ? '$1,200,000' : '$600,000',
+              units: levelIndex === 0 ? '10,000' : levelIndex === 1 ? '5,000' : '2,500',
+              expanded: isFirst
+            });
+          } else {
+            // Leaf node
+            rows.push({
+              isParent: false,
+              level: depth,
+              values: rowValues,
+              displayValue: itemValue,
+              revenue: '$' + (100000 + Math.floor(Math.random() * 500000)).toLocaleString(),
+              units: (500 + Math.floor(Math.random() * 2000)).toLocaleString(),
+              expanded: false
+            });
+          }
+
+          // Recursively build children only if this is the first item and it's expanded
+          if (isFirst && isParent) {
+            if (hasMoreLevels) {
+              // Go deeper in current hierarchy
+              buildHierarchy(hierarchyIndex, levelIndex + 1, rowValues, depth + 1, true);
+            } else if (hasNextHierarchy) {
+              // Move to next hierarchy
+              buildHierarchy(hierarchyIndex + 1, 0, rowValues, depth + 1, true);
+            }
+          }
+        });
+      }
+
+      // Start building from the first hierarchy, expand first item fully
+      buildHierarchy(0, 0, {}, 0, true);
+
+      return rows;
+    }
+
+    function populateReviewSection() {
+      // Populate selected hierarchies
+      const reviewHierarchies = document.getElementById('reviewHierarchies');
+      if (reviewHierarchies) {
+        reviewHierarchies.innerHTML = '';
+        selectedHierarchies.forEach((hierarchy, index) => {
+          const hierarchyDiv = document.createElement('div');
+          hierarchyDiv.style.cssText = 'padding: 12px; background-color: #f3f2f2; border-radius: 4px; margin-bottom: 8px;';
+          hierarchyDiv.textContent = `${index + 1}. ${hierarchyDisplayNames[hierarchy]}`;
+          reviewHierarchies.appendChild(hierarchyDiv);
+        });
+      }
+
+      // Populate grid preview
+      const reviewPreview = document.getElementById('reviewGridPreview');
+      if (reviewPreview) {
+        // Get enabled levels
+        const enabledLevels = {};
+        
+        selectedHierarchies.forEach(hierarchy => {
+          const levels = [];
+          for (let i = 1; i <= 5; i++) {
+            const checkbox = document.getElementById(`level${i}`);
+            if (checkbox && checkbox.checked) {
+              levels.push(hierarchyLevels[hierarchy].levels[i - 1]);
+            }
+          }
+          enabledLevels[hierarchy] = levels;
+        });
+
+        // Build header row - single column for hierarchy, then measures
+        const headerRow = document.createElement('div');
+        headerRow.className = 'preview-grid-header';
+        
+        // Single column header for hierarchy
+        const hierarchyHeader = document.createElement('div');
+        hierarchyHeader.className = 'preview-grid-header-cell';
+        hierarchyHeader.style.flex = '1';
+        hierarchyHeader.textContent = 'Hierarchy';
+        headerRow.appendChild(hierarchyHeader);
+        
+        // Add measure columns
+        const measureHeader = document.createElement('div');
+        measureHeader.className = 'preview-grid-header-cell';
+        measureHeader.style.minWidth = '120px';
+        measureHeader.textContent = 'Revenue';
+        headerRow.appendChild(measureHeader);
+        
+        const measureHeader2 = document.createElement('div');
+        measureHeader2.className = 'preview-grid-header-cell';
+        measureHeader2.style.minWidth = '120px';
+        measureHeader2.textContent = 'Units';
+        headerRow.appendChild(measureHeader2);
+
+        reviewPreview.innerHTML = '';
+        reviewPreview.appendChild(headerRow);
+
+        // Generate hierarchical data structure
+        const hierarchicalData = generateHierarchicalData(enabledLevels);
+        
+        // Store row data for collapse/expand functionality
+        const rowDataMap = new Map();
+        
+        // Render hierarchical rows
+        hierarchicalData.forEach((row, index) => {
+          const rowClasses = [
+            row.isParent ? 'parent' : 'child',
+            row.level > 0 ? 'child-level-' + row.level : '',
+            row.isParent && row.expanded ? 'expanded' : '',
+            row.isParent && !row.expanded ? 'collapsed' : ''
+          ].filter(c => c).join(' ');
+          const dataRow = document.createElement('div');
+          dataRow.className = `preview-grid-row ${rowClasses}`;
+          dataRow.setAttribute('data-row-index', index);
+          
+          // Hide children that are not expanded
+          if (row.level > 0) {
+            // Check if parent is expanded
+            let parentExpanded = true;
+            for (let i = index - 1; i >= 0; i--) {
+              const prevRow = hierarchicalData[i];
+              if (prevRow.level < row.level) {
+                parentExpanded = prevRow.expanded || false;
+                break;
+              }
+            }
+            if (!parentExpanded) {
+              dataRow.style.display = 'none';
+            }
+          }
+          
+          // Store row data
+          rowDataMap.set(index, {
+            row: row,
+            element: dataRow,
+            expanded: row.expanded || false,
+            children: []
+          });
+          
+          // Single cell showing the hierarchy value with chevron
+          const hierarchyCell = document.createElement('div');
+          hierarchyCell.className = 'preview-grid-cell';
+          hierarchyCell.style.flex = '1';
+          hierarchyCell.style.cursor = row.isParent ? 'pointer' : 'default';
+          
+          // Add chevron for parent rows
+          if (row.isParent) {
+            const chevron = document.createElement('span');
+            chevron.className = 'chevron-icon';
+            chevron.classList.add(row.expanded ? 'expanded' : 'collapsed');
+            chevron.style.cursor = 'pointer';
+            hierarchyCell.appendChild(chevron);
+            
+            // Add click handler to toggle expand/collapse
+            hierarchyCell.addEventListener('click', () => toggleRow(index, rowDataMap, hierarchicalData));
+          } else {
+            // Empty space for alignment on child rows
+            const spacer = document.createElement('span');
+            spacer.className = 'chevron-icon';
+            hierarchyCell.appendChild(spacer);
+          }
+          
+          const textNode = document.createTextNode(row.displayValue || '-');
+          hierarchyCell.appendChild(textNode);
+          dataRow.appendChild(hierarchyCell);
+          
+          // Add measure cells
+          const measureCell1 = document.createElement('div');
+          measureCell1.className = 'preview-grid-cell';
+          measureCell1.style.minWidth = '120px';
+          measureCell1.textContent = row.revenue || '-';
+          dataRow.appendChild(measureCell1);
+          
+          const measureCell2 = document.createElement('div');
+          measureCell2.className = 'preview-grid-cell';
+          measureCell2.style.minWidth = '120px';
+          measureCell2.textContent = row.units || '-';
+          dataRow.appendChild(measureCell2);
+
+          reviewPreview.appendChild(dataRow);
+        });
+        
+        // Build parent-child relationships
+        hierarchicalData.forEach((row, index) => {
+          if (row.isParent && row.expanded) {
+            const parentData = rowDataMap.get(index);
+            // Find children (next rows with higher level until we hit same or lower level)
+            for (let i = index + 1; i < hierarchicalData.length; i++) {
+              const childRow = hierarchicalData[i];
+              if (childRow.level <= row.level) break;
+              if (childRow.level === row.level + 1) {
+                parentData.children.push(i);
+              }
+            }
+          }
+        });
+      }
+    }
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function(event) {
+      const dropdown = document.getElementById('listviewDropdown');
+      const input = document.getElementById('listviewInput');
+      
+      if (dropdown && !dropdown.contains(event.target) && event.target !== input) {
+        dropdown.classList.remove('show');
+      }
+    });
+
+    // Initialize
+    function updatePreviewTitle() {
+      const usersDropdown = document.getElementById('usersDropdown');
+      const previewTitle = document.getElementById('previewTitle');
+      
+      if (usersDropdown && previewTitle) {
+        const selectedValue = usersDropdown.value;
+        if (selectedValue && selectedValue !== '') {
+          // Capitalize first letter and add "'s preview"
+          const userName = selectedValue.charAt(0).toUpperCase() + selectedValue.slice(1);
+          previewTitle.textContent = `${userName}'s Preview`;
+        } else {
+          previewTitle.textContent = 'Preview';
+        }
+      }
+      
+      // Also update the hierarchy title and subtitle if a hierarchy is selected
+      const configTitle = document.getElementById('configTitle');
+      const configSubtitle = document.getElementById('configSubtitle');
+      if (configTitle && currentHierarchy) {
+        let titleText = `${hierarchyLevels[currentHierarchy].name} Hierarchy:`;
+        let subtitleText = 'Select Hierarchy Depth and records to be shown at each level';
+        
+        if (usersDropdown && usersDropdown.value && usersDropdown.value !== '') {
+          const userName = usersDropdown.value.charAt(0).toUpperCase() + usersDropdown.value.slice(1);
+          titleText = `${userName}'s ${hierarchyLevels[currentHierarchy].name} Hierarchy:`;
+          subtitleText = `${userName}, select Hierarchy Depth and records to be shown at each level`;
+        }
+        
+        configTitle.textContent = titleText;
+        if (configSubtitle) {
+          configSubtitle.textContent = subtitleText;
+        }
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+      initDuellingPicklist();
+      updateStepper(1);
+      updateOrderButtons();
+      
+      const level5Checkbox = document.getElementById('level5');
+      if (level5Checkbox) {
+        const level5Button = level5Checkbox.closest('.level-item').querySelector('button');
+        level5Button.disabled = true;
+      }
+      
+      // Add event listener for users dropdown
+      const usersDropdown = document.getElementById('usersDropdown');
+      if (usersDropdown) {
+        usersDropdown.addEventListener('change', updatePreviewTitle);
+        // Initialize preview title on page load
+        updatePreviewTitle();
+      }
+    });
+  </script>
+</body>
+</html>

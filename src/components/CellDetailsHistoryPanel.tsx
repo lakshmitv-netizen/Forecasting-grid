@@ -1207,6 +1207,14 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                                 editCountForCell={editsByCell[entry.cellKey].length}
                                 onViewAllChanges={() => handleViewAllChanges(entry)}
                                 fullHierarchyPath={getFullHierarchyPath(entry)}
+                                measureName={(() => {
+                                  const cellInfo = extractCellInfo(
+                                    { rowId: entry.rowId, monthKey: entry.timeKey, measureId: entry.measureId },
+                                    data,
+                                    layout
+                                  );
+                                  return cellInfo?.measureName || (entry.measureId ? data.find(m => m.id === entry.measureId)?.name : undefined);
+                                })()}
                               />
                             );
                           })
@@ -1305,16 +1313,25 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                   {/* History List */}
                   <div className="cell-details-history-notes-list">
                     {cellEditHistory.length > 0 ? (
-                      cellEditHistory.map((entry, index) => (
-                        <CellEditHistoryCard 
-                          key={entry.id} 
-                          entry={entry}
-                          replies={cardReplies[entry.id] || []}
-                          onAddReply={handleAddCardReply}
-                          isLast={index === cellEditHistory.length - 1}
-                          isFirst={index === 0}
-                        />
-                      ))
+                      cellEditHistory.map((entry, index) => {
+                        const cellInfo = extractCellInfo(
+                          { rowId: entry.rowId, monthKey: entry.timeKey, measureId: entry.measureId },
+                          data,
+                          layout
+                        );
+                        const measureName = cellInfo?.measureName || (entry.measureId ? data.find(m => m.id === entry.measureId)?.name : undefined);
+                        return (
+                          <CellEditHistoryCard 
+                            key={entry.id} 
+                            entry={entry}
+                            replies={cardReplies[entry.id] || []}
+                            onAddReply={handleAddCardReply}
+                            isLast={index === cellEditHistory.length - 1}
+                            isFirst={index === 0}
+                            measureName={measureName}
+                          />
+                        );
+                      })
                     ) : (
                       <div className="cell-details-history-empty-state-content">
                         {hasFocusedCell && (

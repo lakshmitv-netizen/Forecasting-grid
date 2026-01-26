@@ -3,6 +3,7 @@ import { MeasureData, GridRow as GridRowType } from '../types';
 import GridRowComponent from './GridRow';
 import GridFooter from './GridFooter';
 import CellNotePopover from './CellNotePopover';
+import { useIndustry } from '../contexts/IndustryContext';
 import {
   propagateUpward,
   propagateDownward,
@@ -49,6 +50,9 @@ interface HierarchicalGridProps {
   onCellMouseDown?: (cellKey: string, event: React.MouseEvent) => void; // Callback for mouse down (drag selection)
   onCellMouseMove?: (cellKey: string) => void; // Callback for mouse move (drag selection)
   lastSelectedCell?: string | null; // Last selected cell key (for drag handle indicator)
+  onFillHandleDragStart?: (cellKey: string) => void; // Callback when fill handle drag starts
+  onFillHandleDragMove?: (cellKey: string) => void; // Callback when fill handle is dragged
+  onFillHandleDragEnd?: () => void; // Callback when fill handle drag ends
   onCellChangeHandlerReady?: (handler: (rowId: string, monthKey: string, newValue: number, note?: string) => void) => void; // Callback to expose cell change handler for programmatic updates
   onGetCurrentCellValueReady?: (handler: (rowId: string, monthKey: string) => number) => void; // Callback to expose function to get current cell value
   onEditingCellChange?: (cellKey: string | null) => void; // Callback when editing cell changes (cellKey format: `${rowId}-${monthKey}`)
@@ -94,6 +98,9 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   onCellMouseDown,
   onCellMouseMove,
   lastSelectedCell = null,
+  onFillHandleDragStart,
+  onFillHandleDragMove,
+  onFillHandleDragEnd,
   onCellChangeHandlerReady,
   showAllPeriods = true,
   startPeriod = '',
@@ -108,6 +115,8 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   onImpactedMeasuresInfoReady,
   onToggleShowOnlyImpactedKPIHandlerReady
 }) => {
+  const { industry } = useIndustry();
+  
   // Store onEditHistory in a ref so it's always available in callbacks
   const onEditHistoryRef = useRef(onEditHistory);
   useEffect(() => {
@@ -453,40 +462,62 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     setGridData(calculatedData);
   }, [data, calculateMeasureValues]);
 
-  // Expand only Sales Agreement Quantity by default, keep Chassis Components closed
+  // Expand default measures based on industry
   useEffect(() => {
     const expandedRowIds = new Set<string>();
     
-    // Find Sales Agreement Quantity measure
-    const salesAgreementQtyMeasure = gridData.find(measure => measure.id === 'measure-sa-qty');
-    
-    if (salesAgreementQtyMeasure && salesAgreementQtyMeasure.children) {
-      // Expand the measure itself
-      expandedRowIds.add(salesAgreementQtyMeasure.id);
+    if (industry === 'consumer-goods') {
+      // For Consumer Goods: Expand Planned Volume by default
+      const plannedVolumeMeasure = gridData.find(measure => measure.id === 'measure-planned-volume');
       
-      // Expand the account (MagnaDrive - Michigan Plant)
-      const account = salesAgreementQtyMeasure.children.find(row => row.type === 'account');
-      if (account && account.children) {
-        expandedRowIds.add(account.id);
+      if (plannedVolumeMeasure && plannedVolumeMeasure.children) {
+        // Expand the measure itself
+        expandedRowIds.add(plannedVolumeMeasure.id);
         
-        // Expand only Transmission Assembly, keep Chassis Components closed
-        for (const category of account.children) {
-          if (category.name === 'Transmission Assembly') {
-            expandedRowIds.add(category.id);
-            // Also expand Transmission Assembly's children (products)
-            if (category.children) {
-              for (const product of category.children) {
-                expandedRowIds.add(product.id);
-              }
+        // Expand all children (accounts, categories, products)
+        const expandAllChildren = (rows: GridRowType[]) => {
+          for (const row of rows) {
+            expandedRowIds.add(row.id);
+            if (row.children && row.children.length > 0) {
+              expandAllChildren(row.children);
             }
           }
-          // Chassis Components is not added, so it stays closed
+        };
+        
+        expandAllChildren(plannedVolumeMeasure.children);
+      }
+    } else {
+      // For Manufacturing: Expand Sales Agreement Quantity by default, keep Chassis Components closed
+      const salesAgreementQtyMeasure = gridData.find(measure => measure.id === 'measure-sa-qty');
+      
+      if (salesAgreementQtyMeasure && salesAgreementQtyMeasure.children) {
+        // Expand the measure itself
+        expandedRowIds.add(salesAgreementQtyMeasure.id);
+        
+        // Expand the account (MagnaDrive - Michigan Plant)
+        const account = salesAgreementQtyMeasure.children.find(row => row.type === 'account');
+        if (account && account.children) {
+          expandedRowIds.add(account.id);
+          
+          // Expand only Transmission Assembly, keep Chassis Components closed
+          for (const category of account.children) {
+            if (category.name === 'Transmission Assembly') {
+              expandedRowIds.add(category.id);
+              // Also expand Transmission Assembly's children (products)
+              if (category.children) {
+                for (const product of category.children) {
+                  expandedRowIds.add(product.id);
+                }
+              }
+            }
+            // Chassis Components is not added, so it stays closed
+          }
         }
       }
     }
     
     setExpandedRows(expandedRowIds);
-  }, [gridData]);
+  }, [gridData, industry]);
 
   const toggleExpand = (id: string) => {
     setExpandedRows((prev) => {
@@ -645,11 +676,28 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   // Register handlers with parent component (moved after getAllVisibleRows and getVisibleTimeKeys are defined)
 
 
-  const formatValue = (value: number): string => {
-    return value.toLocaleString('en-US', {
+  const formatValue = (value: number, isQuantity?: boolean, measureName?: string): string => {
+    const formatted = value.toLocaleString('en-US', {
       minimumFractionDigits: 0,
       maximumFractionDigits: 0, // No decimals in cell values
     });
+    
+    // Add $ symbol for revenue/currency measures (but not for quantities or percentages)
+    if (!isQuantity && measureName) {
+      const nameLower = measureName.toLowerCase();
+      const isRevenue = nameLower.includes('revenue') || 
+                       nameLower.includes('spend') && !nameLower.includes('%') ||
+                       nameLower === 'revenue';
+      // Don't add $ for percentages, ROI multipliers, or quantities
+      const isPercentage = nameLower.includes('%') || nameLower.includes('percent');
+      const isROI = nameLower.includes('roi');
+      
+      if (isRevenue && !isPercentage && !isROI) {
+        return `$${formatted}`;
+      }
+    }
+    
+    return formatted;
   };
 
   // Helper function to check if a month key falls within the date range
@@ -2799,7 +2847,12 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                     isExpanded={expandedRows.has(measure.id)}
                     expandedRows={expandedRows}
                     onToggleExpand={toggleExpand}
-                    formatValue={formatValue}
+                    formatValue={(value: number, isQuantity?: boolean, rowName?: string) => {
+                      // For measure rows, rowName is the measure name
+                      // For child rows, rowName is account/category/product name, so use measure.name
+                      const measureName = rowName && gridData.find(m => m.name === rowName) ? rowName : measure.name;
+                      return formatValue(value, isQuantity, measureName);
+                    }}
                     onCellChange={(rowId, monthKey, newValue, note) => {
                       handleCellChange(rowId, monthKey, newValue, note);
                     }}
@@ -2824,6 +2877,9 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                     onCellMouseDown={onCellMouseDown}
                     onCellMouseMove={onCellMouseMove}
                     lastSelectedCell={lastSelectedCell}
+                    onFillHandleDragStart={onFillHandleDragStart}
+                    onFillHandleDragMove={onFillHandleDragMove}
+                    onFillHandleDragEnd={onFillHandleDragEnd}
                   />
               );
               }
@@ -2861,6 +2917,10 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                   onCellSelect={onCellSelect}
                   onCellMouseDown={onCellMouseDown}
                   onCellMouseMove={onCellMouseMove}
+                  lastSelectedCell={lastSelectedCell}
+                  onFillHandleDragStart={onFillHandleDragStart}
+                  onFillHandleDragMove={onFillHandleDragMove}
+                  onFillHandleDragEnd={onFillHandleDragEnd}
                 />
               );
             })

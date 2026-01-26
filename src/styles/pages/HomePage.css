@@ -1,0 +1,68 @@
+.home-page {
+  min-height: 100vh;
+  background-color: #f3f3f3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+}
+
+.home-page-container {
+  max-width: 1200px;
+  width: 100%;
+}
+
+.home-page-title {
+  font-size: 32px;
+  font-weight: 400;
+  color: #03234D;
+  text-align: center;
+  margin-bottom: 48px;
+}
+
+.industry-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 32px;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.industry-tile {
+  background: white;
+  border-radius: 8px;
+  padding: 48px 32px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  border: 2px solid transparent;
+}
+
+.industry-tile:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border-color: #0176d3;
+}
+
+.industry-tile:active {
+  transform: translateY(-2px);
+}
+
+.tile-icon {
+  font-size: 64px;
+  margin-bottom: 48px;
+}
+
+.tile-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #03234D;
+  margin-bottom: 0;
+}
+
+.tile-description {
+  font-size: 14px;
+  color: #706e6b;
+  line-height: 1.5;
+}

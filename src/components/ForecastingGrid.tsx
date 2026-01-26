@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom';
 import { MeasureData } from '../types';
 import { CellEditHistoryEntry } from '../types/editHistory';
 import { AdjustmentNote } from '../types/adjustmentNote';
-import { mockData } from '../data/mockData';
+import { getMockData } from '../data/mockData';
+import { useIndustry } from '../contexts/IndustryContext';
 import { adjustmentMeasuresData } from '../data/adjustmentMeasuresData';
 import { findRowById, getChildren, distributeProportionally, propagateDownward, propagateUpward } from '../utils/valuePropagation';
 import HierarchicalGrid from './HierarchicalGrid';
@@ -15,6 +16,7 @@ import FiltersPanel from './FiltersPanel';
 import CellDetailsHistoryPanel from './CellDetailsHistoryPanel';
 import CellEditInfoPopover from './CellEditInfoPopover';
 import CellContextMenu from './CellContextMenu';
+import { getMeasureName } from '../utils/cellInfoUtils';
 import '../styles/components/Grid.css';
 
 // Cell focus types for different layouts
@@ -23,11 +25,17 @@ type DimensionsTimeGridFocus = { rowId: string; measureId: string } | null;
 type TimeDimensionsGridFocus = { rowId: string; measureId: string } | null;
 
 const ForecastingGrid: React.FC = () => {
+  const { industry } = useIndustry();
   const [selectedMeasureSubgroup, setSelectedMeasureSubgroup] = useState<string>('Revenue and Quantity Measures');
   const [selectedLayoutState, setSelectedLayoutState] = useState<string>('Measures / Dimensions x Time');
-  const [data, setData] = useState<MeasureData[]>(mockData);
+  
+  // Get data based on current industry, default to manufacturing if not set
+  const currentIndustry = industry || 'manufacturing';
+  const industryData = getMockData(currentIndustry);
+  
+  const [data, setData] = useState<MeasureData[]>(industryData);
   // Store original/unfiltered data separately so filters always work on base data
-  const [originalData, setOriginalData] = useState<MeasureData[]>(mockData);
+  const [originalData, setOriginalData] = useState<MeasureData[]>(industryData);
   const [visibleMeasureIds, setVisibleMeasureIds] = useState<Set<string>>(new Set());
   
   // Store focused cell for each layout
@@ -91,6 +99,26 @@ const ForecastingGrid: React.FC = () => {
   useEffect(() => {
     lastSelectedCellRef.current = lastSelectedCell;
   }, [lastSelectedCell]);
+  
+  // Update data and edit history when industry changes
+  useEffect(() => {
+    const currentIndustry = industry || 'manufacturing';
+    const newData = getMockData(currentIndustry);
+    setData(newData);
+    setOriginalData(newData);
+    // Reset visible measures when industry changes
+    setVisibleMeasureIds(new Set());
+    // Update edit history with industry-specific entries
+    const now = new Date();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const twoDaysAgo = new Date(now);
+    twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+    const newEditHistory = currentIndustry === 'consumer-goods' 
+      ? createConsumerGoodsEditHistory(now, yesterday, twoDaysAgo)
+      : createInitialEditHistory();
+    setEditHistory(newEditHistory);
+  }, [industry]);
   
   // Helper function to calculate all cells in a range between two cell keys
   const calculateCellRange = useCallback((startCellKey: string, endCellKey: string): string[] => {
@@ -506,6 +534,36 @@ const ForecastingGrid: React.FC = () => {
       setLastSelectedCell(cellKey);
     }
   }, [calculateCellRange]);
+
+  // Fill handle drag handlers
+  const handleFillHandleDragStart = useCallback((cellKey: string) => {
+    // Use the current last selected cell as the anchor, or the cellKey if no selection
+    const anchorCell = lastSelectedCellRef.current || cellKey;
+    dragStartCellRef.current = anchorCell;
+    isDragSelectionRef.current = true;
+    isDraggingRef.current = true;
+  }, []);
+
+  const handleFillHandleDragMove = useCallback((cellKey: string) => {
+    if (!dragStartCellRef.current) return;
+    
+    const startCellKey = dragStartCellRef.current;
+    
+    // Calculate range from start to current cell
+    const range = calculateCellRange(startCellKey, cellKey);
+    
+    // Update selection with the range
+    setSelectedCells(new Set(range));
+    setSelectedCellsOrder(range);
+    lastSelectedCellRef.current = cellKey;
+    setLastSelectedCell(cellKey);
+  }, [calculateCellRange]);
+
+  const handleFillHandleDragEnd = useCallback(() => {
+    dragStartCellRef.current = null;
+    isDragSelectionRef.current = false;
+    isDraggingRef.current = false;
+  }, []);
   
   const handleCellMouseUp = useCallback(() => {
     // Clear drag state
@@ -589,6 +647,513 @@ const ForecastingGrid: React.FC = () => {
     };
   }, []);
   
+  // Function to create Consumer Goods specific edit history
+  const createConsumerGoodsEditHistory = (_now: Date, yesterday: Date, twoDaysAgo: Date): CellEditHistoryEntry[] => {
+    return [
+      // Cells with both arrow and note indicators
+      {
+        id: 'cg-initial-1',
+        cellKey: 'account-measure-py-volume-jan2026',
+        rowId: 'account-measure-py-volume',
+        timeKey: 'jan2026',
+        oldValue: 800,
+        newValue: 920,
+        note: 'Increased Previous Year Volume forecast based on strong Q1 promotional campaigns and new retail partnerships',
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-2',
+        cellKey: 'category-chips-measure-planned-volume-feb2026',
+        rowId: 'category-chips-measure-planned-volume',
+        timeKey: 'feb2026',
+        oldValue: 400,
+        newValue: 445,
+        note: 'Chips & Crisps planned volume increased due to successful Super Bowl promotion and expanded distribution',
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-3',
+        cellKey: 'product-chips-1-measure-forecasted-volume-mar2026',
+        rowId: 'product-chips-1-measure-forecasted-volume',
+        timeKey: 'mar2026',
+        oldValue: 80,
+        newValue: 95,
+        note: 'Classic Potato Chips demand surged following positive customer reviews and social media buzz',
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-3a',
+        cellKey: 'product-chips-2-measure-target-volume-apr2026',
+        rowId: 'product-chips-2-measure-target-volume',
+        timeKey: 'apr2026',
+        oldValue: 80,
+        newValue: 105,
+        note: 'Tortilla Chips target volume raised for Q2 based on strong retailer commitments and seasonal trends',
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-3b',
+        cellKey: 'category-candy-measure-revenue-may2026',
+        rowId: 'category-candy-measure-revenue',
+        timeKey: 'may2026',
+        oldValue: 50000,
+        newValue: 52000,
+        note: 'Candy & Sweets revenue increased following successful Mother\'s Day promotional campaign',
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-3c',
+        cellKey: 'product-candy-1-measure-promo-spend-jun2026',
+        rowId: 'product-candy-1-measure-promo-spend',
+        timeKey: 'jun2026',
+        oldValue: 10.5,
+        newValue: 12.5,
+        note: 'Chocolate Bars promo spend increased to support summer marketing campaign and competitive positioning',
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-3d',
+        cellKey: 'account-measure-market-share-jul2026',
+        rowId: 'account-measure-market-share',
+        timeKey: 'jul2026',
+        oldValue: 18.5,
+        newValue: 19.2,
+        note: 'Market share improved following successful product launches and expanded retail presence',
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-3e',
+        cellKey: 'category-chips-measure-days-inventory-aug2026',
+        rowId: 'category-chips-measure-days-inventory',
+        timeKey: 'aug2026',
+        oldValue: 42,
+        newValue: 38,
+        note: 'Days of Inventory reduced due to improved supply chain efficiency and faster turnover',
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-3f',
+        cellKey: 'product-chips-3-measure-trade-spend-roi-sep2026',
+        rowId: 'product-chips-3-measure-trade-spend-roi',
+        timeKey: 'sep2026',
+        oldValue: 2.8,
+        newValue: 3.2,
+        note: 'Kettle Cooked Chips trade spend ROI improved following optimized promotional strategy',
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-3g',
+        cellKey: 'product-chips-4-measure-planned-volume-oct2026',
+        rowId: 'product-chips-4-measure-planned-volume',
+        timeKey: 'oct2026',
+        oldValue: 80,
+        newValue: 95,
+        note: 'Veggie Crisps planned volume increased for Halloween season and health-conscious consumer trend',
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-3h',
+        cellKey: 'category-candy-measure-forecasted-volume-nov2026',
+        rowId: 'category-candy-measure-forecasted-volume',
+        timeKey: 'nov2026',
+        oldValue: 500,
+        newValue: 480,
+        note: 'Candy & Sweets forecast adjusted downward due to competitive pricing pressure and market saturation',
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-3i',
+        cellKey: 'product-candy-2-measure-revenue-dec2026',
+        rowId: 'product-candy-2-measure-revenue',
+        timeKey: 'dec2026',
+        oldValue: 10000,
+        newValue: 9500,
+        note: 'Gummy Bears revenue forecast reduced following ingredient cost increases and margin pressure',
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-3j',
+        cellKey: 'product-chips-5-measure-target-volume-jan2026',
+        rowId: 'product-chips-5-measure-target-volume',
+        timeKey: 'jan2026',
+        oldValue: 80,
+        newValue: 65,
+        note: 'Pita Chips target volume reduced due to slower than expected market adoption',
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-3k',
+        cellKey: 'category-chips-measure-market-share-feb2026',
+        rowId: 'category-chips-measure-market-share',
+        timeKey: 'feb2026',
+        oldValue: 17.0,
+        newValue: 16.2,
+        note: 'Market share decreased following aggressive competitor promotions and new product launches',
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-3l',
+        cellKey: 'product-chips-1-measure-days-inventory-mar2026',
+        rowId: 'product-chips-1-measure-days-inventory',
+        timeKey: 'mar2026',
+        oldValue: 40,
+        newValue: 45,
+        note: 'Days of Inventory increased due to production delays and slower than expected sales velocity',
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-3m',
+        cellKey: 'account-measure-promo-spend-apr2026',
+        rowId: 'account-measure-promo-spend',
+        timeKey: 'apr2026',
+        oldValue: 11.0,
+        newValue: 10.2,
+        note: 'Promo Spend% reduced following cost optimization initiative and improved pricing strategy',
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-3n',
+        cellKey: 'product-chips-2-measure-trade-spend-roi-may2026',
+        rowId: 'product-chips-2-measure-trade-spend-roi',
+        timeKey: 'may2026',
+        oldValue: 3.0,
+        newValue: 2.6,
+        note: 'Trade Spend ROI decreased following increased promotional intensity and competitive response',
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-3o',
+        cellKey: 'category-candy-measure-planned-volume-jun2026',
+        rowId: 'category-candy-measure-planned-volume',
+        timeKey: 'jun2026',
+        oldValue: 500,
+        newValue: 520,
+        note: 'Candy & Sweets planned volume increased for summer season and back-to-school promotions',
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-3p',
+        cellKey: 'product-candy-1-measure-forecasted-volume-jul2026',
+        rowId: 'product-candy-1-measure-forecasted-volume',
+        timeKey: 'jul2026',
+        oldValue: 100,
+        newValue: 90,
+        note: 'Chocolate Bars forecast reduced due to seasonal demand patterns and inventory management',
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-3q',
+        cellKey: 'category-chips-measure-revenue-aug2026',
+        rowId: 'category-chips-measure-revenue',
+        timeKey: 'aug2026',
+        oldValue: 50000,
+        newValue: 48000,
+        note: 'Chips & Crisps revenue decreased following price competition and margin pressure',
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-3r',
+        cellKey: 'product-chips-3-measure-target-volume-sep2026',
+        rowId: 'product-chips-3-measure-target-volume',
+        timeKey: 'sep2026',
+        oldValue: 100,
+        newValue: 110,
+        note: 'Kettle Cooked Chips target volume increased following strong consumer response and retailer support',
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      // Cells with just arrow indicators (no notes)
+      {
+        id: 'cg-initial-4',
+        cellKey: 'account-measure-forecasted-volume-apr2026',
+        rowId: 'account-measure-forecasted-volume',
+        timeKey: 'apr2026',
+        oldValue: 1000,
+        newValue: 1100,
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-5',
+        cellKey: 'category-chips-measure-target-volume-may2026',
+        rowId: 'category-chips-measure-target-volume',
+        timeKey: 'may2026',
+        oldValue: 500,
+        newValue: 400,
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-6',
+        cellKey: 'product-chips-1-measure-revenue-jun2026',
+        rowId: 'product-chips-1-measure-revenue',
+        timeKey: 'jun2026',
+        oldValue: 10000,
+        newValue: 11500,
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-6a',
+        cellKey: 'product-chips-2-measure-planned-volume-jan2026',
+        rowId: 'product-chips-2-measure-planned-volume',
+        timeKey: 'jan2026',
+        oldValue: 80,
+        newValue: 95,
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-6b',
+        cellKey: 'category-candy-measure-forecasted-volume-feb2026',
+        rowId: 'category-candy-measure-forecasted-volume',
+        timeKey: 'feb2026',
+        oldValue: 500,
+        newValue: 420,
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-6c',
+        cellKey: 'product-candy-1-measure-market-share-mar2026',
+        rowId: 'product-candy-1-measure-market-share',
+        timeKey: 'mar2026',
+        oldValue: 16.5,
+        newValue: 17.8,
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-6d',
+        cellKey: 'account-measure-revenue-may2026',
+        rowId: 'account-measure-revenue',
+        timeKey: 'may2026',
+        oldValue: 100000,
+        newValue: 108000,
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-6e',
+        cellKey: 'product-chips-3-measure-planned-volume-jul2026',
+        rowId: 'product-chips-3-measure-planned-volume',
+        timeKey: 'jul2026',
+        oldValue: 80,
+        newValue: 70,
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-6f',
+        cellKey: 'category-chips-measure-promo-spend-aug2026',
+        rowId: 'category-chips-measure-promo-spend',
+        timeKey: 'aug2026',
+        oldValue: 11.0,
+        newValue: 10.0,
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-6g',
+        cellKey: 'product-chips-4-measure-forecasted-volume-sep2026',
+        rowId: 'product-chips-4-measure-forecasted-volume',
+        timeKey: 'sep2026',
+        oldValue: 80,
+        newValue: 90,
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-6h',
+        cellKey: 'category-candy-measure-market-share-oct2026',
+        rowId: 'category-candy-measure-market-share',
+        timeKey: 'oct2026',
+        oldValue: 18.5,
+        newValue: 19.5,
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-6i',
+        cellKey: 'product-candy-2-measure-revenue-nov2026',
+        rowId: 'product-candy-2-measure-revenue',
+        timeKey: 'nov2026',
+        oldValue: 10000,
+        newValue: 9200,
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-6j',
+        cellKey: 'account-measure-target-volume-dec2026',
+        rowId: 'account-measure-target-volume',
+        timeKey: 'dec2026',
+        oldValue: 1100,
+        newValue: 1200,
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-6k',
+        cellKey: 'product-chips-1-measure-planned-volume-feb2026',
+        rowId: 'product-chips-1-measure-planned-volume',
+        timeKey: 'feb2026',
+        oldValue: 80,
+        newValue: 75,
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-6l',
+        cellKey: 'category-chips-measure-days-inventory-apr2026',
+        rowId: 'category-chips-measure-days-inventory',
+        timeKey: 'apr2026',
+        oldValue: 42,
+        newValue: 38,
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-6m',
+        cellKey: 'product-chips-2-measure-trade-spend-roi-may2026',
+        rowId: 'product-chips-2-measure-trade-spend-roi',
+        timeKey: 'may2026',
+        oldValue: 3.0,
+        newValue: 3.2,
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-6n',
+        cellKey: 'category-candy-measure-planned-volume-jun2026',
+        rowId: 'category-candy-measure-planned-volume',
+        timeKey: 'jun2026',
+        oldValue: 500,
+        newValue: 480,
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-6o',
+        cellKey: 'product-candy-1-measure-forecasted-volume-jul2026',
+        rowId: 'product-candy-1-measure-forecasted-volume',
+        timeKey: 'jul2026',
+        oldValue: 100,
+        newValue: 115,
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      // Cells with just note indicators (no value changes)
+      {
+        id: 'cg-initial-7',
+        cellKey: 'account-measure-py-volume-jul2026',
+        rowId: 'account-measure-py-volume',
+        timeKey: 'jul2026',
+        oldValue: 800,
+        newValue: 800,
+        note: 'Monitoring Q3 promotional performance closely - may adjust Previous Year Volume based on mid-quarter review',
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-8',
+        cellKey: 'category-chips-measure-planned-volume-aug2026',
+        rowId: 'category-chips-measure-planned-volume',
+        timeKey: 'aug2026',
+        oldValue: 400,
+        newValue: 400,
+        note: 'Waiting for confirmation on major retail chain promotion before finalizing August forecast',
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-9',
+        cellKey: 'product-chips-1-measure-revenue-sep2026',
+        rowId: 'product-chips-1-measure-revenue',
+        timeKey: 'sep2026',
+        oldValue: 10000,
+        newValue: 10000,
+        note: 'Classic Potato Chips showing consistent performance, monitoring competitive landscape',
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-initial-10',
+        cellKey: 'product-candy-1-measure-market-share-oct2026',
+        rowId: 'product-candy-1-measure-market-share',
+        timeKey: 'oct2026',
+        oldValue: 16.5,
+        newValue: 16.5,
+        note: 'Chocolate Bars market share review scheduled for next week with marketing team',
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+    ];
+  };
+
   // Function to create initial edit history entries with sample data
   const createInitialEditHistory = (): CellEditHistoryEntry[] => {
     const now = new Date();
@@ -597,6 +1162,12 @@ const ForecastingGrid: React.FC = () => {
     const twoDaysAgo = new Date(now);
     twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
     
+    // Return industry-specific edit history
+    if (industry === 'consumer-goods') {
+      return createConsumerGoodsEditHistory(now, yesterday, twoDaysAgo);
+    }
+    
+    // Default to manufacturing edit history
     return [
       // Cells with both arrow and note indicators
       {
@@ -1521,17 +2092,23 @@ const ForecastingGrid: React.FC = () => {
       leftPos = window.innerWidth - popoverWidth - 20;
     }
     
+    // Get measure name for currency formatting
+    const measureName = entryToShow.measureId 
+      ? data.find(m => m.id === entryToShow.measureId)?.name 
+      : getMeasureName(entryToShow.rowId, data);
+    
     setEditInfoPopover({
       entry: entryToShow,
       cellKey,
       cellValue: cellValue ?? 0,
       isLocked: isLocked || false,
+      measureName: measureName,
       position: {
         top: cellRect.bottom + window.scrollY + 2,
         left: leftPos
       }
     });
-  }, [editHistory, draftEditHistory]); // Note: savedImpactedCellsRef and contextMenuRef are refs, so they don't need to be in deps
+  }, [editHistory, draftEditHistory, data]); // Note: savedImpactedCellsRef and contextMenuRef are refs, so they don't need to be in deps
 
   // Close edit info popover
   const handleCloseEditInfoPopover = useCallback(() => {
@@ -1620,14 +2197,16 @@ const ForecastingGrid: React.FC = () => {
       // Initialize all measures as visible
       setVisibleMeasureIds(new Set(adjustmentMeasuresData.map(m => m.id)));
     } else {
-      // Always apply initial edit history to mockData for Revenue and Quantity Measures
-      const dataWithHistory = applyInitialEditHistoryToData(mockData);
+      // Always apply initial edit history to data for Revenue and Quantity Measures
+      const currentIndustry = industry || 'manufacturing';
+      const currentData = getMockData(currentIndustry);
+      const dataWithHistory = applyInitialEditHistoryToData(currentData);
       setOriginalData(dataWithHistory);
       setData(dataWithHistory);
       // Initialize all measures as visible
-      setVisibleMeasureIds(new Set(mockData.map(m => m.id)));
+      setVisibleMeasureIds(new Set(currentData.map((m: MeasureData) => m.id)));
     }
-  }, [selectedMeasureSubgroup, applyInitialEditHistoryToData]);
+  }, [selectedMeasureSubgroup, applyInitialEditHistoryToData, industry]);
 
   // Handle measure reordering
   const handleMeasuresReorder = useCallback((orderedMeasures: MeasureData[], visibleIds: Set<string>) => {
@@ -1647,6 +2226,7 @@ const ForecastingGrid: React.FC = () => {
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const [isCellDetailsHistoryOpen, setIsCellDetailsHistoryOpen] = useState(false);
   const [cellDetailsInitialTab, setCellDetailsInitialTab] = useState<'single' | 'multi'>('single');
+  const [activeFilterCount, setActiveFilterCount] = useState(0);
   const [panelKey, setPanelKey] = useState(0); // Key to force panel remount when switching tabs
   
   // State for cell edit info popover
@@ -1655,6 +2235,7 @@ const ForecastingGrid: React.FC = () => {
     cellKey: string;
     cellValue: number;
     isLocked?: boolean;
+    measureName?: string;
     position: { top: number; left: number };
   } | null>(null);
   
@@ -1816,6 +2397,40 @@ const ForecastingGrid: React.FC = () => {
     selectedCellsOrderRef.current = [cellKey];
     setSelectedCellsOrder([cellKey]);
   }, []);
+
+  const handleContextViewEditHistory = useCallback(() => {
+    if (!contextMenu) return;
+    
+    // Close context menu first
+    setContextMenu(null);
+    
+    // Parse cellKey to get rowId and monthKey
+    const cellKey = contextMenu.cellKey;
+    const parts = cellKey.split('-');
+    // For hierarchical grid, cellKey format is: rowId-monthKey
+    // But rowId itself might contain dashes, so we need to be smarter
+    // The last part is always the monthKey (e.g., jan2026, feb2026)
+    const monthKey = parts[parts.length - 1];
+    const rowId = parts.slice(0, -1).join('-');
+    
+    // Select the cell
+    handleSelectSingleCell(cellKey);
+    
+    // Set focused cell for the panel
+    if (selectedLayoutState === 'Measures / Dimensions x Time') {
+      setCurrentFocusedCell({
+        rowId,
+        monthKey: monthKey as any,
+      });
+    }
+    
+    // Open the panel with single cell tab
+    setCellDetailsInitialTab('single');
+    setPanelKey(prev => prev + 1); // Force remount to ensure tab switches
+    setIsCellDetailsHistoryOpen(true);
+    setIsSettingsOpen(false);
+    setIsFiltersOpen(false);
+  }, [contextMenu, handleSelectSingleCell, selectedLayoutState]);
 
   // Open edit history panel from popover
   const handleViewEditHistory = useCallback((cellKey?: string) => {
@@ -2111,6 +2726,7 @@ const ForecastingGrid: React.FC = () => {
               isSettingsActive={isSettingsOpen}
               isFilterActive={isFiltersOpen}
               isNotesActive={isCellDetailsHistoryOpen}
+              activeFilterCount={activeFilterCount}
             />
           </div>
         </div>
@@ -2239,6 +2855,9 @@ const ForecastingGrid: React.FC = () => {
             onCellMouseDown={handleCellMouseDown}
             onCellMouseMove={handleCellMouseMove}
             lastSelectedCell={lastSelectedCell}
+            onFillHandleDragStart={handleFillHandleDragStart}
+            onFillHandleDragMove={handleFillHandleDragMove}
+            onFillHandleDragEnd={handleFillHandleDragEnd}
             onCellChangeHandlerReady={(handler) => {
               cellChangeHandlerRef.current = handler;
             }}
@@ -2333,6 +2952,7 @@ const ForecastingGrid: React.FC = () => {
           onApplyFilters={(filteredData) => {
             setData(filteredData);
           }}
+          onActiveFilterCountChange={setActiveFilterCount}
         />
         <CellDetailsHistoryPanel 
           key={panelKey}
@@ -2368,6 +2988,7 @@ const ForecastingGrid: React.FC = () => {
             position={editInfoPopover.position}
             isLocked={editInfoPopover.isLocked || false}
             lockedValue={editInfoPopover.isLocked ? editInfoPopover.cellValue : undefined}
+            measureName={editInfoPopover.measureName}
             onViewHistory={() => handleViewEditHistory(editInfoPopover.cellKey)}
             onClose={handleCloseEditInfoPopover}
           />
@@ -2383,6 +3004,7 @@ const ForecastingGrid: React.FC = () => {
             onPaste={handleContextPaste}
             onToggleLock={handleContextToggleLock}
             onMassUpdate={handleContextMassUpdate}
+            onViewEditHistory={handleContextViewEditHistory}
             isLocked={contextMenu.isLocked}
             canPaste={clipboardValue !== null}
             isEditable={contextMenu.isEditable}

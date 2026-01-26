@@ -1226,4 +1226,22 @@
 .cell-drag-handle svg {
   width: 8px;
   height: 8px;
+}.filter-badge {
+  position: absolute !important;
+  top: 6px !important;
+  right: -4px !important;
+  background-color: #e74c3c !important;
+  color: white !important;
+  border-radius: 50% !important;
+  width: 18px !important;
+  height: 18px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  line-height: 1 !important;
+  border: 2px solid white !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3) !important;
+  z-index: 10 !important;
 }
