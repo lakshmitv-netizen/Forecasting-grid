@@ -412,30 +412,76 @@
 
 .list-page-modal-header {
   display: flex !important;
-  justify-content: center !important;
+  justify-content: space-between !important;
   align-items: center !important;
-  padding: 24px 24px 16px !important;
-  border-bottom: none !important;
+  padding: 20px 24px !important;
+  border-bottom: 1px solid #e5e5e5 !important;
   background: transparent !important;
   position: relative !important;
 }
 
+.list-page-modal-close {
+  width: 32px !important;
+  height: 32px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: transparent !important;
+  border: none !important;
+  cursor: pointer !important;
+  color: #666 !important;
+  padding: 0 !important;
+  border-radius: 4px !important;
+  transition: background-color 0.2s ease !important;
+}
+
+.list-page-modal-close:hover {
+  background-color: rgba(0, 0, 0, 0.05) !important;
+}
+
+.list-page-modal-close svg {
+  width: 18px !important;
+  height: 18px !important;
+}
+
 .list-page-modal-title {
   font-size: 18px !important;
-  font-weight: 400 !important;
-  color: var(--color-on-surface-3) !important;
+  font-weight: 600 !important;
+  color: #181818 !important;
   margin: 0 !important;
   line-height: 24px !important;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif !important;
+  flex: 1 !important;
+  text-align: center !important;
 }
 
 .list-page-modal-body {
-  padding: 0 24px 20px !important;
+  padding: 24px !important;
   display: flex !important;
   flex-direction: column !important;
-  gap: 20px !important;
+  gap: 24px !important;
   max-height: calc(90vh - 180px) !important;
   overflow-y: auto !important;
+}
+
+.list-page-modal-section {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 16px !important;
+}
+
+.list-page-modal-section-title {
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  color: #181818 !important;
+  margin: 0 !important;
+  padding: 8px 16px !important;
+  letter-spacing: 0.5px !important;
+  text-transform: none !important;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif !important;
+  background-color: #F2F2F2 !important;
+  border-radius: 8px 8px 0 0 !important;
+  width: 100% !important;
 }
 
 .list-page-modal-field {
@@ -443,6 +489,10 @@
   flex-direction: column !important;
   gap: 0 !important;
   flex: 1 !important;
+}
+
+.list-page-modal-field-full {
+  flex: 1 1 100% !important;
 }
 
 .list-page-modal-row {
@@ -594,5 +644,113 @@
   border-color: #014486 !important;
   color: white !important;
   text-decoration: none !important;
+}
+
+.list-page-modal-info-text,
+.list-page-modal-warning-text {
+  font-size: 12px !important;
+  color: #666 !important;
+  margin: 0 !important;
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 6px !important;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif !important;
+  line-height: 1.5 !important;
+}
+
+.list-page-modal-info-icon {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 16px !important;
+  height: 16px !important;
+  border-radius: 50% !important;
+  background-color: #0176d3 !important;
+  color: white !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  flex-shrink: 0 !important;
+  margin-top: 2px !important;
+}
+
+.list-page-modal-warning-icon {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 16px !important;
+  height: 16px !important;
+  border-radius: 50% !important;
+  background-color: #ff9800 !important;
+  color: white !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  flex-shrink: 0 !important;
+  margin-top: 2px !important;
+}
+
+.list-page-modal-supporting-text {
+  font-size: 12px !important;
+  color: #666 !important;
+  margin: 8px 0 0 0 !important;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif !important;
+  line-height: 1.5 !important;
+}
+
+.list-page-modal-tooltip-wrapper {
+  position: relative !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  margin-left: 6px !important;
+}
+
+.list-page-modal-tooltip-icon {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 16px !important;
+  height: 16px !important;
+  border-radius: 50% !important;
+  background-color: #0176d3 !important;
+  color: white !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  cursor: help !important;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif !important;
+}
+
+.list-page-modal-tooltip {
+  position: absolute !important;
+  bottom: 100% !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  margin-bottom: 8px !important;
+  padding: 8px 12px !important;
+  background-color: #333 !important;
+  color: white !important;
+  font-size: 12px !important;
+  font-weight: 400 !important;
+  border-radius: 4px !important;
+  width: 280px !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: opacity 0.2s ease !important;
+  z-index: 1000 !important;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif !important;
+  line-height: 1.4 !important;
+  text-align: left !important;
+}
+
+.list-page-modal-tooltip-wrapper:hover .list-page-modal-tooltip {
+  opacity: 1 !important;
+}
+
+.list-page-modal-tooltip::after {
+  content: '' !important;
+  position: absolute !important;
+  top: 100% !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  border: 5px solid transparent !important;
+  border-top-color: #333 !important;
 }
 

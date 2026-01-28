@@ -639,9 +639,7 @@
   background-color: var(--color-surface-white) !important;
   color: #0050D9 !important;
   border: 1px solid #0050D9 !important;
-}
-
-.filters-cancel-button:hover {
+}.filters-cancel-button:hover {
   background-color: #F0F7FF !important;
 }
 

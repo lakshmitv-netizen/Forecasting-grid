@@ -26,13 +26,14 @@ const PlanningForecastingListPage: React.FC = () => {
   const [selectAll, setSelectAll] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newRecord, setNewRecord] = useState({
-    name: '',
-    adminTemplate: '',
-    account: '',
-    startPeriod: '',
-    endPeriod: '',
-    defaultMeasureSubgroup: 'revenue-quantity',
-    defaultTimeGranularity: 'months'
+    planName: '',
+    status: 'draft',
+    startDate: '',
+    endDate: '',
+    planTemplate: '',
+    planningAccount: '',
+    planningLevel: 'category',
+    listView: ''
   });
 
   const handleSelectAll = () => {
@@ -172,120 +173,159 @@ const PlanningForecastingListPage: React.FC = () => {
         <div className="list-page-modal-overlay" onClick={() => setIsModalOpen(false)}>
           <div className="list-page-modal" onClick={(e) => e.stopPropagation()}>
             <div className="list-page-modal-header">
-              <h2 className="list-page-modal-title">New Plan</h2>
+              <button className="list-page-modal-close" onClick={() => setIsModalOpen(false)}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+              <h2 className="list-page-modal-title">Create New Plan</h2>
             </div>
             <div className="list-page-modal-body">
-              <div className="list-page-modal-row">
-                <div className="list-page-modal-field">
-                  <label className="list-page-modal-label">Name</label>
-                  <input 
-                    type="text" 
-                    className="list-page-modal-input"
-                    value={newRecord.name}
-                    onChange={(e) => setNewRecord({...newRecord, name: e.target.value})}
-                    placeholder="Enter Name"
-                  />
-                </div>
-                <div className="list-page-modal-field">
-                  <label className="list-page-modal-label">Select Admin Template</label>
-                  <div className="list-page-modal-search-wrapper">
+              {/* BASIC DETAILS Section */}
+              <div className="list-page-modal-section">
+                <h3 className="list-page-modal-section-title">Basic Details</h3>
+                <div className="list-page-modal-row">
+                  <div className="list-page-modal-field">
+                    <label className="list-page-modal-label">Plan Name:</label>
                     <input 
                       type="text" 
-                      className="list-page-modal-input list-page-modal-search-input"
-                      value={newRecord.adminTemplate}
-                      onChange={(e) => setNewRecord({...newRecord, adminTemplate: e.target.value})}
-                      placeholder="Select Template"
+                      className="list-page-modal-input"
+                      value={newRecord.planName}
+                      onChange={(e) => setNewRecord({...newRecord, planName: e.target.value})}
+                      placeholder="Enter Plan Name"
                     />
-                    <svg className="list-page-modal-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <circle cx="11" cy="11" r="8"/>
-                      <path d="M21 21l-4.35-4.35"/>
-                    </svg>
+                  </div>
+                  <div className="list-page-modal-field">
+                    <label className="list-page-modal-label">Status:</label>
+                    <select 
+                      className="list-page-modal-select"
+                      value={newRecord.status}
+                      onChange={(e) => setNewRecord({...newRecord, status: e.target.value})}
+                    >
+                      <option value="draft">Draft</option>
+                      <option value="active">Active</option>
+                      <option value="completed">Completed</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="list-page-modal-row">
+                  <div className="list-page-modal-field">
+                    <label className="list-page-modal-label">Start Date:</label>
+                    <input 
+                      type="text" 
+                      className="list-page-modal-input"
+                      value={newRecord.startDate}
+                      onChange={(e) => setNewRecord({...newRecord, startDate: e.target.value})}
+                      placeholder="MM/DD/YY"
+                    />
+                  </div>
+                  <div className="list-page-modal-field">
+                    <label className="list-page-modal-label">End Date:</label>
+                    <input 
+                      type="text" 
+                      className="list-page-modal-input"
+                      value={newRecord.endDate}
+                      onChange={(e) => setNewRecord({...newRecord, endDate: e.target.value})}
+                      placeholder="MM/DD/YY"
+                    />
+                  </div>
+                </div>
+                <div className="list-page-modal-row">
+                  <div className="list-page-modal-field list-page-modal-field-full">
+                      <label className="list-page-modal-label">Select Admin Template:</label>
+                    <select 
+                      className="list-page-modal-select"
+                      value={newRecord.planTemplate}
+                      onChange={(e) => setNewRecord({...newRecord, planTemplate: e.target.value})}
+                    >
+                      <option value="">Select Plan Template</option>
+                      <option value="template-1">Template 1</option>
+                      <option value="template-2">Template 2</option>
+                      <option value="template-3">Template 3</option>
+                    </select>
                   </div>
                 </div>
               </div>
-              <div className="list-page-modal-row">
-                <div className="list-page-modal-field">
-                  <label className="list-page-modal-label">Start Period</label>
-                  <select 
-                    className="list-page-modal-select"
-                    value={newRecord.startPeriod}
-                    onChange={(e) => setNewRecord({...newRecord, startPeriod: e.target.value})}
-                  >
-                    <option value="">Select Start Period</option>
-                    <option value="jan-2026">Jan 2026</option>
-                    <option value="feb-2026">Feb 2026</option>
-                    <option value="mar-2026">Mar 2026</option>
-                    <option value="q1-2026">Q1 2026</option>
-                    <option value="q2-2026">Q2 2026</option>
-                  </select>
+
+              {/* ACCOUNT SCOPE Section - Progressive Disclosure */}
+              {newRecord.planTemplate && (
+                <div className="list-page-modal-section">
+                  <h3 className="list-page-modal-section-title">Account Scope</h3>
+                  <div className="list-page-modal-row">
+                    <div className="list-page-modal-field list-page-modal-field-full">
+                      <label className="list-page-modal-label">
+                        Select Account:
+                        <span className="list-page-modal-tooltip-wrapper">
+                          <span className="list-page-modal-tooltip-icon">i</span>
+                          <span className="list-page-modal-tooltip">
+                            All account nodes marked as "Planning" under the selected account will be displayed on the grid.
+                          </span>
+                        </span>
+                      </label>
+                      <select 
+                        className="list-page-modal-select"
+                        value={newRecord.planningAccount}
+                        onChange={(e) => setNewRecord({...newRecord, planningAccount: e.target.value})}
+                      >
+                        <option value="">Select Account</option>
+                        <option value="acme-na">Acme North America</option>
+                        <option value="acme-eu">Acme Europe</option>
+                        <option value="acme-apac">Acme APAC</option>
+                      </select>
+                    </div>
+                  </div>
                 </div>
-                <div className="list-page-modal-field">
-                  <label className="list-page-modal-label">End Period</label>
-                  <select 
-                    className="list-page-modal-select"
-                    value={newRecord.endPeriod}
-                    onChange={(e) => setNewRecord({...newRecord, endPeriod: e.target.value})}
-                  >
-                    <option value="">Select End Period</option>
-                    <option value="dec-2026">Dec 2026</option>
-                    <option value="nov-2026">Nov 2026</option>
-                    <option value="oct-2026">Oct 2026</option>
-                    <option value="q4-2026">Q4 2026</option>
-                    <option value="q3-2026">Q3 2026</option>
-                  </select>
+              )}
+
+              {/* PRODUCT SCOPE Section - Progressive Disclosure */}
+              {newRecord.planTemplate && (
+                <div className="list-page-modal-section">
+                  <h3 className="list-page-modal-section-title">Product Scope</h3>
+                  <div className="list-page-modal-row">
+                    <div className="list-page-modal-field">
+                      <label className="list-page-modal-label">Product Level:</label>
+                      <select 
+                        className="list-page-modal-select"
+                        value={newRecord.planningLevel}
+                        onChange={(e) => setNewRecord({...newRecord, planningLevel: e.target.value})}
+                      >
+                        <option value="category">Category</option>
+                        <option value="product">Product</option>
+                        <option value="subcategory">Subcategory</option>
+                      </select>
+                    </div>
+                    <div className="list-page-modal-field">
+                      <label className="list-page-modal-label">
+                        Select Values:
+                        <span className="list-page-modal-tooltip-wrapper">
+                          <span className="list-page-modal-tooltip-icon">i</span>
+                          <span className="list-page-modal-tooltip">
+                            All Items in this listview will be populated as values for the selected product level and all their hierarchical descendants will be shown on the grid.
+                          </span>
+                        </span>
+                      </label>
+                      <select 
+                        className="list-page-modal-select"
+                        value={newRecord.listView}
+                        onChange={(e) => setNewRecord({...newRecord, listView: e.target.value})}
+                      >
+                        <option value="">Select List View</option>
+                        <option value="fast-growing">Fast Growing Categories</option>
+                        <option value="all">All Categories</option>
+                        <option value="custom">Custom List</option>
+                      </select>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div className="list-page-modal-row">
-                <div className="list-page-modal-field">
-                  <label className="list-page-modal-label">Default Time Granularity</label>
-                  <select 
-                    className="list-page-modal-select"
-                    value={newRecord.defaultTimeGranularity}
-                    onChange={(e) => setNewRecord({...newRecord, defaultTimeGranularity: e.target.value})}
-                  >
-                    <option value="months">Months</option>
-                    <option value="quarters">Quarters</option>
-                    <option value="years">Years</option>
-                  </select>
-                </div>
-                <div className="list-page-modal-field">
-                  <label className="list-page-modal-label">Default Measure Subgroup</label>
-                  <select 
-                    className="list-page-modal-select"
-                    value={newRecord.defaultMeasureSubgroup}
-                    onChange={(e) => setNewRecord({...newRecord, defaultMeasureSubgroup: e.target.value})}
-                  >
-                    <option value="revenue-quantity">Revenue and Quantity Measures</option>
-                    <option value="adjustment">Adjustment Measures</option>
-                  </select>
-                </div>
-              </div>
-              <div className="list-page-modal-row">
-                <div className="list-page-modal-field">
-                  <label className="list-page-modal-label">Select Account</label>
-                  <select 
-                    className="list-page-modal-select"
-                    value={newRecord.account}
-                    onChange={(e) => setNewRecord({...newRecord, account: e.target.value})}
-                  >
-                    <option value="">Select Account</option>
-                    <option value="magnadrive-michigan">MagnaDrive - Michigan Plant</option>
-                    <option value="magnadrive-ohio">MagnaDrive - Ohio Plant</option>
-                    <option value="magnadrive-california">MagnaDrive - California Plant</option>
-                    <option value="acme-corp">ACME Corporation</option>
-                    <option value="tech-solutions">Tech Solutions Inc</option>
-                    <option value="global-manufacturing">Global Manufacturing Co</option>
-                  </select>
-                </div>
-                <div className="list-page-modal-field"></div>
-              </div>
+              )}
             </div>
             <div className="list-page-modal-footer">
               <button className="list-page-modal-cancel" onClick={() => setIsModalOpen(false)}>
                 Cancel
               </button>
               <button className="list-page-modal-create" onClick={() => setIsModalOpen(false)}>
-                Create
+                Create Plan
               </button>
             </div>
           </div>
