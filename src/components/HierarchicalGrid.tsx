@@ -268,7 +268,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   // Set of cellKeys that were impacted in the current session but are now saved
   const [savedImpactedCells, setSavedImpactedCells] = useState<Set<string>>(new Set());
   
-  // Initialize savedEditedCells from cellEditHistory on mount
+  // Initialize savedEditedCells from cellEditHistory on mount and when it changes
   useEffect(() => {
     if (cellEditHistory.length > 0) {
       const initialSavedCells = new Map<string, string>();
@@ -282,7 +282,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       });
       setSavedEditedCells(initialSavedCells);
     }
-  }, []); // Only run on mount
+  }, [cellEditHistory]); // Run when cellEditHistory changes
   // Track unsaved notes for dirty cells (cells that are edited but not saved)
   // Map key: `${rowId}-${monthKey}`, value: note text
   const [unsavedNotes, setUnsavedNotes] = useState<Map<string, string>>(new Map());

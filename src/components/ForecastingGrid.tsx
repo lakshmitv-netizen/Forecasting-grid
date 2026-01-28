@@ -664,18 +664,6 @@ const ForecastingGrid: React.FC = () => {
         userName: 'John Carter',
       },
       {
-        id: 'cg-initial-2',
-        cellKey: 'category-chips-measure-planned-volume-feb2026',
-        rowId: 'category-chips-measure-planned-volume',
-        timeKey: 'feb2026',
-        oldValue: 400,
-        newValue: 445,
-        note: 'Chips & Crisps planned volume increased due to successful Super Bowl promotion and expanded distribution',
-        timestamp: yesterday,
-        userId: 'john-carter',
-        userName: 'John Carter',
-      },
-      {
         id: 'cg-initial-3',
         cellKey: 'product-chips-1-measure-forecasted-volume-mar2026',
         rowId: 'product-chips-1-measure-forecasted-volume',
@@ -807,6 +795,79 @@ const ForecastingGrid: React.FC = () => {
         userId: 'john-carter',
         userName: 'John Carter',
       },
+      // Product-level Planned Volume entries with notes and arrows
+      {
+        id: 'cg-product-planned-1',
+        cellKey: 'product-chips-1-measure-planned-volume-mar2026',
+        rowId: 'product-chips-1-measure-planned-volume',
+        timeKey: 'mar2026',
+        oldValue: 90,
+        newValue: 105,
+        note: 'Classic Potato Chips planned volume increased for March due to strong consumer demand and expanded retail distribution',
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-product-planned-2',
+        cellKey: 'product-chips-2-measure-planned-volume-apr2026',
+        rowId: 'product-chips-2-measure-planned-volume',
+        timeKey: 'apr2026',
+        oldValue: 85,
+        newValue: 98,
+        note: 'Tortilla Chips planned volume raised for April following successful Q1 sales performance and new flavor launch',
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-product-planned-3',
+        cellKey: 'product-chips-3-measure-planned-volume-may2026',
+        rowId: 'product-chips-3-measure-planned-volume',
+        timeKey: 'may2026',
+        oldValue: 95,
+        newValue: 88,
+        note: 'Kettle Cooked Chips planned volume adjusted downward for May due to production capacity constraints',
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-product-planned-4',
+        cellKey: 'product-chips-4-measure-planned-volume-jun2026',
+        rowId: 'product-chips-4-measure-planned-volume',
+        timeKey: 'jun2026',
+        oldValue: 92,
+        newValue: 110,
+        note: 'Veggie Crisps planned volume increased significantly for June to support summer health-conscious consumer trends',
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-product-planned-5',
+        cellKey: 'product-candy-1-measure-planned-volume-jul2026',
+        rowId: 'product-candy-1-measure-planned-volume',
+        timeKey: 'jul2026',
+        oldValue: 230,
+        newValue: 250,
+        note: 'Chocolate Bars planned volume increased for July to capitalize on summer travel and vacation season demand',
+        timestamp: yesterday,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
+      {
+        id: 'cg-product-planned-6',
+        cellKey: 'product-candy-2-measure-planned-volume-aug2026',
+        rowId: 'product-candy-2-measure-planned-volume',
+        timeKey: 'aug2026',
+        oldValue: 240,
+        newValue: 220,
+        note: 'Gummy Bears planned volume reduced for August due to ingredient supply chain delays and inventory optimization',
+        timestamp: twoDaysAgo,
+        userId: 'john-carter',
+        userName: 'John Carter',
+      },
       {
         id: 'cg-initial-3k',
         cellKey: 'category-chips-measure-market-share-feb2026',
@@ -852,18 +913,6 @@ const ForecastingGrid: React.FC = () => {
         newValue: 2.6,
         note: 'Trade Spend ROI decreased following increased promotional intensity and competitive response',
         timestamp: twoDaysAgo,
-        userId: 'john-carter',
-        userName: 'John Carter',
-      },
-      {
-        id: 'cg-initial-3o',
-        cellKey: 'category-candy-measure-planned-volume-jun2026',
-        rowId: 'category-candy-measure-planned-volume',
-        timeKey: 'jun2026',
-        oldValue: 500,
-        newValue: 520,
-        note: 'Candy & Sweets planned volume increased for summer season and back-to-school promotions',
-        timestamp: yesterday,
         userId: 'john-carter',
         userName: 'John Carter',
       },
@@ -1077,17 +1126,6 @@ const ForecastingGrid: React.FC = () => {
         oldValue: 3.0,
         newValue: 3.2,
         timestamp: twoDaysAgo,
-        userId: 'john-carter',
-        userName: 'John Carter',
-      },
-      {
-        id: 'cg-initial-6n',
-        cellKey: 'category-candy-measure-planned-volume-jun2026',
-        rowId: 'category-candy-measure-planned-volume',
-        timeKey: 'jun2026',
-        oldValue: 500,
-        newValue: 480,
-        timestamp: yesterday,
         userId: 'john-carter',
         userName: 'John Carter',
       },
@@ -2128,6 +2166,11 @@ const ForecastingGrid: React.FC = () => {
   const applyInitialEditHistoryToData = useCallback((baseData: MeasureData[]): MeasureData[] => {
     const initialHistory = createInitialEditHistory();
     const updatedData = JSON.parse(JSON.stringify(baseData)); // Deep clone
+    const historyMap = new Map<string, CellEditHistoryEntry>();
+    initialHistory.forEach(entry => {
+      const key = `${entry.rowId}-${entry.timeKey}`;
+      historyMap.set(key, entry);
+    });
     
     // Update individual cell values to their final (newValue) state
     initialHistory.forEach(entry => {
@@ -2142,27 +2185,27 @@ const ForecastingGrid: React.FC = () => {
           const children = getChildren(entry.rowId, updatedData);
           
           if (children.length > 0) {
-            // This is a parent row - distribute the change proportionally to children
+            // This is a parent row - ensure children sum exactly to newValue
             // First, update the parent row value
             row.values[monthKey] = entry.newValue;
             
-            // Then distribute the delta to children proportionally
-            const distribution = distributeProportionally(delta, children, monthKey as any);
+            // Calculate current children sum (after any child edits have been applied)
+            let currentChildrenSum = children.reduce((sum, child) => {
+              const childRow = findRowById(child.id, updatedData);
+              return sum + (childRow?.values[monthKey] || 0);
+            }, 0);
             
-            for (const [childId, childDelta] of distribution.entries()) {
-              const child = findRowById(childId, updatedData);
-              if (child) {
-                const currentValue = child.values[monthKey];
-                child.values[monthKey] = currentValue + childDelta;
-                
-                // Recursively propagate to grandchildren if any
-                const grandchildUpdates = propagateDownward(childId, monthKey as any, childDelta, updatedData);
-                grandchildUpdates.forEach(update => {
-                  const grandchild = findRowById(update.rowId, updatedData);
-                  if (grandchild) {
-                    grandchild.values[update.monthKey] = update.newValue;
-                  }
-                });
+            // Calculate the total adjustment needed
+            const totalAdjustment = entry.newValue - currentChildrenSum;
+            
+            // Only adjust if needed - adjust minimally (just the last child)
+            if (Math.abs(totalAdjustment) > 0.01 && children.length > 0) {
+              // Adjust the last child minimally to make sum exact
+              // This preserves existing child values as much as possible
+              const lastChild = findRowById(children[children.length - 1].id, updatedData);
+              if (lastChild) {
+                const currentValue = lastChild.values[monthKey] || 0;
+                lastChild.values[monthKey] = currentValue + totalAdjustment;
               }
             }
           } else {
@@ -2181,6 +2224,67 @@ const ForecastingGrid: React.FC = () => {
         }
       }
     });
+    
+    // Post-process: Ensure parent rows match their children sums exactly
+    // This fixes cases where edit history was applied but children don't sum correctly
+    // CRITICAL: This must run AFTER all edit history entries are applied
+    const fixParentChildSums = (measure: MeasureData): void => {
+      if (measure.children) {
+        measure.children.forEach(category => {
+          if (category.children && category.children.length > 0) {
+            // Fix category sum from products
+            const monthKeys: (keyof typeof category.values)[] = [
+              'jan2026', 'feb2026', 'mar2026', 'apr2026', 'may2026', 'jun2026',
+              'jul2026', 'aug2026', 'sep2026', 'oct2026', 'nov2026', 'dec2026',
+            ];
+            
+            for (const monthKey of monthKeys) {
+              // Check if there's an edit history entry for this category/month
+              const historyKey = `${category.id}-${monthKey}`;
+              const categoryEdit = historyMap.get(historyKey);
+              
+              if (categoryEdit && categoryEdit.newValue !== undefined) {
+                const targetSum = categoryEdit.newValue;
+                
+                // Calculate current children sum
+                let currentSum = category.children.reduce((sum, child) => {
+                  return sum + (child.values[monthKey] || 0);
+                }, 0);
+                
+                // Only adjust if sum doesn't match target - adjust minimally
+                if (Math.abs(currentSum - targetSum) > 0.01) {
+                  const adjustment = targetSum - currentSum;
+                  
+                  // Simple approach: adjust the last child to make sum exact
+                  // This minimizes changes to existing values
+                  if (category.children.length > 0) {
+                    const lastChild = category.children[category.children.length - 1];
+                    if (lastChild) {
+                      const currentValue = lastChild.values[monthKey] || 0;
+                      lastChild.values[monthKey] = currentValue + adjustment;
+                    }
+                  }
+                }
+                
+                // CRITICAL: Always set category value to targetSum (don't let grid recalculate)
+                category.values[monthKey] = targetSum;
+              } else {
+                // No edit history - calculate sum from children
+                const childrenSum = category.children.reduce((sum, child) => {
+                  return sum + (child.values[monthKey] || 0);
+                }, 0);
+                category.values[monthKey] = childrenSum;
+              }
+            }
+          }
+        });
+      }
+    };
+    
+    // Apply fixes to all measures
+    for (const measure of updatedData) {
+      fixParentChildSums(measure);
+    }
     
     // Note: HierarchicalGrid will automatically recalculate aggregations (quarters, year) 
     // and parent row sums when it receives this data, but since we've already distributed
