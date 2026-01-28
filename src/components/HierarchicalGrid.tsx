@@ -1677,6 +1677,189 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       isYearQuarterEdit;
     const isMeasureYearQuarterEdit = !!editedMeasure && isYearQuarterEdit;
     
+    // 7. Update Revenue when Planned Volume is edited
+    // Check if the edited row is Planned Volume
+    const plannedVolumeMeasure = gridData.find(m => m.id === 'measure-planned-volume');
+    const isPlannedVolumeMeasure = editedMeasure && editedMeasure.id === 'measure-planned-volume';
+    
+    // Check if row is a child of Planned Volume measure
+    let isPlannedVolumeRow = false;
+    if (editedRow) {
+      // Check if parent is Planned Volume measure
+      if (editedRow.parentId === 'measure-planned-volume') {
+        isPlannedVolumeRow = true;
+      } else {
+        // Check if any ancestor is Planned Volume measure
+        let currentParentId = editedRow.parentId;
+        while (currentParentId) {
+          if (currentParentId === 'measure-planned-volume') {
+            isPlannedVolumeRow = true;
+            break;
+          }
+          const parentRow = findRowById(currentParentId, gridData);
+          if (!parentRow) break;
+          currentParentId = parentRow.parentId;
+        }
+      }
+    }
+    
+    if ((isPlannedVolumeMeasure || isPlannedVolumeRow) && delta !== 0 && plannedVolumeMeasure) {
+      console.log('[GRID] Planned Volume edited, updating Revenue:', { rowId, monthKey, newValue, delta });
+      
+      // Find Revenue measure
+      const revenueMeasure = tempData.find(m => m.id === 'measure-revenue');
+      if (!revenueMeasure) {
+        console.log('[GRID] Revenue measure not found');
+      } else {
+        // Helper function to find row by hierarchy path in a measure
+        const findRowByPath = (rows: GridRowType[], path: string[]): GridRowType | null => {
+          if (path.length === 0) return null;
+          
+          const row = rows.find(r => r.name === path[0]);
+          if (!row) return null;
+          
+          if (path.length === 1) return row;
+          
+          if (row.children && path.length > 1) {
+            return findRowByPath(row.children, path.slice(1));
+          }
+          
+          return null;
+        };
+        
+        // Build hierarchy path for the edited Planned Volume row
+        const buildPath = (currentRowId: string): string[] => {
+          const path: string[] = [];
+          let current = findRowById(currentRowId, tempData);
+          
+          if (!current) return path;
+          
+          // If it's a measure row, return empty path
+          const isMeasure = tempData.some(m => m.id === currentRowId);
+          if (isMeasure) return path;
+          
+          // Traverse up to build path
+          while (current) {
+            if (current.type !== 'measure') {
+              path.unshift(current.name);
+            }
+            
+            if (current.parentId) {
+              const parentIsMeasure = tempData.some(m => m.id === current.parentId);
+              if (parentIsMeasure) break;
+            }
+            
+            const parent = findRowById(current.parentId || '', tempData);
+            if (!parent) break;
+            current = parent;
+          }
+          
+          return path;
+        };
+        
+        // Get hierarchy path
+        const hierarchyPath = isPlannedVolumeMeasure ? [] : buildPath(rowId);
+        
+        // Find corresponding Revenue row
+        let revenueRow: GridRowType | null = null;
+        if (hierarchyPath.length === 0) {
+          // Measure level edit
+          revenueRow = revenueMeasure as any;
+        } else {
+          // Find row by path in Revenue measure
+          revenueRow = findRowByPath(revenueMeasure.children, hierarchyPath);
+        }
+        
+        if (revenueRow) {
+          // Calculate unit price from existing values (use original data to avoid circular updates)
+          const plannedVolumeRow = isPlannedVolumeMeasure 
+            ? plannedVolumeMeasure
+            : findRowById(rowId, gridData);
+          
+          if (plannedVolumeRow) {
+            const plannedVolumeValue = plannedVolumeRow.values[monthKey];
+            const revenueValue = revenueRow.values[monthKey];
+            
+            // Calculate unit price (avoid division by zero)
+            const unitPrice = plannedVolumeValue > 0 ? revenueValue / plannedVolumeValue : 0;
+            
+            // Calculate new Revenue value
+            const newRevenueValue = newValue * unitPrice;
+            const revenueDelta = newRevenueValue - revenueValue;
+            
+            if (Math.abs(revenueDelta) > 0.01) {
+              console.log('[GRID] Updating Revenue:', {
+                revenueRowId: revenueRow.id,
+                monthKey,
+                oldRevenue: revenueValue,
+                newRevenue: newRevenueValue,
+                unitPrice,
+                plannedVolumeOld: plannedVolumeValue,
+                plannedVolumeNew: newValue
+              });
+              
+              // Add Revenue update
+              const revenueUpdate = { rowId: revenueRow.id, monthKey, newValue: newRevenueValue };
+              allUpdates.push(revenueUpdate);
+              
+              // Store original value for impacted cell
+              storeOriginalValueIfImpacted(revenueRow.id, monthKey);
+              
+              // If this is a year/quarter edit, also update distributed months
+              if (isYearQuarterEdit) {
+                const monthKeys: (keyof GridRowType['values'])[] = [
+                  'jan2026', 'feb2026', 'mar2026', 'apr2026', 'may2026', 'jun2026',
+                  'jul2026', 'aug2026', 'sep2026', 'oct2026', 'nov2026', 'dec2026',
+                ];
+                
+                let relevantMonths: (keyof GridRowType['values'])[] = [];
+                if (monthKey === 'year') {
+                  relevantMonths = monthKeys;
+                } else if (monthKey === 'q1') {
+                  relevantMonths = ['jan2026', 'feb2026', 'mar2026'];
+                } else if (monthKey === 'q2') {
+                  relevantMonths = ['apr2026', 'may2026', 'jun2026'];
+                } else if (monthKey === 'q3') {
+                  relevantMonths = ['jul2026', 'aug2026', 'sep2026'];
+                } else if (monthKey === 'q4') {
+                  relevantMonths = ['oct2026', 'nov2026', 'dec2026'];
+                }
+                
+                // Update Revenue for each distributed month
+                for (const monthKeyToProcess of relevantMonths) {
+                  const plannedVolumeMonthValue = plannedVolumeRow.values[monthKeyToProcess];
+                  const revenueMonthValue = revenueRow.values[monthKeyToProcess];
+                  const monthUnitPrice = plannedVolumeMonthValue > 0 ? revenueMonthValue / plannedVolumeMonthValue : 0;
+                  
+                  // Get the new Planned Volume value for this month from allUpdates
+                  const plannedVolumeMonthUpdate = allUpdates.find(u => 
+                    u.rowId === rowId && u.monthKey === monthKeyToProcess
+                  );
+                  const newPlannedVolumeMonthValue = plannedVolumeMonthUpdate 
+                    ? plannedVolumeMonthUpdate.newValue 
+                    : plannedVolumeMonthValue;
+                  
+                  const newRevenueMonthValue = newPlannedVolumeMonthValue * monthUnitPrice;
+                  
+                  if (Math.abs(newRevenueMonthValue - revenueMonthValue) > 0.01) {
+                    const revenueMonthUpdate = { 
+                      rowId: revenueRow.id, 
+                      monthKey: monthKeyToProcess, 
+                      newValue: newRevenueMonthValue 
+                    };
+                    allUpdates.push(revenueMonthUpdate);
+                    storeOriginalValueIfImpacted(revenueRow.id, monthKeyToProcess);
+                  }
+                }
+              }
+            }
+          }
+        } else {
+          console.log('[GRID] Could not find corresponding Revenue row for path:', hierarchyPath);
+        }
+      }
+    }
+    
     // Store the edited value to preserve it (for both measure and account/category year/quarter edits)
     // ONLY preserve the currently edited cell - all other cells will be recalculated
     const preservedValue = (isAccountOrCategoryYearQuarterEdit || isMeasureYearQuarterEdit) ? newValue : null;
