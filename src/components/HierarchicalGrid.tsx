@@ -1745,7 +1745,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
             }
             
             if (current.parentId) {
-              const parentIsMeasure = tempData.some(m => m.id === current.parentId);
+              const parentIsMeasure = tempData.some(m => m.id === current!.parentId);
               if (parentIsMeasure) break;
             }
             
