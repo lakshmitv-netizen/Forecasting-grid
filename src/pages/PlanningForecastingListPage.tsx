@@ -283,19 +283,7 @@ const PlanningForecastingListPage: React.FC = () => {
                 <div className="list-page-modal-section">
                   <h3 className="list-page-modal-section-title">Product Scope</h3>
                   <div className="list-page-modal-row">
-                    <div className="list-page-modal-field">
-                      <label className="list-page-modal-label">Product Level:</label>
-                      <select 
-                        className="list-page-modal-select"
-                        value={newRecord.planningLevel}
-                        onChange={(e) => setNewRecord({...newRecord, planningLevel: e.target.value})}
-                      >
-                        <option value="category">Category</option>
-                        <option value="product">Product</option>
-                        <option value="subcategory">Subcategory</option>
-                      </select>
-                    </div>
-                    <div className="list-page-modal-field">
+                    <div className="list-page-modal-field list-page-modal-field-full">
                       <label className="list-page-modal-label">
                         Select Values:
                         <span className="list-page-modal-tooltip-wrapper">
