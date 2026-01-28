@@ -6,7 +6,7 @@ import { AdjustmentNote } from '../types/adjustmentNote';
 import { getMockData } from '../data/mockData';
 import { useIndustry } from '../contexts/IndustryContext';
 import { adjustmentMeasuresData } from '../data/adjustmentMeasuresData';
-import { findRowById, getChildren, distributeProportionally, propagateDownward, propagateUpward } from '../utils/valuePropagation';
+import { findRowById, getChildren, propagateUpward } from '../utils/valuePropagation';
 import HierarchicalGrid from './HierarchicalGrid';
 import DimensionsTimeGrid from './DimensionsTimeGrid';
 import TimeDimensionsGrid from './TimeDimensionsGrid';
