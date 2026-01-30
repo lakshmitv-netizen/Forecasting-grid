@@ -56,6 +56,10 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
     { id: '5', type: 'time', label: 'Filter by Time', value: 'Equals Jan 26 to Dec 26' },
   ]);
 
+  // Track original period values for cancel functionality
+  const [originalStartPeriod, setOriginalStartPeriod] = useState(startPeriod);
+  const [originalEndPeriod, setOriginalEndPeriod] = useState(endPeriod);
+
   // Local state for filter values (not applied until Apply button is clicked)
   const [localStartPeriod, setLocalStartPeriod] = useState(startPeriod);
   const [localEndPeriod, setLocalEndPeriod] = useState(endPeriod);
@@ -63,19 +67,25 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
   // Track if filters have changed (dirty state)
   const [isDirty, setIsDirty] = useState(false);
 
+  // Track if Apply was clicked (to distinguish from Cancel/Close)
+  const applyClickedRef = useRef(false);
+
   // Sync internal state with props
   useEffect(() => {
     setLocalStartPeriod(startPeriod);
     setLocalEndPeriod(endPeriod);
   }, [startPeriod, endPeriod]);
 
-  // Reset dirty state when panel opens
+  // Reset dirty state and track original values when panel opens
   useEffect(() => {
     if (isOpen) {
       setIsDirty(false);
       setLocalStartPeriod(startPeriod);
       setLocalEndPeriod(endPeriod);
       setOriginalFilters([...filters]);
+      setOriginalStartPeriod(startPeriod);
+      setOriginalEndPeriod(endPeriod);
+      applyClickedRef.current = false;
     }
   }, [isOpen]);
 
@@ -85,18 +95,24 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
     { id: '5', type: 'time', label: 'Filter by Time', value: 'Equals Jan 26 to Dec 26' },
   ]);
 
-  // Check if filters are dirty (only for filter cards, not for measure subgroup/period selection)
+  // Check if filters are dirty (including filter cards and period changes)
   useEffect(() => {
     if (!isOpen) return;
     
-    // Only check filter cards for dirty state - measure subgroup and period selection apply immediately
+    // Check filter cards for dirty state
     const filtersChanged = JSON.stringify(filters) !== JSON.stringify(originalFilters);
+    // Check period changes for dirty state
+    const periodsChanged = localStartPeriod !== originalStartPeriod || localEndPeriod !== originalEndPeriod;
     
-    setIsDirty(filtersChanged);
+    setIsDirty(filtersChanged || periodsChanged);
   }, [
     isOpen,
     filters,
-    originalFilters
+    originalFilters,
+    localStartPeriod,
+    localEndPeriod,
+    originalStartPeriod,
+    originalEndPeriod
   ]);
 
   // Calculate and notify active filter count
@@ -222,6 +238,31 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
 
   const handleTimeFilterCancel = () => {
     setEditingTimeFilterId(null);
+  };
+
+  // Handle cancel - revert all changes (filters and periods)
+  const handleCancel = () => {
+    // Revert filter cards
+    setFilters([...originalFilters]);
+    // Revert period values
+    setLocalStartPeriod(originalStartPeriod);
+    setLocalEndPeriod(originalEndPeriod);
+    // Revert parent state for periods (if they were changed)
+    if (onStartPeriodChange && localStartPeriod !== originalStartPeriod) {
+      onStartPeriodChange(originalStartPeriod);
+    }
+    if (onEndPeriodChange && localEndPeriod !== originalEndPeriod) {
+      onEndPeriodChange(originalEndPeriod);
+    }
+    setIsDirty(false);
+  };
+
+  // Handle close - if Apply wasn't clicked, treat as Cancel
+  const handleClose = () => {
+    if (!applyClickedRef.current) {
+      handleCancel();
+    }
+    onClose();
   };
 
   // Removed unused handleSave and handleCancel - save/cancel handled in individual filter popovers
@@ -553,7 +594,7 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
       {/* Panel Header */}
       <div className="filters-panel-header">
         <div className="filters-panel-title-section">
-          <button className="filters-panel-back-button" onClick={onClose} aria-label="Back">
+          <button className="filters-panel-back-button" onClick={handleClose} aria-label="Back">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path fillRule="evenodd" clipRule="evenodd" d="M14.8618 1.23047H1.20022C0.738686 1.23047 0.523301 1.75355 0.800224 2.09201L6.76946 9.07662C6.95407 9.29201 7.04638 9.5997 7.04638 9.87662V14.3074C7.04638 14.5535 7.29253 14.7689 7.53869 14.7689H8.46176C8.70792 14.7689 8.89253 14.5535 8.89253 14.3074V9.87662C8.89253 9.56893 9.01561 9.29201 9.23099 9.07662L15.2618 2.09201C15.5387 1.75355 15.3233 1.23047 14.8618 1.23047V1.23047Z" fill="#0250D9"/>
             </svg>
@@ -561,7 +602,7 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
           <p className="filters-panel-title">Filters</p>
         </div>
         <div className="filters-panel-actions">
-          <button className="filters-panel-close" onClick={onClose} aria-label="Close">
+          <button className="filters-panel-close" onClick={handleClose} aria-label="Close">
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -585,10 +626,7 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
                     onChange={(e) => {
                       const newValue = e.target.value;
                       setLocalStartPeriod(newValue);
-                      // Apply immediately for start period (existing functionality)
-                      if (onStartPeriodChange) {
-                        onStartPeriodChange(newValue);
-                      }
+                      // Don't apply immediately - wait for Apply button
                     }}
                   />
                 </div>
@@ -605,10 +643,7 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
                     onChange={(e) => {
                       const newValue = e.target.value;
                       setLocalEndPeriod(newValue);
-                      // Apply immediately for end period (existing functionality)
-                      if (onEndPeriodChange) {
-                        onEndPeriodChange(newValue);
-                      }
+                      // Don't apply immediately - wait for Apply button
                     }}
                   />
                 </div>
@@ -629,26 +664,35 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
           <div className="filters-apply-actions-header">
             <button 
               className="filters-cancel-button"
-              onClick={() => {
-                // Revert only filter card changes (measure subgroup and period selection are already applied)
-                setFilters([...originalFilters]);
-                setIsDirty(false);
-              }}
+              onClick={handleCancel}
             >
               Cancel
             </button>
             <button 
               className="filters-apply-button"
               onClick={() => {
-                // Apply filter card changes (measure subgroup and period selection are already applied)
+                // Mark that Apply was clicked
+                applyClickedRef.current = true;
+                
+                // Apply period changes
+                if (onStartPeriodChange && localStartPeriod !== originalStartPeriod) {
+                  onStartPeriodChange(localStartPeriod);
+                }
+                if (onEndPeriodChange && localEndPeriod !== originalEndPeriod) {
+                  onEndPeriodChange(localEndPeriod);
+                }
+                
+                // Apply filter card changes
                 // Filter the data and pass it back
                 if (onApplyFilters && data.length > 0) {
                   const filteredData = applyFilters(data);
                   onApplyFilters(filteredData);
                 }
                 
-                // Update original filter values
+                // Update original filter values and period values
                 setOriginalFilters([...filters]);
+                setOriginalStartPeriod(localStartPeriod);
+                setOriginalEndPeriod(localEndPeriod);
                 setIsDirty(false);
               }}
             >
