@@ -1209,18 +1209,6 @@ const ForecastingGrid: React.FC = () => {
     return [
       // Cells with both arrow and note indicators
       {
-        id: 'initial-1',
-        cellKey: 'account-measure-sa-qty-jan2026',
-        rowId: 'account-measure-sa-qty',
-        timeKey: 'jan2026',
-        oldValue: 800,
-        newValue: 950,
-        note: 'Increased forecast based on strong Q1 pipeline and new customer commitments',
-        timestamp: twoDaysAgo,
-        userId: 'john-carter',
-        userName: 'John Carter',
-      },
-      {
         id: 'initial-2',
         cellKey: 'category-transmission-measure-sa-rev-feb2026',
         rowId: 'category-transmission-measure-sa-rev',
