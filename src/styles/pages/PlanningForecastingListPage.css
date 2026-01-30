@@ -404,10 +404,14 @@
   width: 720px !important;
   max-width: 90vw !important;
   max-height: 90vh !important;
-  overflow: hidden !important;
+  overflow: visible !important;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25) !important;
   position: relative !important;
   z-index: 100000 !important; /* Topmost layer - above overlay */
+}
+
+.list-page-modal-expanded {
+  max-height: 95vh !important;
 }
 
 .list-page-modal-header {
@@ -462,6 +466,11 @@
   gap: 24px !important;
   max-height: calc(90vh - 180px) !important;
   overflow-y: auto !important;
+  overflow-x: visible !important;
+}
+
+.list-page-modal-expanded .list-page-modal-body {
+  max-height: calc(95vh - 180px) !important;
 }
 
 .list-page-modal-section {
@@ -489,6 +498,18 @@
   flex-direction: column !important;
   gap: 0 !important;
   flex: 1 !important;
+}
+
+.list-page-modal-field .searchable-select-trigger {
+  border: 1px solid #c9c9c9 !important;
+}
+
+.list-page-modal-field .searchable-select-trigger:hover {
+  border-color: #0176d3 !important;
+}
+
+.list-page-modal-field .searchable-select-trigger:focus {
+  border-color: #0176d3 !important;
 }
 
 .list-page-modal-field-full {
@@ -519,15 +540,22 @@
   background-color: white !important;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif !important;
   font-weight: 400 !important;
+  box-sizing: border-box !important;
 }
 
 .list-page-modal-input:not(:placeholder-shown) {
   color: #181818 !important;
+  border-color: #c9c9c9 !important;
+}
+
+.list-page-modal-input:hover {
+  border-color: #0176d3 !important;
 }
 
 .list-page-modal-input:focus {
   outline: none !important;
   border-color: #0176d3 !important;
+  border-width: 1px !important;
   box-shadow: 0 0 0 3px rgba(1, 118, 211, 0.1) !important;
 }
 
@@ -578,6 +606,11 @@
   width: 100% !important;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif !important;
   font-weight: 400 !important;
+  box-sizing: border-box !important;
+}
+
+.list-page-modal-select:hover {
+  border-color: #0176d3 !important;
 }
 
 .list-page-modal-select option {
@@ -592,6 +625,7 @@
 .list-page-modal-select:focus {
   outline: none !important;
   border-color: #0176d3 !important;
+  border-width: 1px !important;
   box-shadow: 0 0 0 3px rgba(1, 118, 211, 0.1) !important;
 }
 
@@ -701,6 +735,7 @@
   display: inline-flex !important;
   align-items: center !important;
   margin-left: 6px !important;
+  vertical-align: middle !important;
 }
 
 .list-page-modal-tooltip-icon {
@@ -721,9 +756,9 @@
 .list-page-modal-tooltip {
   position: absolute !important;
   bottom: 100% !important;
-  left: 50% !important;
-  transform: translateX(-50%) !important;
+  left: 0 !important;
   margin-bottom: 8px !important;
+  margin-left: 0 !important;
   padding: 8px 12px !important;
   background-color: #333 !important;
   color: white !important;
@@ -731,13 +766,21 @@
   font-weight: 400 !important;
   border-radius: 4px !important;
   width: 280px !important;
+  max-width: min(280px, calc(100vw - 40px)) !important;
   opacity: 0 !important;
   pointer-events: none !important;
   transition: opacity 0.2s ease !important;
-  z-index: 1000 !important;
+  z-index: 100001 !important;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif !important;
   line-height: 1.4 !important;
   text-align: left !important;
+  white-space: normal !important;
+  word-wrap: break-word !important;
+  box-sizing: border-box !important;
+}
+
+.list-page-modal-tooltip-wrapper:hover .list-page-modal-tooltip {
+  opacity: 1 !important;
 }
 
 .list-page-modal-tooltip-wrapper:hover .list-page-modal-tooltip {
@@ -748,9 +791,69 @@
   content: '' !important;
   position: absolute !important;
   top: 100% !important;
-  left: 50% !important;
-  transform: translateX(-50%) !important;
+  left: 20px !important;
   border: 5px solid transparent !important;
   border-top-color: #333 !important;
+}
+
+/* Values Table Styles */
+.list-page-modal-values-table-container {
+  margin-top: 8px;
+  border: 1px solid #d8dde6;
+  border-radius: 4px;
+  overflow: hidden;
+  max-height: 200px;
+  overflow-y: auto;
+  background-color: white;
+}
+
+.list-page-modal-values-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.list-page-modal-values-th-checkbox,
+.list-page-modal-values-td-checkbox {
+  width: 40px;
+  padding: 8px;
+  text-align: center;
+  border-bottom: 1px solid #d8dde6;
+}
+
+.list-page-modal-values-th-name {
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 12px;
+  color: #3e3e3c;
+  background-color: #f3f3f3;
+  border-bottom: 1px solid #d8dde6;
+}
+
+.list-page-modal-values-row {
+  cursor: pointer;
+}
+
+.list-page-modal-values-row:hover {
+  background-color: #f3f3f3;
+}
+
+.list-page-modal-values-td-name {
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #080707;
+  border-bottom: 1px solid #d8dde6;
+}
+
+.list-page-modal-values-checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #0176d3;
+}
+
+.list-page-modal-values-row:last-child .list-page-modal-values-td-checkbox,
+.list-page-modal-values-row:last-child .list-page-modal-values-td-name {
+  border-bottom: none;
 }
 

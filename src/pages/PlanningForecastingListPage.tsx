@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import Header from '../components/Header';
+import SearchableSelect from '../components/SearchableSelect';
 import '../styles/pages/PlanningForecastingListPage.css';
 
 interface ForecastRecord {
@@ -28,6 +29,7 @@ const PlanningForecastingListPage: React.FC = () => {
   const [newRecord, setNewRecord] = useState({
     planName: '',
     status: 'draft',
+    timeGranularity: 'months',
     startDate: '',
     endDate: '',
     planTemplate: '',
@@ -35,6 +37,86 @@ const PlanningForecastingListPage: React.FC = () => {
     planningLevel: 'category',
     listView: ''
   });
+  const [selectedValues, setSelectedValues] = useState<Set<string>>(new Set());
+  
+  // Mock data for the values table - Manufacturing categories
+  const mockValues = [
+    { id: 'transmission-assembly', name: 'Transmission Assembly' },
+    { id: 'chassis-components', name: 'Chassis Components' },
+    { id: 'engine-components', name: 'Engine Components' },
+    { id: 'electrical-systems', name: 'Electrical Systems' },
+    { id: 'hydraulic-systems', name: 'Hydraulic Systems' },
+    { id: 'brake-systems', name: 'Brake Systems' },
+    { id: 'suspension-systems', name: 'Suspension Systems' }
+  ];
+
+  // Helper function to get ordinal suffix
+  const getOrdinalSuffix = (day: number): string => {
+    if (day > 3 && day < 21) return 'th';
+    switch (day % 10) {
+      case 1: return 'st';
+      case 2: return 'nd';
+      case 3: return 'rd';
+      default: return 'th';
+    }
+  };
+
+  // Helper function to format date
+  const formatDate = (date: Date): string => {
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = monthNames[date.getMonth()];
+    const day = date.getDate();
+    const year = date.getFullYear();
+    return `${month} ${day}${getOrdinalSuffix(day)} ${year}`;
+  };
+
+  // Generate period options based on time granularity
+  const getPeriodOptions = (granularity: string): string[] => {
+    switch (granularity) {
+      case 'weeks':
+        // Generate week start dates for 2026 (52 weeks)
+        const weeks: string[] = [];
+        const startDate = new Date(2026, 0, 1); // January 1, 2026
+        
+        for (let i = 0; i < 52; i++) {
+          const weekStartDate = new Date(startDate);
+          weekStartDate.setDate(startDate.getDate() + (i * 7));
+          const weekEndDate = new Date(weekStartDate);
+          weekEndDate.setDate(weekStartDate.getDate() + 6); // End of week (6 days later)
+          
+          const weekNumber = i + 1;
+          const startFormatted = formatDate(weekStartDate);
+          const endFormatted = formatDate(weekEndDate);
+          
+          weeks.push(`Week ${weekNumber} (${startFormatted} to ${endFormatted})`);
+        }
+        return weeks;
+      case 'months':
+        return [
+          'January 2026',
+          'February 2026',
+          'March 2026',
+          'April 2026',
+          'May 2026',
+          'June 2026',
+          'July 2026',
+          'August 2026',
+          'September 2026',
+          'October 2026',
+          'November 2026',
+          'December 2026'
+        ];
+      case 'quarters':
+        return [
+          'Q1 2026',
+          'Q2 2026',
+          'Q3 2026',
+          'Q4 2026'
+        ];
+      default:
+        return [];
+    }
+  };
 
   const handleSelectAll = () => {
     if (selectAll) {
@@ -85,7 +167,10 @@ const PlanningForecastingListPage: React.FC = () => {
               </p>
             </div>
             <div className="list-page-header-right">
-              <button className="list-page-new-btn" onClick={() => setIsModalOpen(true)}>New</button>
+              <button className="list-page-new-btn" onClick={() => {
+                setIsModalOpen(true);
+                setSelectedValues(new Set());
+              }}>New</button>
             </div>
           </div>
 
@@ -170,10 +255,16 @@ const PlanningForecastingListPage: React.FC = () => {
 
       {/* New Record Modal */}
       {isModalOpen && createPortal(
-        <div className="list-page-modal-overlay" onClick={() => setIsModalOpen(false)}>
-          <div className="list-page-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="list-page-modal-overlay" onClick={() => {
+          setIsModalOpen(false);
+          setSelectedValues(new Set());
+        }}>
+          <div className={`list-page-modal ${newRecord.planTemplate ? 'list-page-modal-expanded' : ''}`} onClick={(e) => e.stopPropagation()}>
             <div className="list-page-modal-header">
-              <button className="list-page-modal-close" onClick={() => setIsModalOpen(false)}>
+              <button className="list-page-modal-close" onClick={() => {
+                setIsModalOpen(false);
+                setSelectedValues(new Set());
+              }}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <line x1="18" y1="6" x2="6" y2="18"></line>
                   <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -210,24 +301,44 @@ const PlanningForecastingListPage: React.FC = () => {
                   </div>
                 </div>
                 <div className="list-page-modal-row">
+                  <div className="list-page-modal-field list-page-modal-field-full">
+                    <label className="list-page-modal-label">Select Lowest Time Granularity:</label>
+                    <select 
+                      className="list-page-modal-select"
+                      value={newRecord.timeGranularity}
+                      onChange={(e) => {
+                        // Reset start and end periods when granularity changes
+                        setNewRecord({
+                          ...newRecord, 
+                          timeGranularity: e.target.value,
+                          startDate: '',
+                          endDate: ''
+                        });
+                      }}
+                    >
+                      <option value="weeks">Weeks</option>
+                      <option value="months">Months</option>
+                      <option value="quarters">Quarters</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="list-page-modal-row">
                   <div className="list-page-modal-field">
-                    <label className="list-page-modal-label">Start Date:</label>
-                    <input 
-                      type="text" 
-                      className="list-page-modal-input"
+                    <SearchableSelect
+                      label="Start Period:"
                       value={newRecord.startDate}
-                      onChange={(e) => setNewRecord({...newRecord, startDate: e.target.value})}
-                      placeholder="MM/DD/YY"
+                      onChange={(value) => setNewRecord({...newRecord, startDate: value})}
+                      options={getPeriodOptions(newRecord.timeGranularity)}
+                      placeholder="Select Start Period"
                     />
                   </div>
                   <div className="list-page-modal-field">
-                    <label className="list-page-modal-label">End Date:</label>
-                    <input 
-                      type="text" 
-                      className="list-page-modal-input"
+                    <SearchableSelect
+                      label="End Period:"
                       value={newRecord.endDate}
-                      onChange={(e) => setNewRecord({...newRecord, endDate: e.target.value})}
-                      placeholder="MM/DD/YY"
+                      onChange={(value) => setNewRecord({...newRecord, endDate: value})}
+                      options={getPeriodOptions(newRecord.timeGranularity)}
+                      placeholder="Select End Period"
                     />
                   </div>
                 </div>
@@ -284,35 +395,91 @@ const PlanningForecastingListPage: React.FC = () => {
                   <h3 className="list-page-modal-section-title">Product Scope</h3>
                   <div className="list-page-modal-row">
                     <div className="list-page-modal-field list-page-modal-field-full">
+                      <label className="list-page-modal-label">Product Level:</label>
+                      <select 
+                        className="list-page-modal-select"
+                        value={newRecord.planningLevel}
+                        onChange={(e) => setNewRecord({...newRecord, planningLevel: e.target.value})}
+                      >
+                        <option value="category">Category</option>
+                        <option value="brand">Brand</option>
+                        <option value="product">Product</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="list-page-modal-row">
+                    <div className="list-page-modal-field list-page-modal-field-full">
                       <label className="list-page-modal-label">
                         Select Values:
                         <span className="list-page-modal-tooltip-wrapper">
                           <span className="list-page-modal-tooltip-icon">i</span>
                           <span className="list-page-modal-tooltip">
-                            All Items in this listview will be populated as values for the selected product level and all their hierarchical descendants will be shown on the grid.
+                            All items selected in this list will be populated as values for the selected product level and all their hierarchical descendants will be shown on the grid.
                           </span>
                         </span>
                       </label>
-                      <select 
-                        className="list-page-modal-select"
-                        value={newRecord.listView}
-                        onChange={(e) => setNewRecord({...newRecord, listView: e.target.value})}
-                      >
-                        <option value="">Select List View</option>
-                        <option value="fast-growing">Fast Growing Categories</option>
-                        <option value="all">All Categories</option>
-                        <option value="custom">Custom List</option>
-                      </select>
+                      <div className="list-page-modal-values-table-container">
+                        <table className="list-page-modal-values-table">
+                          <thead>
+                            <tr>
+                              <th className="list-page-modal-values-th-checkbox">
+                                <input 
+                                  type="checkbox" 
+                                  checked={selectedValues.size === mockValues.length && mockValues.length > 0}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedValues(new Set(mockValues.map(v => v.id)));
+                                    } else {
+                                      setSelectedValues(new Set());
+                                    }
+                                  }}
+                                  className="list-page-modal-values-checkbox"
+                                />
+                              </th>
+                              <th className="list-page-modal-values-th-name">Name</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {mockValues.map((value) => (
+                              <tr key={value.id} className="list-page-modal-values-row">
+                                <td className="list-page-modal-values-td-checkbox">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={selectedValues.has(value.id)}
+                                    onChange={(e) => {
+                                      const newSelected = new Set(selectedValues);
+                                      if (e.target.checked) {
+                                        newSelected.add(value.id);
+                                      } else {
+                                        newSelected.delete(value.id);
+                                      }
+                                      setSelectedValues(newSelected);
+                                    }}
+                                    className="list-page-modal-values-checkbox"
+                                  />
+                                </td>
+                                <td className="list-page-modal-values-td-name">{value.name}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   </div>
                 </div>
               )}
             </div>
             <div className="list-page-modal-footer">
-              <button className="list-page-modal-cancel" onClick={() => setIsModalOpen(false)}>
+              <button className="list-page-modal-cancel" onClick={() => {
+                setIsModalOpen(false);
+                setSelectedValues(new Set());
+              }}>
                 Cancel
               </button>
-              <button className="list-page-modal-create" onClick={() => setIsModalOpen(false)}>
+              <button className="list-page-modal-create" onClick={() => {
+                setIsModalOpen(false);
+                setSelectedValues(new Set());
+              }}>
                 Create Plan
               </button>
             </div>
