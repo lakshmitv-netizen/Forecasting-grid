@@ -38,17 +38,56 @@ const PlanningForecastingListPage: React.FC = () => {
     listView: ''
   });
   const [selectedValues, setSelectedValues] = useState<Set<string>>(new Set());
+  const [valuesSearchTerm, setValuesSearchTerm] = useState<string>('');
   
-  // Mock data for the values table - Manufacturing categories
-  const mockValues = [
-    { id: 'transmission-assembly', name: 'Transmission Assembly' },
-    { id: 'chassis-components', name: 'Chassis Components' },
-    { id: 'engine-components', name: 'Engine Components' },
-    { id: 'electrical-systems', name: 'Electrical Systems' },
-    { id: 'hydraulic-systems', name: 'Hydraulic Systems' },
-    { id: 'brake-systems', name: 'Brake Systems' },
-    { id: 'suspension-systems', name: 'Suspension Systems' }
-  ];
+  // Mock data for the values table based on product level
+  const getMockValues = (level: string) => {
+    switch (level) {
+      case 'category':
+        return [
+          { id: 'transmission-assembly', name: 'Transmission Assembly' },
+          { id: 'chassis-components', name: 'Chassis Components' },
+          { id: 'engine-components', name: 'Engine Components' },
+          { id: 'electrical-systems', name: 'Electrical Systems' },
+          { id: 'hydraulic-systems', name: 'Hydraulic Systems' },
+          { id: 'brake-systems', name: 'Brake Systems' },
+          { id: 'suspension-systems', name: 'Suspension Systems' }
+        ];
+      case 'brand':
+        return [
+          { id: 'trn-750-series', name: 'TRN 750 Series' },
+          { id: 'trn-850-series', name: 'TRN 850 Series' },
+          { id: 'trn-650-series', name: 'TRN 650 Series' },
+          { id: 'chassis-heavy-duty', name: 'Heavy-Duty Chassis' },
+          { id: 'chassis-standard', name: 'Standard Chassis' },
+          { id: 'chassis-lightweight', name: 'Lightweight Chassis' },
+          { id: 'engine-v8', name: 'V8 Engine Line' },
+          { id: 'engine-v6', name: 'V6 Engine Line' }
+        ];
+      case 'product':
+        return [
+          { id: 'trn-750-a', name: 'TRN 750 - A' },
+          { id: 'trn-750-b', name: 'TRN 750 - B' },
+          { id: 'trn-750-c', name: 'TRN 750 - C' },
+          { id: 'trn-750-d', name: 'TRN 750 - D' },
+          { id: 'trn-750-e', name: 'TRN 750 - E' },
+          { id: 'chassis-product-1', name: 'Chassis Product 1' },
+          { id: 'chassis-product-2', name: 'Chassis Product 2' },
+          { id: 'engine-block-assembly', name: 'Engine Block Assembly' },
+          { id: 'cylinder-head-pro', name: 'Cylinder Head Pro' },
+          { id: 'piston-assembly-set', name: 'Piston Assembly Set' }
+        ];
+      default:
+        return [];
+    }
+  };
+
+  const mockValues = getMockValues(newRecord.planningLevel);
+  
+  // Filter values based on search term
+  const filteredValues = mockValues.filter(value =>
+    value.name.toLowerCase().includes(valuesSearchTerm.toLowerCase())
+  );
 
   // Helper function to get ordinal suffix
   const getOrdinalSuffix = (day: number): string => {
@@ -399,7 +438,12 @@ const PlanningForecastingListPage: React.FC = () => {
                       <select 
                         className="list-page-modal-select"
                         value={newRecord.planningLevel}
-                        onChange={(e) => setNewRecord({...newRecord, planningLevel: e.target.value})}
+                        onChange={(e) => {
+                          setNewRecord({...newRecord, planningLevel: e.target.value});
+                          // Clear selected values and search term when level changes
+                          setSelectedValues(new Set());
+                          setValuesSearchTerm('');
+                        }}
                       >
                         <option value="category">Category</option>
                         <option value="brand">Brand</option>
@@ -425,10 +469,10 @@ const PlanningForecastingListPage: React.FC = () => {
                               <th className="list-page-modal-values-th-checkbox">
                                 <input 
                                   type="checkbox" 
-                                  checked={selectedValues.size === mockValues.length && mockValues.length > 0}
+                                  checked={selectedValues.size === filteredValues.length && filteredValues.length > 0}
                                   onChange={(e) => {
                                     if (e.target.checked) {
-                                      setSelectedValues(new Set(mockValues.map(v => v.id)));
+                                      setSelectedValues(new Set(filteredValues.map(v => v.id)));
                                     } else {
                                       setSelectedValues(new Set());
                                     }
@@ -436,11 +480,28 @@ const PlanningForecastingListPage: React.FC = () => {
                                   className="list-page-modal-values-checkbox"
                                 />
                               </th>
-                              <th className="list-page-modal-values-th-name">Name</th>
+                              <th className="list-page-modal-values-th-name">
+                                <div className="list-page-modal-values-header-content">
+                                  <span>Name</span>
+                                  <div className="list-page-modal-values-search-wrapper">
+                                    <svg className="list-page-modal-values-search-icon" width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                      <path d="M6.33333 11.6667C9.27885 11.6667 11.6667 9.27885 11.6667 6.33333C11.6667 3.38781 9.27885 1 6.33333 1C3.38781 1 1 3.38781 1 6.33333C1 9.27885 3.38781 11.6667 6.33333 11.6667Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                      <path d="M13 13L10.1 10.1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                    </svg>
+                                    <input
+                                      type="text"
+                                      className="list-page-modal-values-search-input"
+                                      placeholder="Search..."
+                                      value={valuesSearchTerm}
+                                      onChange={(e) => setValuesSearchTerm(e.target.value)}
+                                    />
+                                  </div>
+                                </div>
+                              </th>
                             </tr>
                           </thead>
                           <tbody>
-                            {mockValues.map((value) => (
+                            {filteredValues.map((value) => (
                               <tr key={value.id} className="list-page-modal-values-row">
                                 <td className="list-page-modal-values-td-checkbox">
                                   <input 
