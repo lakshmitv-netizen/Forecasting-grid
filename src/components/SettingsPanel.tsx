@@ -310,15 +310,16 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   }, [selectedMeasureSubgroup, industry]);
 
   // Calculate count of measures that would become read-only (measures in Adjustment Measures Category)
-  const measuresInBothGroupsCount = useMemo(() => {
-    if (!selectedMeasureSubgroup.has('Adjustment Measures Category')) {
-      return 0;
-    }
-    
-    // Return count of measures that became read-only
-    // Currently: Final Forecasted Quantity and Final Forecasted Revenue
-    return 2;
-  }, [selectedMeasureSubgroup]);
+  // Note: Currently unused but kept for potential future use
+  // const measuresInBothGroupsCount = useMemo(() => {
+  //   if (!selectedMeasureSubgroup.has('Adjustment Measures Category')) {
+  //     return 0;
+  //   }
+  //   
+  //   // Return count of measures that became read-only
+  //   // Currently: Final Forecasted Quantity and Final Forecasted Revenue
+  //   return 2;
+  // }, [selectedMeasureSubgroup]);
 
   // Get affected measures data for the details modal
   const affectedMeasures = useMemo(() => {

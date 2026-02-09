@@ -30,7 +30,7 @@ const ReorderMeasuresModal: React.FC<ReorderMeasuresModalProps> = ({
   isOpen,
   onClose,
   measures,
-  measureSubgroup,
+  measureSubgroup: _measureSubgroup,
   selectedMeasureSubgroups = new Set(),
   visibleMeasureIds = null,
   onSave
