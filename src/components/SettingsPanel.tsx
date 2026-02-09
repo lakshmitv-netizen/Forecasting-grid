@@ -327,12 +327,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       return [];
     }
     
-    // Find measures that are in both groups
-    const currentIndustry = industry || 'manufacturing';
-    const revenueQuantityData = getMockData(currentIndustry);
-    const revenueQuantityIds = new Set(revenueQuantityData.map(m => m.id));
-    const adjustmentIds = new Set(adjustmentMeasuresData.map(m => m.id));
-    
     const affected: { name: string; groupName: string }[] = [];
     
     return affected;

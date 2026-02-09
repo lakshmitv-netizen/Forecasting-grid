@@ -2332,10 +2332,6 @@ const ForecastingGrid: React.FC = () => {
       const dataWithHistory = applyInitialEditHistoryToData(currentData);
       
       dataWithHistory.forEach((measure: MeasureData) => {
-        // Skip shared measures if both groups selected - handled above
-        if (bothGroupsSelected && sharedMeasureIds.includes(measure.id)) {
-          return;
-        }
         measureMap.set(measure.id, measure);
         allMeasureIds.push(measure.id);
       });
@@ -2344,11 +2340,7 @@ const ForecastingGrid: React.FC = () => {
     // Add Adjustment Measures Category if selected
     if (selectedMeasureSubgroup.has('Adjustment Measures Category')) {
       adjustmentMeasuresData.forEach((measure: MeasureData) => {
-        // Skip shared measures if both groups selected - handled above
-        if (bothGroupsSelected && sharedMeasureIds.includes(measure.id)) {
-          return;
-        }
-        // Non-shared measure, add if not already present
+        // Add if not already present
         if (!measureMap.has(measure.id)) {
           measureMap.set(measure.id, measure);
           allMeasureIds.push(measure.id);
