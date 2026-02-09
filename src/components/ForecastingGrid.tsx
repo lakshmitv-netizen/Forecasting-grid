@@ -2285,7 +2285,7 @@ const ForecastingGrid: React.FC = () => {
   const [measureGroupContext, setMeasureGroupContext] = useState<Map<string, string>>(new Map());
   
   // IDs of measures that exist in both groups (constant)
-  const sharedMeasureIds = useMemo(() => ['measure-committed-forecast-qty', 'measure-committed-forecast-rev'], []);
+  const sharedMeasureIds = useMemo(() => [], []);
 
   // Update data when measure subgroup changes or measure group context changes
   useEffect(() => {

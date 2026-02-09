@@ -335,23 +335,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     
     const affected: { name: string; groupName: string }[] = [];
     
-    // Check for Committed Forecast measures
-    if (revenueQuantityIds.has('measure-committed-forecast-qty') && adjustmentIds.has('measure-committed-forecast-qty')) {
-      const measure = revenueQuantityData.find(m => m.id === 'measure-committed-forecast-qty') || 
-                     adjustmentMeasuresData.find(m => m.id === 'measure-committed-forecast-qty');
-      if (measure) {
-        affected.push({ name: measure.name, groupName: 'Adjustment Measures Category' });
-      }
-    }
-    
-    if (revenueQuantityIds.has('measure-committed-forecast-rev') && adjustmentIds.has('measure-committed-forecast-rev')) {
-      const measure = revenueQuantityData.find(m => m.id === 'measure-committed-forecast-rev') || 
-                     adjustmentMeasuresData.find(m => m.id === 'measure-committed-forecast-rev');
-      if (measure) {
-        affected.push({ name: measure.name, groupName: 'Adjustment Measures Category' });
-      }
-    }
-    
     return affected;
   }, [selectedMeasureSubgroup, industry]);
 
@@ -484,9 +467,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                             ) : null}
                           </div>
                           <span className="settings-dropdown-checkbox-label">{option.value}</span>
-                          {option.value === 'Adjustment Measures Category' && (
-                            <span className="settings-readonly-badge">Read Only</span>
-                          )}
                         </div>
                       );
                     })}
