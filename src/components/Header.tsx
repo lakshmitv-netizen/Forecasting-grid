@@ -1,9 +1,16 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
+import { useIndustry } from '../contexts/IndustryContext';
 import '../styles/components/Header.css';
 
 const Header: React.FC = () => {
   const navigate = useNavigate();
+  const { industry, setIndustry } = useIndustry();
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [dropdownPosition, setDropdownPosition] = useState<{ top: number; right: number } | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const avatarRef = useRef<HTMLDivElement>(null);
   
   const tabs = [
     'Home',
@@ -17,6 +24,47 @@ const Header: React.FC = () => {
     'Dashboards',
     'More',
   ];
+
+  // Calculate dropdown position when opening
+  useEffect(() => {
+    if (isDropdownOpen && avatarRef.current) {
+      const rect = avatarRef.current.getBoundingClientRect();
+      setDropdownPosition({
+        top: rect.bottom + window.scrollY + 8,
+        right: window.innerWidth - rect.right
+      });
+    } else {
+      setDropdownPosition(null);
+    }
+  }, [isDropdownOpen]);
+
+  // Handle click outside to close dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (avatarRef.current && !avatarRef.current.contains(event.target as Node) &&
+          dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    };
+
+    if (isDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isDropdownOpen]);
+
+  const handleIndustrySwitch = (selectedIndustry: 'manufacturing' | 'consumer-goods') => {
+    setIndustry(selectedIndustry);
+    if (selectedIndustry === 'manufacturing') {
+      navigate('/home/manufacturing');
+    } else {
+      navigate('/home/consumergoods');
+    }
+    setIsDropdownOpen(false);
+  };
 
   return (
     <div className="header-wrapper">
@@ -74,8 +122,91 @@ const Header: React.FC = () => {
               <span className="notification-badge">2</span>
             </div>
           </div>
-          <div className="user-avatar">
-            <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23fff'%3E%3Cpath d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z'/%3E%3C/svg%3E" alt="User" />
+          <div className="user-avatar" ref={avatarRef} style={{ position: 'relative' }}>
+            <img 
+              src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23fff'%3E%3Cpath d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z'/%3E%3C/svg%3E" 
+              alt="User" 
+              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+              style={{ cursor: 'pointer' }}
+            />
+            {isDropdownOpen && dropdownPosition && createPortal(
+              <div 
+                ref={dropdownRef}
+                style={{
+                  position: 'fixed',
+                  top: `${dropdownPosition.top}px`,
+                  right: `${dropdownPosition.right}px`,
+                  backgroundColor: '#ffffff',
+                  border: '1px solid #c9c9c9',
+                  borderRadius: '4px',
+                  boxShadow: '0 2px 8px 0 rgba(0, 0, 0, 0.12)',
+                  minWidth: '200px',
+                  zIndex: 10000,
+                  padding: '8px 0'
+                }}
+              >
+                <div style={{
+                  padding: '8px 16px',
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  color: '#706e6b',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  borderBottom: '1px solid #e5e5e5'
+                }}>
+                  Switch Industry
+                </div>
+                <div
+                  onClick={() => handleIndustrySwitch('manufacturing')}
+                  style={{
+                    padding: '12px 16px',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    color: industry === 'manufacturing' ? '#0176d3' : '#181818',
+                    backgroundColor: industry === 'manufacturing' ? '#f3f2f2' : 'transparent',
+                    fontWeight: industry === 'manufacturing' ? '600' : '400',
+                    transition: 'background-color 0.1s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (industry !== 'manufacturing') {
+                      e.currentTarget.style.backgroundColor = '#f9f9f9';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (industry !== 'manufacturing') {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }
+                  }}
+                >
+                  Manufacturing
+                </div>
+                <div
+                  onClick={() => handleIndustrySwitch('consumer-goods')}
+                  style={{
+                    padding: '12px 16px',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    color: industry === 'consumer-goods' ? '#0176d3' : '#181818',
+                    backgroundColor: industry === 'consumer-goods' ? '#f3f2f2' : 'transparent',
+                    fontWeight: industry === 'consumer-goods' ? '600' : '400',
+                    transition: 'background-color 0.1s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (industry !== 'consumer-goods') {
+                      e.currentTarget.style.backgroundColor = '#f9f9f9';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (industry !== 'consumer-goods') {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }
+                  }}
+                >
+                  Consumer Goods
+                </div>
+              </div>,
+              document.body
+            )}
           </div>
         </div>
       </header>

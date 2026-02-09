@@ -7,6 +7,7 @@ export interface GridRow {
   level: number;
   type: RowType;
   children?: GridRow[];
+  groupContext?: string; // Which measure group this row belongs to (for duplicated measures)
   values: {
     year: number; // FY26 - sum of all months
     q1: number;   // Q1 - sum of Jan, Feb, Mar
@@ -51,5 +52,6 @@ export interface MeasureData {
     dec2026: number;
   };
   children: GridRow[];
+  groupContext?: string; // Which measure group this instance belongs to (for duplicated measures)
 }
 

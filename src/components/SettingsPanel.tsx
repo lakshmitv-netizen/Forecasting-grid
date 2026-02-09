@@ -1,6 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { MeasureData } from '../types';
 import ReorderMeasuresModal from './ReorderMeasuresModal';
+import ReadOnlyMeasuresDetailsModal from './ReadOnlyMeasuresDetailsModal';
+import { getMockData } from '../data/mockData';
+import { adjustmentMeasuresData } from '../data/adjustmentMeasuresData';
+import { useIndustry } from '../contexts/IndustryContext';
 import '../styles/components/SettingsPanel.css';
 
 interface SettingsPanelProps {
@@ -14,8 +18,8 @@ interface SettingsPanelProps {
   onColumnWidthChange: (width: number) => void;
   onExpandAllRows?: () => void;
   onCollapseAllRows?: () => void;
-  selectedMeasureSubgroup?: string;
-  onMeasureSubgroupChange?: (subgroup: string) => void;
+  selectedMeasureSubgroup?: Set<string>;
+  onMeasureSubgroupChange?: (subgroups: Set<string>) => void;
   selectedLayout?: string;
   onLayoutChange?: (layout: string) => void;
   measures?: MeasureData[]; // Current measures data
@@ -46,10 +50,10 @@ const layoutOptions = [
 
 const measureSubgroupOptions = [
   {
-    value: 'Revenue and Quantity Measures'
+    value: 'Revenue & Quantity Category'
   },
   {
-    value: 'Adjustment Measures'
+    value: 'Adjustment Measures Category'
   }
 ];
 
@@ -101,21 +105,23 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   onStartPeriodChange,
   onEndPeriodChange
 }) => {
+  const { industry } = useIndustry();
   const [selectedLayout, setSelectedLayout] = useState(propSelectedLayout || layoutOptions[0].value);
   const [isLayoutDropdownOpen, setIsLayoutDropdownOpen] = useState(false);
   const layoutDropdownRef = useRef<HTMLDivElement>(null);
   
-  const [selectedMeasureSubgroup, setSelectedMeasureSubgroup] = useState(
-    propSelectedMeasureSubgroup || measureSubgroupOptions[0].value
+  const [selectedMeasureSubgroup, setSelectedMeasureSubgroup] = useState<Set<string>>(
+    propSelectedMeasureSubgroup || new Set([measureSubgroupOptions[0].value])
   );
   const [isMeasureSubgroupDropdownOpen, setIsMeasureSubgroupDropdownOpen] = useState(false);
   const measureSubgroupDropdownRef = useRef<HTMLDivElement>(null);
   const [isReorderModalOpen, setIsReorderModalOpen] = useState(false);
+  const [isReadOnlyDetailsModalOpen, setIsReadOnlyDetailsModalOpen] = useState(false);
   
   // Sync internal state with props
   useEffect(() => {
     if (propSelectedMeasureSubgroup !== undefined) {
-      setSelectedMeasureSubgroup(propSelectedMeasureSubgroup);
+      setSelectedMeasureSubgroup(new Set(propSelectedMeasureSubgroup));
     }
   }, [propSelectedMeasureSubgroup]);
 
@@ -263,6 +269,91 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     onTimeGranularitiesChange(newSet);
   };
 
+  const getMeasureSubgroupSelectedCount = () => {
+    return selectedMeasureSubgroup.size;
+  };
+
+  const toggleMeasureSubgroup = (subgroupValue: string) => {
+    const newSet = new Set(selectedMeasureSubgroup);
+    if (newSet.has(subgroupValue)) {
+      newSet.delete(subgroupValue);
+    } else {
+      newSet.add(subgroupValue);
+    }
+    setSelectedMeasureSubgroup(newSet);
+    if (onMeasureSubgroupChange) {
+      onMeasureSubgroupChange(newSet);
+    }
+  };
+
+  // Calculate total measures available across selected groups
+  const totalMeasuresAvailable = useMemo(() => {
+    let total = 0;
+    const currentIndustry = industry || 'manufacturing';
+    
+    if (selectedMeasureSubgroup.has('Revenue & Quantity Category')) {
+      const revenueQuantityData = getMockData(currentIndustry);
+      total += revenueQuantityData.length;
+    }
+    
+    if (selectedMeasureSubgroup.has('Adjustment Measures Category')) {
+      total += adjustmentMeasuresData.length;
+    }
+    
+    // If no categories selected, default to Revenue & Quantity Category total
+    if (total === 0) {
+      const revenueQuantityData = getMockData(currentIndustry);
+      total = revenueQuantityData.length;
+    }
+    
+    return total;
+  }, [selectedMeasureSubgroup, industry]);
+
+  // Calculate count of measures that would become read-only (measures in Adjustment Measures Category)
+  const measuresInBothGroupsCount = useMemo(() => {
+    if (!selectedMeasureSubgroup.has('Adjustment Measures Category')) {
+      return 0;
+    }
+    
+    // Return count of measures that became read-only
+    // Currently: Final Forecasted Quantity and Final Forecasted Revenue
+    return 2;
+  }, [selectedMeasureSubgroup]);
+
+  // Get affected measures data for the details modal
+  const affectedMeasures = useMemo(() => {
+    if (!selectedMeasureSubgroup.has('Adjustment Measures Category')) {
+      return [];
+    }
+    
+    // Find measures that are in both groups
+    const currentIndustry = industry || 'manufacturing';
+    const revenueQuantityData = getMockData(currentIndustry);
+    const revenueQuantityIds = new Set(revenueQuantityData.map(m => m.id));
+    const adjustmentIds = new Set(adjustmentMeasuresData.map(m => m.id));
+    
+    const affected: { name: string; groupName: string }[] = [];
+    
+    // Check for Committed Forecast measures
+    if (revenueQuantityIds.has('measure-committed-forecast-qty') && adjustmentIds.has('measure-committed-forecast-qty')) {
+      const measure = revenueQuantityData.find(m => m.id === 'measure-committed-forecast-qty') || 
+                     adjustmentMeasuresData.find(m => m.id === 'measure-committed-forecast-qty');
+      if (measure) {
+        affected.push({ name: measure.name, groupName: 'Adjustment Measures Category' });
+      }
+    }
+    
+    if (revenueQuantityIds.has('measure-committed-forecast-rev') && adjustmentIds.has('measure-committed-forecast-rev')) {
+      const measure = revenueQuantityData.find(m => m.id === 'measure-committed-forecast-rev') || 
+                     adjustmentMeasuresData.find(m => m.id === 'measure-committed-forecast-rev');
+      if (measure) {
+        affected.push({ name: measure.name, groupName: 'Adjustment Measures Category' });
+      }
+    }
+    
+    return affected;
+  }, [selectedMeasureSubgroup, industry]);
+
   const getHierarchyGroups = () => {
     const groups: { [key: string]: DimensionLevel[] } = {};
     dimensionLevels.forEach(level => {
@@ -349,7 +440,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
             <div className="settings-field">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                <label className="settings-field-label" style={{ marginBottom: 0 }}>Measure Subgroup</label>
+                <label className="settings-field-label" style={{ marginBottom: 0 }}>Measure Category</label>
                 <a 
                   href="#" 
                   className="settings-link" 
@@ -367,36 +458,43 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   className={`settings-dropdown-trigger ${isMeasureSubgroupDropdownOpen ? 'open' : ''}`}
                   onClick={() => setIsMeasureSubgroupDropdownOpen(!isMeasureSubgroupDropdownOpen)}
                 >
-                  <span className={selectedMeasureSubgroup ? 'settings-dropdown-value' : 'settings-dropdown-placeholder'}>
-                    {selectedMeasureSubgroup || 'Select Measure Subgroup'}
+                  <span className={getMeasureSubgroupSelectedCount() > 0 ? 'settings-dropdown-value' : 'settings-dropdown-placeholder'}>
+                    {getMeasureSubgroupSelectedCount() > 0 ? `${getMeasureSubgroupSelectedCount()} Category${getMeasureSubgroupSelectedCount() !== 1 ? 'ies' : ''} Selected` : 'Select Measure Category'}
                   </span>
                   <svg className="settings-input-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </div>
                 {isMeasureSubgroupDropdownOpen && (
-                  <div className="settings-dropdown-list">
-                    {measureSubgroupOptions.map((option, index) => (
-                      <div
-                        key={index}
-                        className={`settings-dropdown-option ${selectedMeasureSubgroup === option.value ? 'selected' : ''}`}
-                        onClick={() => {
-                          setSelectedMeasureSubgroup(option.value);
-                          setIsMeasureSubgroupDropdownOpen(false);
-                          if (onMeasureSubgroupChange) {
-                            onMeasureSubgroupChange(option.value);
-                          }
-                        }}
-                      >
-                        <div className="settings-dropdown-option-title">{option.value}</div>
-                      </div>
-                    ))}
+                  <div className="settings-dropdown-list settings-dimension-dropdown">
+                    {measureSubgroupOptions.map((option, index) => {
+                      const isSelected = selectedMeasureSubgroup.has(option.value);
+                      return (
+                        <div
+                          key={index}
+                          className="settings-dropdown-checkbox-option"
+                          onClick={() => toggleMeasureSubgroup(option.value)}
+                        >
+                          <div className={`settings-checkbox-wrapper ${isSelected ? 'checked' : ''}`}>
+                            {isSelected ? (
+                              <svg className="settings-checkbox-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                              </svg>
+                            ) : null}
+                          </div>
+                          <span className="settings-dropdown-checkbox-label">{option.value}</span>
+                          {option.value === 'Adjustment Measures Category' && (
+                            <span className="settings-readonly-badge">Read Only</span>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
               {measures.length > 0 && (
                 <p className="settings-field-helper-text">
-                  Showing {visibleMeasureIds.size === 0 ? measures.length : measures.filter(m => visibleMeasureIds.has(m.id)).length} out of {measures.length} measures
+                  Showing {visibleMeasureIds.size === 0 ? measures.length : measures.filter(m => visibleMeasureIds.has(m.id)).length} out of {totalMeasuresAvailable} measures available across {selectedMeasureSubgroup.size} categor{selectedMeasureSubgroup.size !== 1 ? 'ies' : 'y'}
                 </p>
               )}
             </div>
@@ -612,7 +710,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
           isOpen={isReorderModalOpen}
           onClose={() => setIsReorderModalOpen(false)}
           measures={measures}
-          measureSubgroup={selectedMeasureSubgroup || ''}
+          measureSubgroup={Array.from(selectedMeasureSubgroup).join(', ') || ''}
+          selectedMeasureSubgroups={selectedMeasureSubgroup}
           visibleMeasureIds={visibleMeasureIds}
           onSave={(orderedMeasures, visibleMeasureIds) => {
             if (onMeasuresReorder) {
@@ -621,6 +720,13 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
           }}
         />
       )}
+
+      {/* Read-Only Measures Details Modal */}
+      <ReadOnlyMeasuresDetailsModal
+        isOpen={isReadOnlyDetailsModalOpen}
+        onClose={() => setIsReadOnlyDetailsModalOpen(false)}
+        affectedMeasures={affectedMeasures}
+      />
     </div>
   );
 };

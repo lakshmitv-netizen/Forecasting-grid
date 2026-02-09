@@ -214,5 +214,19 @@ const manufacturingData: MeasureData[] = [
     values: monthlyValue(100000),
     children: createManufacturingHierarchy('measure-forecast-rev', 100000, 50000, 10000),
   },
+  // Committed Quantity
+  {
+    id: 'measure-committed-forecast-qty',
+    name: 'Committed Quantity',
+    values: monthlyValue(1100),
+    children: createManufacturingHierarchy('measure-committed-forecast-qty', 1100, 550, 110),
+  },
+  // Committed Revenue
+  {
+    id: 'measure-committed-forecast-rev',
+    name: 'Committed Revenue',
+    values: monthlyValue(110000),
+    children: createManufacturingHierarchy('measure-committed-forecast-rev', 110000, 55000, 11000),
+  },
 ];
 

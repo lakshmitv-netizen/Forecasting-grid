@@ -66,6 +66,12 @@ interface HierarchicalGridProps {
   onGetVisibleTimeKeysReady?: (handler: () => (keyof GridRowType['values'])[]) => void; // Callback to expose function to get visible time keys
   onImpactedMeasuresInfoReady?: (info: { count: number; showOnlyImpactedKPI: boolean }) => void; // Callback to expose impacted measures count and toggle state
   onToggleShowOnlyImpactedKPIHandlerReady?: (handler: (checked: boolean) => void) => void; // Callback to expose toggle handler
+  readonlyMeasureIds?: Set<string>; // Set of measure IDs that are read-only
+  isAdjustmentGroupSelected?: boolean; // Whether Adjustment Measures Group is selected
+  onMeasureGroupChange?: (groups: Set<string>) => void; // Callback to change measure group selection
+  measureGroupContext?: Map<string, string>; // Per-measure group context for shared measures
+  onMeasureGroupContextChange?: (measureId: string, groupContext: string) => void; // Callback to change per-measure group context
+  sharedMeasureIds?: string[]; // IDs of measures that exist in multiple groups
 }
 
 const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({ 
@@ -77,7 +83,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   columnWidth = 100, 
   onExpandAllRows, 
   onCollapseAllRows,
-  onCellFocusWithHistory, 
+  onCellFocusWithHistory,
   onSettingsClick,
   initialFocusedCell,
   onFocusedCellChange,
@@ -113,8 +119,15 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   onGetVisibleRowsReady,
   onGetVisibleTimeKeysReady,
   onImpactedMeasuresInfoReady,
-  onToggleShowOnlyImpactedKPIHandlerReady
+  onToggleShowOnlyImpactedKPIHandlerReady,
+  readonlyMeasureIds: readonlyMeasureIdsProp = new Set<string>(),
+  isAdjustmentGroupSelected = false,
+  onMeasureGroupChange,
+  measureGroupContext = new Map<string, string>(),
+  onMeasureGroupContextChange,
+  sharedMeasureIds = []
 }) => {
+  const readonlyMeasureIds = readonlyMeasureIdsProp;
   const { industry } = useIndustry();
   
   // Store onEditHistory in a ref so it's always available in callbacks
@@ -2076,6 +2089,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
         type: 'measure',
         children: measure.children,
         values: measure.values,
+        groupContext: measure.groupContext,
       });
       
       if (selectedDimensionLevels) {
@@ -2335,6 +2349,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                     type: 'measure',
                     children: m.children,
                     values: m.values,
+                    groupContext: m.groupContext,
                   };
                   break;
                 }
@@ -2376,6 +2391,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
             type: 'measure',
             children: measure.children,
             values: measure.values,
+            groupContext: measure.groupContext,
           }, measure.name);
         } catch (e) {
           console.error('[GRID] Error checking measure:', e);
@@ -2410,6 +2426,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
             type: 'measure',
             children: measure.children,
             values: measure.values,
+            groupContext: measure.groupContext,
           });
         });
       }
@@ -2426,6 +2443,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
             type: 'measure',
             children: measure.children,
             values: measure.values,
+            groupContext: measure.groupContext,
           });
         });
       }
@@ -2442,6 +2460,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
             type: 'measure',
             children: measure.children,
             values: measure.values,
+            groupContext: measure.groupContext,
           });
 
           // Apply search filtering
@@ -2502,6 +2521,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
             type: 'measure',
             children: measure.children,
             values: measure.values,
+            groupContext: measure.groupContext,
           }));
         }
       }
@@ -2520,6 +2540,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
             type: 'measure',
             children: measure.children,
             values: measure.values,
+            groupContext: measure.groupContext,
           });
         });
       } catch (e) {
@@ -3063,6 +3084,12 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                     onFillHandleDragStart={onFillHandleDragStart}
                     onFillHandleDragMove={onFillHandleDragMove}
                     onFillHandleDragEnd={onFillHandleDragEnd}
+                    readonlyMeasureIds={readonlyMeasureIds}
+                    isAdjustmentGroupSelected={isAdjustmentGroupSelected}
+                    onMeasureGroupChange={onMeasureGroupChange}
+                    measureGroupContext={measureGroupContext}
+                    onMeasureGroupContextChange={onMeasureGroupContextChange}
+                    sharedMeasureIds={sharedMeasureIds}
                   />
               );
               }
@@ -3104,6 +3131,12 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                   onFillHandleDragStart={onFillHandleDragStart}
                   onFillHandleDragMove={onFillHandleDragMove}
                   onFillHandleDragEnd={onFillHandleDragEnd}
+                  readonlyMeasureIds={readonlyMeasureIds}
+                  isAdjustmentGroupSelected={isAdjustmentGroupSelected}
+                  onMeasureGroupChange={onMeasureGroupChange}
+                  measureGroupContext={measureGroupContext}
+                  onMeasureGroupContextChange={onMeasureGroupContextChange}
+                  sharedMeasureIds={sharedMeasureIds}
                 />
               );
             })

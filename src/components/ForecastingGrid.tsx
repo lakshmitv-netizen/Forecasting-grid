@@ -26,7 +26,7 @@ type TimeDimensionsGridFocus = { rowId: string; measureId: string } | null;
 
 const ForecastingGrid: React.FC = () => {
   const { industry } = useIndustry();
-  const [selectedMeasureSubgroup, setSelectedMeasureSubgroup] = useState<string>('Revenue and Quantity Measures');
+  const [selectedMeasureSubgroup, setSelectedMeasureSubgroup] = useState<Set<string>>(new Set(['Revenue & Quantity Category']));
   const [selectedLayoutState, setSelectedLayoutState] = useState<string>('Measures / Dimensions x Time');
   
   // Get data based on current industry, default to manufacturing if not set
@@ -2281,24 +2281,102 @@ const ForecastingGrid: React.FC = () => {
     return updatedData;
   }, []);
 
-  // Update data when measure subgroup changes
+  // Track per-measure group context for shared measures (allows switching between groups per measure)
+  const [measureGroupContext, setMeasureGroupContext] = useState<Map<string, string>>(new Map());
+  
+  // IDs of measures that exist in both groups (constant)
+  const sharedMeasureIds = useMemo(() => ['measure-committed-forecast-qty', 'measure-committed-forecast-rev'], []);
+
+  // Update data when measure subgroup changes or measure group context changes
   useEffect(() => {
-    if (selectedMeasureSubgroup === 'Adjustment Measures') {
-      setOriginalData(adjustmentMeasuresData);
-      setData(adjustmentMeasuresData);
-      // Initialize all measures as visible
-      setVisibleMeasureIds(new Set(adjustmentMeasuresData.map(m => m.id)));
-    } else {
-      // Always apply initial edit history to data for Revenue and Quantity Measures
+    const combinedData: MeasureData[] = [];
+    const allMeasureIds: string[] = [];
+    const measureMap = new Map<string, MeasureData>(); // Map to deduplicate by ID
+    
+    // Check if both groups are selected
+    const bothGroupsSelected = selectedMeasureSubgroup.has('Adjustment Measures Category') && 
+                               selectedMeasureSubgroup.has('Revenue & Quantity Category');
+
+    // Shared measures - add first to appear at top
+    const sharedMeasures: MeasureData[] = [];
+    
+    // Process shared measures first when both groups are selected
+    if (bothGroupsSelected) {
+      sharedMeasureIds.forEach(measureId => {
+        // Get the selected context for this measure (default to Adjustment Measures Category - read-only)
+        const selectedContext = measureGroupContext.get(measureId) || 'Adjustment Measures Category';
+        
+        // Get measure data from the appropriate source
+        const currentIndustry = industry || 'manufacturing';
+        const currentData = getMockData(currentIndustry);
+        const dataWithHistory = applyInitialEditHistoryToData(currentData);
+        const rqMeasure = dataWithHistory.find((m: MeasureData) => m.id === measureId);
+        const adjMeasure = adjustmentMeasuresData.find((m: MeasureData) => m.id === measureId);
+        
+        // Use the selected context version
+        const sourceMeasure = selectedContext === 'Adjustment Measures Category' ? adjMeasure : rqMeasure;
+        if (sourceMeasure) {
+          const measureWithGroup = {
+            ...sourceMeasure,
+            groupContext: selectedContext
+          };
+          sharedMeasures.push(measureWithGroup as MeasureData);
+        }
+      });
+    }
+    
+    // Add Revenue & Quantity Category if selected
+    if (selectedMeasureSubgroup.has('Revenue & Quantity Category')) {
       const currentIndustry = industry || 'manufacturing';
       const currentData = getMockData(currentIndustry);
       const dataWithHistory = applyInitialEditHistoryToData(currentData);
-      setOriginalData(dataWithHistory);
-      setData(dataWithHistory);
-      // Initialize all measures as visible
-      setVisibleMeasureIds(new Set(currentData.map((m: MeasureData) => m.id)));
+      
+      dataWithHistory.forEach((measure: MeasureData) => {
+        // Skip shared measures if both groups selected - handled above
+        if (bothGroupsSelected && sharedMeasureIds.includes(measure.id)) {
+          return;
+        }
+        measureMap.set(measure.id, measure);
+        allMeasureIds.push(measure.id);
+      });
     }
-  }, [selectedMeasureSubgroup, applyInitialEditHistoryToData, industry]);
+    
+    // Add Adjustment Measures Category if selected
+    if (selectedMeasureSubgroup.has('Adjustment Measures Category')) {
+      adjustmentMeasuresData.forEach((measure: MeasureData) => {
+        // Skip shared measures if both groups selected - handled above
+        if (bothGroupsSelected && sharedMeasureIds.includes(measure.id)) {
+          return;
+        }
+        // Non-shared measure, add if not already present
+        if (!measureMap.has(measure.id)) {
+          measureMap.set(measure.id, measure);
+          allMeasureIds.push(measure.id);
+        }
+      });
+    }
+
+    // Add shared measures first (at the top), then other measures
+    combinedData.push(...sharedMeasures);
+    combinedData.push(...Array.from(measureMap.values()));
+    
+    // Update allMeasureIds to include shared measures at the start
+    const finalMeasureIds = [...sharedMeasures.map(m => m.id), ...allMeasureIds];
+
+      // If no subgroups selected, default to Revenue & Quantity Category
+    if (combinedData.length === 0) {
+      const currentIndustry = industry || 'manufacturing';
+      const currentData = getMockData(currentIndustry);
+      const dataWithHistory = applyInitialEditHistoryToData(currentData);
+      combinedData.push(...dataWithHistory);
+      finalMeasureIds.push(...currentData.map((m: MeasureData) => m.id));
+    }
+
+    setOriginalData(combinedData);
+    setData(combinedData);
+    // Initialize all measures as visible
+    setVisibleMeasureIds(new Set(finalMeasureIds));
+  }, [selectedMeasureSubgroup, applyInitialEditHistoryToData, industry, measureGroupContext, sharedMeasureIds]);
 
   // Handle measure reordering
   const handleMeasuresReorder = useCallback((orderedMeasures: MeasureData[], visibleIds: Set<string>) => {
@@ -2314,6 +2392,27 @@ const ForecastingGrid: React.FC = () => {
     }
     return data.filter(measure => visibleMeasureIds.has(measure.id));
   }, [data, visibleMeasureIds]);
+
+  // Determine which measures are read-only based on selected measure groups and per-measure context
+  const readonlyMeasureIds = useMemo(() => {
+    const readonlyIds = new Set<string>();
+    
+    // Check each measure's groupContext
+    data.forEach(measure => {
+      if (measure.groupContext === 'Adjustment Measures Category') {
+        readonlyIds.add(measure.id);
+      }
+    });
+    
+    // Also add original IDs for Adjustment Measures Category measures when only that category is selected
+    if (selectedMeasureSubgroup.has('Adjustment Measures Category') && !selectedMeasureSubgroup.has('Revenue & Quantity Category')) {
+      adjustmentMeasuresData.forEach(measure => {
+        readonlyIds.add(measure.id);
+      });
+    }
+    
+    return readonlyIds;
+  }, [selectedMeasureSubgroup, data]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const [isCellDetailsHistoryOpen, setIsCellDetailsHistoryOpen] = useState(false);
@@ -2937,6 +3036,18 @@ const ForecastingGrid: React.FC = () => {
             cellEditHistory={mergedEditHistory}
             onCellFocusWithHistory={handleCellFocusWithHistory}
             lockedCells={lockedCells}
+            readonlyMeasureIds={readonlyMeasureIds}
+            isAdjustmentGroupSelected={selectedMeasureSubgroup.has('Adjustment Measures Category')}
+            onMeasureGroupChange={setSelectedMeasureSubgroup}
+            measureGroupContext={measureGroupContext}
+            onMeasureGroupContextChange={(measureId: string, groupContext: string) => {
+              setMeasureGroupContext(prev => {
+                const newMap = new Map(prev);
+                newMap.set(measureId, groupContext);
+                return newMap;
+              });
+            }}
+            sharedMeasureIds={sharedMeasureIds}
             onUndoHandler={(handler) => { undoHandlerRef.current = handler; }}
             onRedoHandler={(handler) => { redoHandlerRef.current = handler; }}
             onCanUndoChange={setCanUndo}

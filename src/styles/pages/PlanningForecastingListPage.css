@@ -903,3 +903,31 @@
   border-bottom: none;
 }
 
+/* SLDS Combobox Styles for Account Selection */
+.slds-combobox-group {
+  display: flex !important;
+  align-items: stretch !important;
+  width: 100% !important;
+}
+
+.slds-combobox-group .slds-combobox {
+  display: flex !important;
+  position: relative !important;
+}
+
+.slds-combobox-group .slds-combobox__input {
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.slds-combobox-group .slds-combobox__input:hover {
+  border-color: #706e6b !important;
+}
+
+.slds-combobox-group .slds-combobox__input:focus {
+  outline: none !important;
+  border-color: #0176d3 !important;
+  box-shadow: 0 0 0 1px #0176d3 !important;
+  z-index: 1 !important;
+}
+

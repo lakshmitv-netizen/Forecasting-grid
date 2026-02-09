@@ -39,6 +39,12 @@ interface GridRowProps {
   onFillHandleDragStart?: (cellKey: string) => void; // Callback when fill handle drag starts
   onFillHandleDragMove?: (cellKey: string) => void; // Callback when fill handle is dragged
   onFillHandleDragEnd?: () => void; // Callback when fill handle drag ends
+  readonlyMeasureIds?: Set<string>; // Set of measure IDs that are read-only
+  isAdjustmentGroupSelected?: boolean; // Whether Adjustment Measures Group is selected
+  onMeasureGroupChange?: (groups: Set<string>) => void; // Callback to change measure group selection
+  measureGroupContext?: Map<string, string>; // Per-measure group context for shared measures
+  onMeasureGroupContextChange?: (measureId: string, groupContext: string) => void; // Callback to change per-measure group context
+  sharedMeasureIds?: string[]; // IDs of measures that exist in multiple groups
 }
 
 const GridRowComponent: React.FC<GridRowProps> = ({
@@ -73,6 +79,12 @@ const GridRowComponent: React.FC<GridRowProps> = ({
   onFillHandleDragStart,
   onFillHandleDragMove,
   onFillHandleDragEnd,
+  readonlyMeasureIds: _readonlyMeasureIds = new Set<string>(),
+  isAdjustmentGroupSelected = false,
+  onMeasureGroupChange,
+  measureGroupContext = new Map<string, string>(),
+  onMeasureGroupContextChange,
+  sharedMeasureIds = [],
 }) => {
   const hasChildren = row.children && row.children.length > 0;
   const [editingCell, setEditingCell] = useState<{ monthKey: keyof GridRowType['values'] } | null>(null);
@@ -85,6 +97,36 @@ const GridRowComponent: React.FC<GridRowProps> = ({
   const shiftKeyPressedRef = useRef<boolean>(false); // Track if Shift key is pressed during selection
   const [hoveredCell, setHoveredCell] = useState<keyof GridRowType['values'] | null>(null);
   const [focusedCellKey, setFocusedCellKey] = useState<string | null>(null);
+  const [showReadonlyWarning, setShowReadonlyWarning] = useState(false);
+  const [warningPopoverPosition, setWarningPopoverPosition] = useState<{ top: number; left: number } | null>(null);
+  const warningIconRef = useRef<HTMLSpanElement>(null);
+  const [isGroupDropdownOpen, setIsGroupDropdownOpen] = useState(false);
+  
+  // Update popover position when showing
+  useEffect(() => {
+    if (showReadonlyWarning && warningIconRef.current) {
+      const rect = warningIconRef.current.getBoundingClientRect();
+      setWarningPopoverPosition({
+        top: rect.bottom + 8,
+        left: rect.left
+      });
+    }
+  }, [showReadonlyWarning]);
+  
+  // Close popover when clicking outside
+  useEffect(() => {
+    if (!showReadonlyWarning) return;
+    
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.readonly-warning-popover') && !warningIconRef.current?.contains(target)) {
+        setShowReadonlyWarning(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showReadonlyWarning]);
   
   // Convert savedImpactedCells Set to array so React can detect changes
   // Use state to force re-render when savedImpactedCells changes
@@ -236,6 +278,11 @@ const GridRowComponent: React.FC<GridRowProps> = ({
       console.log('[GridRow] No onCellChange handler, returning');
       return;
     }
+    
+    // Block editing for cells that belong to Adjustment Measures Group (read-only context)
+    if (row.groupContext === 'Adjustment Measures Category') {
+      return; // Not editable - belongs to read-only group context
+    }
     // Close the edit info popover when entering edit mode
     if (onCellFocusWithHistory) {
       onCellFocusWithHistory('', null);
@@ -264,6 +311,11 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     if (!onCellChange) {
       console.log('[GridRow] No onCellChange handler, returning');
       return;
+    }
+    
+    // Block editing for cells that belong to Adjustment Measures Group (read-only context)
+    if (row.groupContext === 'Adjustment Measures Category') {
+      return; // Not editable - belongs to read-only group context
     }
     // Close the edit info popover when entering edit mode
     if (onCellFocusWithHistory) {
@@ -1111,10 +1163,14 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                               row.id.includes('-measure-ly-order') ||
                               row.name?.includes('Last Year');
     
+    // Block editing for cells that belong to Adjustment Measures Category (read-only context)
+    const isAdjustmentGroupCell = row.groupContext === 'Adjustment Measures Category';
+    
     // Measure rows are not editable - they are calculated values
     // Locked cells are also not editable
     // Readonly measures (Last Year data) are not editable
-    const isEditable = row.type !== 'measure' && onCellChange && !isCellLocked && !isReadonlyMeasure;
+    // Adjustment Measures Group cells are not editable
+    const isEditable = row.type !== 'measure' && onCellChange && !isCellLocked && !isReadonlyMeasure && !isAdjustmentGroupCell;
     
     // Calculate delta as percentage
     let deltaPercent: number | null = null;
@@ -1378,6 +1434,13 @@ const GridRowComponent: React.FC<GridRowProps> = ({
   const isActualMeasureRow = row.type === 'measure' && isRowReadonlyMeasure;
   // Check if this is a dimension row under a readonly measure
   const isDimensionUnderReadonlyMeasure = row.type !== 'measure' && isRowReadonlyMeasure;
+  
+  // Check if this is a shared measure (exists in multiple groups)
+  const isSharedMeasure = row.type === 'measure' && sharedMeasureIds.includes(row.id);
+  
+  // Show warning icon for shared measures only when both groups are selected (has groupContext)
+  // Don't show when only Adjustment Measures Group is selected
+  const showGroupSwitcher = isSharedMeasure && row.groupContext !== undefined;
 
   return (
     <>
@@ -1434,16 +1497,232 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 </svg>
               </span>
             )}
-            <span className="cell-name">
-              {searchTerm && searchTerm.trim() ? (
-                <SearchHighlight 
-                  text={row.name || ''} 
-                  searchTerms={extractSearchTerms(searchTerm)} 
-                />
-              ) : (
-                row.name || ''
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <span className="cell-name">
+                {searchTerm && searchTerm.trim() ? (
+                  <SearchHighlight 
+                    text={row.name || ''} 
+                    searchTerms={extractSearchTerms(searchTerm)} 
+                  />
+                ) : (
+                  row.name || ''
+                )}
+              </span>
+              {/* Show measure group name for measures with groupContext */}
+              {row.type === 'measure' && row.groupContext && (
+                <span style={{ 
+                  fontSize: '10px', 
+                  color: '#374151', 
+                  marginTop: '2px',
+                  fontWeight: 400
+                }}>
+                  {row.groupContext}
+                </span>
               )}
-            </span>
+            </div>
+            {/* Warning icon / Group switcher for shared measures */}
+            {showGroupSwitcher && (
+              <span 
+                ref={warningIconRef}
+                style={{ 
+                  display: 'inline-flex', 
+                  alignItems: 'center', 
+                  marginLeft: '8px',
+                  cursor: 'pointer'
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowReadonlyWarning(!showReadonlyWarning);
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 2L1 21h22L12 2z" fill="#FBBF24" stroke="#CA8A04" strokeWidth="1.5"/>
+                  <path d="M12 9v5" stroke="#92400E" strokeWidth="2" strokeLinecap="round"/>
+                  <circle cx="12" cy="17" r="1" fill="#92400E"/>
+                </svg>
+                {/* Popover rendered via portal */}
+                {showReadonlyWarning && warningPopoverPosition && createPortal(
+                  <div 
+                    className="readonly-warning-popover"
+                    style={{
+                      position: 'fixed',
+                      top: warningPopoverPosition.top,
+                      left: warningPopoverPosition.left,
+                      backgroundColor: 'white',
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '8px',
+                      padding: '16px',
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                      zIndex: 10000,
+                      width: '260px',
+                      whiteSpace: 'normal'
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {/* Nubbin (triangle pointer) */}
+                    <div style={{
+                      position: 'absolute',
+                      top: '-8px',
+                      left: '16px',
+                      width: '16px',
+                      height: '8px',
+                      overflow: 'hidden'
+                    }}>
+                      <div style={{
+                        position: 'absolute',
+                        top: '4px',
+                        left: '0',
+                        width: '16px',
+                        height: '16px',
+                        backgroundColor: 'white',
+                        border: '1px solid #e5e7eb',
+                        transform: 'rotate(45deg)',
+                        boxShadow: '-2px -2px 4px rgba(0, 0, 0, 0.05)'
+                      }} />
+                    </div>
+                    
+                    {/* Status message - changes based on selected group */}
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'flex-start', 
+                      gap: '8px',
+                      marginBottom: '12px',
+                      padding: '10px 12px',
+                      backgroundColor: '#fef3c7',
+                      borderRadius: '6px'
+                    }}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0, marginTop: '1px' }}>
+                        <path d="M12 2L1 21h22L12 2z" fill="#FBBF24" stroke="#CA8A04" strokeWidth="1.5"/>
+                        <path d="M12 9v5" stroke="#92400E" strokeWidth="2" strokeLinecap="round"/>
+                        <circle cx="12" cy="17" r="1" fill="#92400E"/>
+                      </svg>
+                      <div style={{ fontSize: '13px', color: '#92400e', lineHeight: '1.5' }}>
+                        This measure is common across multiple categories, select a category to change its context.
+                      </div>
+                    </div>
+                    
+                    {/* Dropdown selector */}
+                    <div style={{ fontSize: '13px', color: '#374151', marginBottom: '8px', fontWeight: 500 }}>
+                      Select measure category:
+                    </div>
+                    
+                    {/* Custom dropdown */}
+                    <div style={{ position: 'relative' }}>
+                      <div
+                        onClick={() => setIsGroupDropdownOpen(!isGroupDropdownOpen)}
+                        style={{
+                          padding: '8px 12px',
+                          fontSize: '13px',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '6px',
+                          backgroundColor: 'white',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '8px'
+                        }}
+                      >
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {row.groupContext === 'Adjustment Measures Category' ? 'Adjustment Mea...' : 'Revenue & Quantity Category'}
+                        </span>
+                        <svg width="16" height="16" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0, transform: isGroupDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+                          <path stroke="#6b7280" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M6 8l4 4 4-4"/>
+                        </svg>
+                      </div>
+                      
+                      {/* Dropdown options */}
+                      {isGroupDropdownOpen && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: 0,
+                          right: 0,
+                          marginTop: '4px',
+                          backgroundColor: 'white',
+                          border: '1px solid #e5e7eb',
+                          borderRadius: '6px',
+                          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+                          zIndex: 10001,
+                          overflow: 'hidden'
+                        }}>
+                          {/* Revenue & Quantity Category option */}
+                          <div
+                            onClick={() => {
+                              if (onMeasureGroupContextChange) {
+                                onMeasureGroupContextChange(row.id, 'Revenue & Quantity Category');
+                              }
+                              setIsGroupDropdownOpen(false);
+                            }}
+                            style={{
+                              padding: '10px 12px',
+                              fontSize: '13px',
+                              cursor: 'pointer',
+                              backgroundColor: row.groupContext !== 'Adjustment Measures Category' ? '#f3f4f6' : 'white',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = row.groupContext !== 'Adjustment Measures Category' ? '#f3f4f6' : 'white'}
+                          >
+                            <span>Revenue & Quantity Category</span>
+                            {row.groupContext !== 'Adjustment Measures Category' && (
+                              <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+                                <path stroke="#3b82f6" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 10l3 3 7-7"/>
+                              </svg>
+                            )}
+                          </div>
+                          
+                          {/* Adjustment Measures Category option */}
+                          <div
+                            onClick={() => {
+                              if (onMeasureGroupContextChange) {
+                                onMeasureGroupContextChange(row.id, 'Adjustment Measures Category');
+                              }
+                              setIsGroupDropdownOpen(false);
+                            }}
+                            style={{
+                              padding: '10px 12px',
+                              fontSize: '13px',
+                              cursor: 'pointer',
+                              backgroundColor: row.groupContext === 'Adjustment Measures Category' ? '#f3f4f6' : 'white',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: '8px'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = row.groupContext === 'Adjustment Measures Category' ? '#f3f4f6' : 'white'}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Adjustment Mea...</span>
+                              <span style={{
+                                fontSize: '10px',
+                                color: '#4b5563',
+                                backgroundColor: '#d1d5db',
+                                padding: '3px 6px',
+                                borderRadius: '4px',
+                                fontWeight: 600,
+                                flexShrink: 0
+                              }}>
+                                READ ONLY
+                              </span>
+                            </div>
+                            {row.groupContext === 'Adjustment Measures Category' && (
+                              <svg width="16" height="16" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0 }}>
+                                <path stroke="#3b82f6" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 10l3 3 7-7"/>
+                              </svg>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>,
+                  document.body
+                )}
+              </span>
+            )}
           </div>
         </td>
         {timeKeys.map((key) => {
@@ -1454,9 +1733,13 @@ const GridRowComponent: React.FC<GridRowProps> = ({
           const isReadonlyMeasureCell = row.id.includes('measure-ly-order') || 
                                         row.id.includes('-measure-ly-order') ||
                                         row.name?.includes('Last Year');
-          // Only apply texture to dimension cells under readonly measures, not the measure row itself
-          const shouldShowTexture = isDimensionUnderReadonlyMeasure;
-          const isEditable = row.type !== 'measure' && onCellChange && !isCellLocked && !isReadonlyMeasureCell;
+          
+          // Block editing for cells that belong to Adjustment Measures Category (read-only context)
+          const isAdjustmentGroupCell = row.type !== 'measure' && row.groupContext === 'Adjustment Measures Category';
+          
+          // Apply striped texture to dimension cells under readonly measures or adjustment group
+          const shouldShowTexture = isDimensionUnderReadonlyMeasure || isAdjustmentGroupCell;
+          const isEditable = row.type !== 'measure' && onCellChange && !isCellLocked && !isReadonlyMeasureCell && !isAdjustmentGroupCell;
           
           // Check if this cell has a note
           // For impacted cells: only show note indicator if there's an unsaved note (new note added after impact)
@@ -1756,38 +2039,48 @@ const GridRowComponent: React.FC<GridRowProps> = ({
       </tr>
       {hasChildren && isExpanded && row.children && (
         <>
-          {row.children.map((child) => (
-            <GridRowComponent
-              key={child.id}
-              row={child}
-              level={level + 1}
-              isExpanded={expandedRows.has(child.id)}
-              expandedRows={expandedRows}
-              onToggleExpand={onToggleExpand}
-              formatValue={formatValue}
-              onCellChange={onCellChange}
-              visibleTimeKeys={visibleTimeKeys}
-              focusedCell={focusedCell}
-              onCellFocus={onCellFocus}
-              cellRefs={cellRefs}
-              editedCells={editedCells}
-              impactedCells={impactedCells}
-              savedEditedCells={savedEditedCells}
-              unsavedNotes={unsavedNotes}
-              columnWidth={columnWidth}
-              searchTerm={searchTerm}
-              editHistory={editHistory}
-              onCellFocusWithHistory={onCellFocusWithHistory}
-              lockedCells={lockedCells}
-              onCellContextMenu={onCellContextMenu}
-              selectedCells={selectedCells}
-              onCellSelect={onCellSelect}
-              lastSelectedCell={lastSelectedCell}
-              onFillHandleDragStart={onFillHandleDragStart}
-              onFillHandleDragMove={onFillHandleDragMove}
-              onFillHandleDragEnd={onFillHandleDragEnd}
-            />
-          ))}
+          {row.children.map((child) => {
+            // Inherit groupContext from parent measure
+            const childWithContext = row.groupContext ? { ...child, groupContext: row.groupContext } : child;
+            return (
+              <GridRowComponent
+                key={child.id}
+                row={childWithContext}
+                level={level + 1}
+                isExpanded={expandedRows.has(child.id)}
+                expandedRows={expandedRows}
+                onToggleExpand={onToggleExpand}
+                formatValue={formatValue}
+                onCellChange={onCellChange}
+                visibleTimeKeys={visibleTimeKeys}
+                focusedCell={focusedCell}
+                onCellFocus={onCellFocus}
+                cellRefs={cellRefs}
+                editedCells={editedCells}
+                impactedCells={impactedCells}
+                savedEditedCells={savedEditedCells}
+                unsavedNotes={unsavedNotes}
+                savedImpactedCells={savedImpactedCells}
+                columnWidth={columnWidth}
+                searchTerm={searchTerm}
+                editHistory={editHistory}
+                onCellFocusWithHistory={onCellFocusWithHistory}
+                lockedCells={lockedCells}
+                onCellContextMenu={onCellContextMenu}
+                selectedCells={selectedCells}
+                onCellSelect={onCellSelect}
+                lastSelectedCell={lastSelectedCell}
+                onFillHandleDragStart={onFillHandleDragStart}
+                onFillHandleDragMove={onFillHandleDragMove}
+                onFillHandleDragEnd={onFillHandleDragEnd}
+                isAdjustmentGroupSelected={isAdjustmentGroupSelected}
+                onMeasureGroupChange={onMeasureGroupChange}
+                measureGroupContext={measureGroupContext}
+                onMeasureGroupContextChange={onMeasureGroupContextChange}
+                sharedMeasureIds={sharedMeasureIds}
+              />
+            );
+          })}
         </>
       )}
     </>

@@ -104,7 +104,7 @@ const PlanningForecastingPage: React.FC = () => {
             </div>
           </div>
           <div className="planning-page-header-right">
-            <Link to="/" className="planning-view-grid-button">
+            <Link to="/home/manufacturing" className="planning-view-grid-button">
               View Grid
             </Link>
           </div>
@@ -149,8 +149,8 @@ const PlanningForecastingPage: React.FC = () => {
                     <div className="planning-info-value">Dec 31st 2026</div>
                   </div>
                   <div className="planning-info-field">
-                    <label className="planning-info-label">Default Measure Subgroup</label>
-                    <div className="planning-info-value">Revenue and Quantity Measures</div>
+                    <label className="planning-info-label">Default Measure Group</label>
+                    <div className="planning-info-value">Revenue & Quantity Category</div>
                   </div>
                   <div className="planning-info-field">
                     <label className="planning-info-label">Default Time Granularity</label>

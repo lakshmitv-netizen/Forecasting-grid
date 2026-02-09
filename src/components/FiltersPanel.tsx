@@ -17,8 +17,8 @@ interface Filter {
 interface FiltersPanelProps {
   isOpen: boolean;
   onClose: () => void;
-  selectedMeasureSubgroup?: string;
-  onMeasureSubgroupChange?: (subgroup: string) => void;
+  selectedMeasureSubgroup?: Set<string>;
+  onMeasureSubgroupChange?: (subgroups: Set<string>) => void;
   selectedDimensionLevels?: Set<string>;
   onDimensionLevelsChange?: (levels: Set<string>) => void;
   data?: MeasureData[];

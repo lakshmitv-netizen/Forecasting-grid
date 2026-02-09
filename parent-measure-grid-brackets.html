@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grid with Category Brackets</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            padding: 20px;
+            background-color: white;
+        }
+
+        .grid-container {
+            background: white;
+            border: 1px solid #A0A0A0;
+            overflow: auto;
+            max-width: 100%;
+        }
+
+        .grid-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        .grid-header {
+            background-color: #ededed !important;
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3) !important;
+            border-bottom: 1px solid #D0D0D0 !important;
+        }
+
+        .grid-table th {
+            background-color: #d0d0d0 !important;
+            padding: clamp(5px, calc(5px + 4px * (100vh - 600px) / 600px), 9px) clamp(7px, calc(7px + 5px * (100vh - 600px) / 600px), 12px);
+            text-align: left;
+            font-weight: 700 !important;
+            font-size: 14px !important;
+            color: #000000 !important;
+            line-height: 20px !important;
+            border-right: 2px solid #808080 !important;
+            border-top: 2px solid #808080 !important;
+            border-bottom: 2px solid #808080 !important;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            white-space: nowrap;
+        }
+
+        .grid-table th:first-child {
+            min-width: 450px !important;
+            max-width: 450px !important;
+            width: 450px !important;
+            position: sticky;
+            left: 0;
+            top: 0;
+            z-index: 20;
+        }
+
+        .grid-table td:first-child {
+            z-index: 5;
+        }
+
+        .grid-table th:not(:first-child) {
+            text-align: center;
+            min-width: 100px;
+        }
+
+        .grid-table td {
+            padding: clamp(5px, calc(5px + 4px * (100vh - 600px) / 600px), 9px) clamp(7px, calc(7px + 5px * (100vh - 600px) / 600px), 12px);
+            border-right: 1px solid #808080 !important;
+            border-top: 1px solid #808080 !important;
+            border-bottom: 1px solid #808080 !important;
+            border-width: 1px 1px 1px 0 !important;
+            vertical-align: middle;
+            background-color: inherit !important;
+            min-height: clamp(18px, calc(18px + 14px * (100vh - 600px) / 600px), 32px);
+        }
+
+        .grid-table td:first-child {
+            position: sticky;
+            left: 0;
+            z-index: 5;
+            background-color: white !important;
+            min-width: 450px !important;
+            max-width: 450px !important;
+            width: 450px !important;
+            border-right: 2px solid #808080 !important;
+        }
+
+        .row-measure {
+            background-color: #E0E0E0 !important;
+            font-weight: 600 !important;
+        }
+
+        .row-measure td {
+            background-color: #E0E0E0 !important;
+            min-height: clamp(28px, calc(28px + 14px * (100vh - 600px) / 600px), 42px) !important;
+            padding-top: clamp(8px, calc(8px + 4px * (100vh - 600px) / 600px), 12px) !important;
+            padding-bottom: clamp(8px, calc(8px + 4px * (100vh - 600px) / 600px), 12px) !important;
+        }
+
+        .row-measure td:first-child {
+            background-color: #E0E0E0 !important;
+        }
+
+        .row-account {
+            background-color: white !important;
+        }
+
+        .row-category {
+            background-color: white !important;
+        }
+
+        .row-product {
+            background-color: white !important;
+        }
+
+        .row-readonly {
+            background: repeating-linear-gradient(
+                45deg,
+                #ffffff,
+                #ffffff 4px,
+                #f5f5f5 4px,
+                #f5f5f5 8px
+            ) !important;
+        }
+
+        .row-readonly td {
+            background: repeating-linear-gradient(
+                45deg,
+                #ffffff,
+                #ffffff 4px,
+                #f5f5f5 4px,
+                #f5f5f5 8px
+            ) !important;
+        }
+
+        .row-readonly:hover {
+            background: repeating-linear-gradient(
+                45deg,
+                #fafafa,
+                #fafafa 4px,
+                #f0f0f0 4px,
+                #f0f0f0 8px
+            ) !important;
+        }
+
+        .row-readonly:hover td {
+            background: repeating-linear-gradient(
+                45deg,
+                #fafafa,
+                #fafafa 4px,
+                #f0f0f0 4px,
+                #f0f0f0 8px
+            ) !important;
+        }
+
+        .grid-row:hover {
+            background-color: #F5F9FF !important;
+        }
+
+        .row-measure:hover {
+            background-color: #F3F3F3 !important;
+        }
+
+        .expand-icon {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            margin-right: 4px;
+            cursor: pointer;
+            text-align: center;
+            font-weight: bold;
+            color: #666;
+        }
+
+        .expand-icon:hover {
+            color: #333;
+        }
+
+        .cell-value {
+            text-align: right;
+            font-family: 'Courier New', monospace;
+            color: #000000 !important;
+            font-weight: 500;
+        }
+
+        .cell-editable {
+            cursor: pointer;
+        }
+
+        .cell-readonly {
+            position: relative !important;
+            cursor: help !important;
+        }
+
+        .readonly-badge-tooltip {
+            display: none;
+            position: fixed;
+            padding: 8px 12px;
+            background-color: #181818;
+            color: white;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: 11px;
+            font-weight: normal;
+            line-height: 14px;
+            border-radius: 4px;
+            white-space: normal;
+            max-width: 280px;
+            min-width: 220px;
+            z-index: 999999;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+            pointer-events: none;
+        }
+        
+        .readonly-badge-tooltip * {
+            font-weight: normal;
+        }
+
+        .readonly-badge-tooltip::after {
+            content: '';
+            position: absolute;
+            top: calc(50% + 8px);
+            left: -8px;
+            transform: translateY(-50%);
+            border: 8px solid transparent;
+            border-right-color: #181818;
+            border-left: none;
+        }
+        
+        .cell-readonly:hover {
+            background-color: rgba(0, 0, 0, 0.02) !important;
+        }
+
+        .row-hidden {
+            display: none;
+        }
+
+        .category-brackets {
+            color: #666;
+            font-weight: normal;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Grid with Category Brackets</h1>
+    <p style="margin: 10px 0; color: #666;">
+        <strong>Example:</strong> Measures show categories in brackets (e.g., "Total Volume [Planned, Actuals]"). Each measure appears twice - once as read-only and once as editable.
+    </p>
+    
+    <div class="grid-container">
+        <table class="grid-table">
+            <thead>
+                <tr>
+                    <th style="min-width: 450px;">Measures / Dimensions</th>
+                    <th>Jan</th>
+                    <th>Feb</th>
+                    <th>Mar</th>
+                    <th>Apr</th>
+                    <th>May</th>
+                    <th>Jun</th>
+                    <th>Jul</th>
+                    <th>Aug</th>
+                    <th>Sep</th>
+                    <th>Oct</th>
+                    <th>Nov</th>
+                    <th>Dec</th>
+                </tr>
+            </thead>
+            <tbody id="grid-body">
+                <!-- Rows will be generated by JavaScript -->
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        const gridData = [
+            {
+                id: 'measure-total-volume-readonly',
+                name: 'Total Volume',
+                categories: ['Planned', 'Actuals'],
+                type: 'measure',
+                level: 0,
+                expanded: true,
+                accessStatus: 'read',
+                values: { jan: 1000, feb: 1000, mar: 1000, apr: 1000, may: 1000, jun: 1000, jul: 1000, aug: 1000, sep: 1000, oct: 1000, nov: 1000, dec: 1000 },
+                children: [
+                    {
+                        id: 'account-tv-readonly',
+                        name: 'MagnaDrive - Michigan Plant',
+                        type: 'account',
+                        level: 1,
+                        expanded: true,
+                        values: { jan: 1000, feb: 1000, mar: 1000, apr: 1000, may: 1000, jun: 1000, jul: 1000, aug: 1000, sep: 1000, oct: 1000, nov: 1000, dec: 1000 },
+                        children: [
+                            {
+                                id: 'category-transmission-tv-readonly',
+                                name: 'Transmission Assembly',
+                                type: 'category',
+                                level: 2,
+                                expanded: true,
+                                values: { jan: 500, feb: 500, mar: 500, apr: 500, may: 500, jun: 500, jul: 500, aug: 500, sep: 500, oct: 500, nov: 500, dec: 500 },
+                                children: [
+                                    { id: 'product-trn-a-tv-readonly', name: 'TRN 750 - A', type: 'product', level: 3, values: { jan: 100, feb: 100, mar: 100, apr: 100, may: 100, jun: 100, jul: 100, aug: 100, sep: 100, oct: 100, nov: 100, dec: 100 } },
+                                    { id: 'product-trn-b-tv-readonly', name: 'TRN 750 - B', type: 'product', level: 3, values: { jan: 100, feb: 100, mar: 100, apr: 100, may: 100, jun: 100, jul: 100, aug: 100, sep: 100, oct: 100, nov: 100, dec: 100 } },
+                                    { id: 'product-trn-c-tv-readonly', name: 'TRN 750 - C', type: 'product', level: 3, values: { jan: 100, feb: 100, mar: 100, apr: 100, may: 100, jun: 100, jul: 100, aug: 100, sep: 100, oct: 100, nov: 100, dec: 100 } }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                id: 'measure-total-volume-editable',
+                name: 'Total Volume',
+                categories: ['Planned', 'Actuals'],
+                type: 'measure',
+                level: 0,
+                expanded: true,
+                accessStatus: 'write',
+                values: { jan: 1000, feb: 1000, mar: 1000, apr: 1000, may: 1000, jun: 1000, jul: 1000, aug: 1000, sep: 1000, oct: 1000, nov: 1000, dec: 1000 },
+                children: [
+                    {
+                        id: 'account-tv-editable',
+                        name: 'MagnaDrive - Michigan Plant',
+                        type: 'account',
+                        level: 1,
+                        expanded: true,
+                        values: { jan: 1000, feb: 1000, mar: 1000, apr: 1000, may: 1000, jun: 1000, jul: 1000, aug: 1000, sep: 1000, oct: 1000, nov: 1000, dec: 1000 },
+                        children: [
+                            {
+                                id: 'category-transmission-tv-editable',
+                                name: 'Transmission Assembly',
+                                type: 'category',
+                                level: 2,
+                                expanded: true,
+                                values: { jan: 500, feb: 500, mar: 500, apr: 500, may: 500, jun: 500, jul: 500, aug: 500, sep: 500, oct: 500, nov: 500, dec: 500 },
+                                children: [
+                                    { id: 'product-trn-a-tv-editable', name: 'TRN 750 - A', type: 'product', level: 3, values: { jan: 100, feb: 100, mar: 100, apr: 100, may: 100, jun: 100, jul: 100, aug: 100, sep: 100, oct: 100, nov: 100, dec: 100 } },
+                                    { id: 'product-trn-b-tv-editable', name: 'TRN 750 - B', type: 'product', level: 3, values: { jan: 100, feb: 100, mar: 100, apr: 100, may: 100, jun: 100, jul: 100, aug: 100, sep: 100, oct: 100, nov: 100, dec: 100 } },
+                                    { id: 'product-trn-c-tv-editable', name: 'TRN 750 - C', type: 'product', level: 3, values: { jan: 100, feb: 100, mar: 100, apr: 100, may: 100, jun: 100, jul: 100, aug: 100, sep: 100, oct: 100, nov: 100, dec: 100 } }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                id: 'measure-total-revenue-readonly',
+                name: 'Total Revenue',
+                categories: ['Planned', 'Actuals', 'Forecast'],
+                type: 'measure',
+                level: 0,
+                expanded: true,
+                accessStatus: 'read',
+                values: { jan: 80000, feb: 80000, mar: 80000, apr: 80000, may: 80000, jun: 80000, jul: 80000, aug: 80000, sep: 80000, oct: 80000, nov: 80000, dec: 80000 },
+                children: [
+                    {
+                        id: 'account-tr-readonly',
+                        name: 'MagnaDrive - Michigan Plant',
+                        type: 'account',
+                        level: 1,
+                        expanded: false,
+                        values: { jan: 80000, feb: 80000, mar: 80000, apr: 80000, may: 80000, jun: 80000, jul: 80000, aug: 80000, sep: 80000, oct: 80000, nov: 80000, dec: 80000 },
+                        children: []
+                    }
+                ]
+            },
+            {
+                id: 'measure-total-revenue-editable',
+                name: 'Total Revenue',
+                categories: ['Planned', 'Actuals', 'Forecast'],
+                type: 'measure',
+                level: 0,
+                expanded: true,
+                accessStatus: 'write',
+                values: { jan: 80000, feb: 80000, mar: 80000, apr: 80000, may: 80000, jun: 80000, jul: 80000, aug: 80000, sep: 80000, oct: 80000, nov: 80000, dec: 80000 },
+                children: [
+                    {
+                        id: 'account-tr-editable',
+                        name: 'MagnaDrive - Michigan Plant',
+                        type: 'account',
+                        level: 1,
+                        expanded: false,
+                        values: { jan: 80000, feb: 80000, mar: 80000, apr: 80000, may: 80000, jun: 80000, jul: 80000, aug: 80000, sep: 80000, oct: 80000, nov: 80000, dec: 80000 },
+                        children: []
+                    }
+                ]
+            },
+            {
+                id: 'measure-forecasted-qty-readonly',
+                name: 'Forecasted Quantity',
+                categories: ['Planned', 'Actuals'],
+                type: 'measure',
+                level: 0,
+                expanded: true,
+                accessStatus: 'read',
+                values: { jan: 1200, feb: 1200, mar: 1200, apr: 1200, may: 1200, jun: 1200, jul: 1200, aug: 1200, sep: 1200, oct: 1200, nov: 1200, dec: 1200 },
+                children: [
+                    {
+                        id: 'account-fq-readonly',
+                        name: 'MagnaDrive - Michigan Plant',
+                        type: 'account',
+                        level: 1,
+                        expanded: false,
+                        values: { jan: 1200, feb: 1200, mar: 1200, apr: 1200, may: 1200, jun: 1200, jul: 1200, aug: 1200, sep: 1200, oct: 1200, nov: 1200, dec: 1200 },
+                        children: []
+                    }
+                ]
+            },
+            {
+                id: 'measure-forecasted-qty-editable',
+                name: 'Forecasted Quantity',
+                categories: ['Planned', 'Actuals'],
+                type: 'measure',
+                level: 0,
+                expanded: true,
+                accessStatus: 'write',
+                values: { jan: 1200, feb: 1200, mar: 1200, apr: 1200, may: 1200, jun: 1200, jul: 1200, aug: 1200, sep: 1200, oct: 1200, nov: 1200, dec: 1200 },
+                children: [
+                    {
+                        id: 'account-fq-editable',
+                        name: 'MagnaDrive - Michigan Plant',
+                        type: 'account',
+                        level: 1,
+                        expanded: false,
+                        values: { jan: 1200, feb: 1200, mar: 1200, apr: 1200, may: 1200, jun: 1200, jul: 1200, aug: 1200, sep: 1200, oct: 1200, nov: 1200, dec: 1200 },
+                        children: []
+                    }
+                ]
+            }
+        ];
+
+        const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+        const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+        function formatValue(value, type) {
+            if (value >= 1000) {
+                return '$' + value.toLocaleString();
+            }
+            return value.toLocaleString();
+        }
+
+        function getRowClass(row) {
+            if (row.type === 'measure') return 'row-measure';
+            if (row.type === 'account') return 'row-account';
+            if (row.type === 'category') return 'row-category';
+            if (row.type === 'product') return 'row-product';
+            return '';
+        }
+
+        function getIcon(row) {
+            if (row.type === 'account') return '🏢';
+            if (row.type === 'category') return '⚙️';
+            if (row.type === 'product') return '📊';
+            return '';
+        }
+
+        function renderRow(row, parentExpanded = true, indentLevel = 0, parentAccessStatus = null) {
+            const isVisible = parentExpanded;
+            const hasChildren = row.children && row.children.length > 0;
+            const expandIcon = hasChildren ? (row.expanded ? '⌄' : '>') : '';
+            
+            const indentPixels = row.level * 16;
+            
+            const isReadOnly = parentAccessStatus === 'read' && row.type !== 'measure';
+            const readonlyClass = isReadOnly ? 'row-readonly' : '';
+            
+            const currentAccessStatus = row.accessStatus || parentAccessStatus;
+            
+            // Build measure name with categories in brackets
+            let displayName = row.name;
+            if (row.type === 'measure' && row.categories && row.categories.length > 0) {
+                displayName = `${row.name} <span class="category-brackets">[${row.categories.join(', ')}]</span>`;
+            }
+            
+            let accessBadge = '';
+            if (row.type === 'measure' && row.accessStatus) {
+                if (row.accessStatus === 'read') {
+                    accessBadge = ' <span class="readonly-badge" style="color: #d32f2f; font-size: 13px; font-weight: 700; background-color: #ffebee; padding: 2px 6px; border-radius: 3px; margin-left: 8px; cursor: help; position: relative; display: inline-block;" onmouseenter="showBadgeTooltip(event)" onmouseleave="hideBadgeTooltip(event)">READ ONLY<div class="readonly-badge-tooltip" style="display: none;">This measure is view only and not editable since it belongs to a measure group which has only read access for your role</div></span>';
+                } else {
+                    accessBadge = ' <span style="color: #1976d2; font-size: 13px; font-weight: 700; background-color: #e3f2fd; padding: 2px 6px; border-radius: 3px; margin-left: 8px;">EDITABLE</span>';
+                }
+            }
+
+            let html = `
+                <tr data-id="${row.id}" data-level="${row.level}" class="${getRowClass(row)} ${readonlyClass} ${!isVisible ? 'row-hidden' : ''}">
+                    <td style="padding-left: ${indentPixels}px;">
+                        ${expandIcon ? `<span class="expand-icon" onclick="toggleRow('${row.id}')">${expandIcon}</span>` : '<span class="expand-icon"></span>'}
+                        ${getIcon(row)}
+                        ${displayName}${accessBadge}
+                    </td>
+            `;
+
+            months.forEach(month => {
+                const value = row.values ? row.values[month] : null;
+                const displayValue = value !== null ? formatValue(value, row.type) : '';
+                const isEditable = row.type !== 'measure' && 
+                                  (!row.accessStatus || row.accessStatus === 'write');
+                const isReadOnlyCell = !isEditable && parentAccessStatus === 'read' && row.type !== 'measure';
+                const cellClass = isEditable ? 'cell-editable' : (isReadOnlyCell ? 'cell-readonly' : '');
+                
+                const tooltipHtml = isReadOnlyCell ? '<div class="cell-readonly-tooltip">Cells in this measure group are view-only and not editable since this measure group is read-only for your role</div>' : '';
+                const titleAttr = isReadOnlyCell ? ' title="Cells in this measure group are view-only and not editable since this measure group is read-only for your role"' : '';
+                const mouseEvents = isReadOnlyCell ? ' onmouseenter="showTooltip(event)" onmouseleave="hideTooltip(event)"' : '';
+                
+                html += `
+                    <td class="cell-value ${cellClass}" style="position: relative;"${titleAttr}${mouseEvents}>
+                        ${displayValue}
+                        ${tooltipHtml}
+                    </td>
+                `;
+            });
+
+            html += '</tr>';
+
+            if (hasChildren && row.expanded && isVisible) {
+                row.children.forEach(child => {
+                    html += renderRow(child, row.expanded, indentLevel + 1, currentAccessStatus);
+                });
+            }
+
+            return html;
+        }
+
+        function renderGrid() {
+            const tbody = document.getElementById('grid-body');
+            let html = '';
+            gridData.forEach(measure => {
+                html += renderRow(measure, true);
+            });
+            tbody.innerHTML = html;
+        }
+
+        function toggleRow(id) {
+            function findRow(data, targetId) {
+                for (const row of data) {
+                    if (row.id === targetId) {
+                        return row;
+                    }
+                    if (row.children) {
+                        const found = findRow(row.children, targetId);
+                        if (found) return found;
+                    }
+                }
+                return null;
+            }
+
+            const row = findRow(gridData, id);
+            if (row) {
+                row.expanded = !row.expanded;
+                renderGrid();
+            }
+        }
+
+        function showTooltip(event) {
+            const cell = event.currentTarget;
+            const tooltip = cell.querySelector('.cell-readonly-tooltip');
+            if (tooltip) {
+                const rect = cell.getBoundingClientRect();
+                tooltip.style.display = 'block';
+                const tooltipWidth = tooltip.offsetWidth || 250;
+                tooltip.style.left = (rect.left + rect.width / 2 - tooltipWidth / 2) + 'px';
+                tooltip.style.top = (rect.top - tooltip.offsetHeight - 12) + 'px';
+            }
+        }
+
+        function hideTooltip(event) {
+            const cell = event.currentTarget;
+            const tooltip = cell.querySelector('.cell-readonly-tooltip');
+            if (tooltip) {
+                tooltip.style.display = 'none';
+            }
+        }
+
+        function showBadgeTooltip(event) {
+            event.stopPropagation();
+            const badge = event.currentTarget;
+            const tooltip = badge.querySelector('.readonly-badge-tooltip');
+            if (tooltip) {
+                const rect = badge.getBoundingClientRect();
+                tooltip.style.display = 'block';
+                tooltip.style.visibility = 'visible';
+                tooltip.style.opacity = '1';
+                tooltip.style.position = 'fixed';
+                tooltip.style.zIndex = '999999';
+                tooltip.style.fontSize = '11px';
+                tooltip.style.fontWeight = 'normal';
+                tooltip.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+                tooltip.style.left = (rect.right + 12) + 'px';
+                tooltip.style.top = (rect.top + rect.height / 2 - 15) + 'px';
+                tooltip.style.transform = 'translateY(-50%)';
+            }
+        }
+
+        function hideBadgeTooltip(event) {
+            const badge = event.currentTarget;
+            const tooltip = badge.querySelector('.readonly-badge-tooltip');
+            if (tooltip) {
+                tooltip.style.display = 'none';
+                tooltip.style.visibility = 'hidden';
+                tooltip.style.opacity = '0';
+            }
+        }
+
+        renderGrid();
+    </script>
+</body>
+</html>

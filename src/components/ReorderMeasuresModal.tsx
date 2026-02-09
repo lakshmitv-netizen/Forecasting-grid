@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { MeasureData } from '../types';
+import { getMockData } from '../data/mockData';
+import { adjustmentMeasuresData } from '../data/adjustmentMeasuresData';
+import { useIndustry } from '../contexts/IndustryContext';
 import '../styles/components/ReorderMeasuresModal.css';
 
 interface MeasureOrderItem {
@@ -8,6 +11,9 @@ interface MeasureOrderItem {
   name: string;
   order: number;
   visible: boolean;
+  groupNames: string[];
+  accessStatus: 'read' | 'write';
+  readOnlyReason?: string;
 }
 
 interface ReorderMeasuresModalProps {
@@ -15,6 +21,7 @@ interface ReorderMeasuresModalProps {
   onClose: () => void;
   measures: MeasureData[];
   measureSubgroup: string;
+  selectedMeasureSubgroups?: Set<string>; // Currently selected measure subgroups
   visibleMeasureIds?: Set<string> | null; // Set of visible measure IDs from saved state (null means use default: all visible)
   onSave: (orderedMeasures: MeasureData[], visibleMeasureIds: Set<string>) => void;
 }
@@ -24,17 +31,73 @@ const ReorderMeasuresModal: React.FC<ReorderMeasuresModalProps> = ({
   onClose,
   measures,
   measureSubgroup,
+  selectedMeasureSubgroups = new Set(),
   visibleMeasureIds = null,
   onSave
 }) => {
+  const { industry } = useIndustry();
   const [measureItems, setMeasureItems] = useState<MeasureOrderItem[]>([]);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [movingRowId, setMovingRowId] = useState<string | null>(null);
+  const [hoveredMeasureId, setHoveredMeasureId] = useState<string | null>(null);
   const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map());
   const originalOrderRef = useRef<Map<string, number>>(new Map());
 
   // Store original state for reset
   const originalItemsRef = useRef<MeasureOrderItem[]>([]);
+
+  // Determine which groups a measure belongs to and its access status
+  // Access control conflict resolution: Most restrictive wins (read-only wins over writable)
+  const getMeasureGroupInfo = (measureId: string): { groupNames: string[]; accessStatus: 'read' | 'write'; readOnlyReason?: string } => {
+    const currentIndustry = industry || 'manufacturing';
+    const revenueQuantityData = getMockData(currentIndustry);
+    
+    const groupNames: string[] = [];
+    let isInRevenueQuantityGroup = false;
+    let isInAdjustmentGroup = false;
+    
+    // Check if measure is in Revenue & Quantity Group
+    if (revenueQuantityData.some(m => m.id === measureId)) {
+      groupNames.push('Revenue & Quantity Category');
+      isInRevenueQuantityGroup = true;
+    }
+    
+    // Check if measure is in Adjustment Measures Group
+    if (adjustmentMeasuresData.some(m => m.id === measureId)) {
+      groupNames.push('Adjustment Measures Category');
+      isInAdjustmentGroup = true;
+    }
+    
+    // Determine access status based on selected groups and conflict resolution
+    // Rule: If measure is in both groups AND Adjustment Measures Group is selected, it's read-only
+    // (Most restrictive wins: read-only access takes precedence)
+    const isAdjustmentGroupSelected = selectedMeasureSubgroups.has('Adjustment Measures Category');
+    
+    // Conflict resolution: If measure is in both groups and Adjustment Measures Group is selected, it's read-only
+    if (isInAdjustmentGroup && isInRevenueQuantityGroup && isAdjustmentGroupSelected) {
+      return {
+        groupNames,
+        accessStatus: 'read',
+        readOnlyReason: `This measure belongs to both categories. Since "Adjustment Measures Category" (read-only) is selected, the measure is read-only.`
+      };
+    }
+    
+    // If only in Adjustment Measures Group and it's selected, it's read-only
+    if (isInAdjustmentGroup && isAdjustmentGroupSelected) {
+      return {
+        groupNames,
+        accessStatus: 'read',
+        readOnlyReason: `This measure belongs to "Adjustment Measures Category" which is marked as read-only.`
+      };
+    }
+    
+    // Otherwise, it's writable (either only in Revenue & Quantity Group, or Adjustment Group not selected)
+    return {
+      groupNames,
+      accessStatus: 'write',
+      readOnlyReason: undefined
+    };
+  };
 
   useEffect(() => {
     if (isOpen && measures.length > 0) {
@@ -48,11 +111,18 @@ const ReorderMeasuresModal: React.FC<ReorderMeasuresModalProps> = ({
           ? true 
           : visibleMeasureIds.has(measure.id);
         originalOrderRef.current.set(measure.id, order);
+        
+        // Get group information and access status
+        const groupInfo = getMeasureGroupInfo(measure.id);
+        
         return {
           id: measure.id,
           name: measure.name,
           order: order,
-          visible: isVisible
+          visible: isVisible,
+          groupNames: groupInfo.groupNames,
+          accessStatus: groupInfo.accessStatus,
+          readOnlyReason: groupInfo.readOnlyReason
         };
       });
       setMeasureItems(items);
@@ -63,7 +133,7 @@ const ReorderMeasuresModal: React.FC<ReorderMeasuresModalProps> = ({
       // Clear original state when modal closes
       originalItemsRef.current = [];
     }
-  }, [isOpen, measures, visibleMeasureIds]);
+  }, [isOpen, measures, visibleMeasureIds, industry]);
 
   const handleToggleVisibility = (id: string) => {
     setMeasureItems(items =>
@@ -273,12 +343,18 @@ const ReorderMeasuresModal: React.FC<ReorderMeasuresModalProps> = ({
 
   const handleResetOrder = () => {
     // Reset to default state: all visible and sequential order (1, 2, 3...)
-    const defaultItems: MeasureOrderItem[] = measures.map((measure, index) => ({
-      id: measure.id,
-      name: measure.name,
-      order: index + 1,
-      visible: true
-    }));
+    const defaultItems: MeasureOrderItem[] = measures.map((measure, index) => {
+      const groupInfo = getMeasureGroupInfo(measure.id);
+      return {
+        id: measure.id,
+        name: measure.name,
+        order: index + 1,
+        visible: true,
+        groupNames: groupInfo.groupNames,
+        accessStatus: groupInfo.accessStatus,
+        readOnlyReason: groupInfo.readOnlyReason
+      };
+    });
     setMeasureItems(defaultItems);
     setSearchTerm(''); // Clear search when resetting
   };
@@ -339,8 +415,7 @@ const ReorderMeasuresModal: React.FC<ReorderMeasuresModalProps> = ({
         <div className="reorder-measures-modal-body">
           <div className="reorder-measures-subtitle-row">
             <div className="reorder-measures-subtitle-section">
-              <p className="reorder-measures-modal-subtitle">{measureSubgroup}</p>
-              <p className="reorder-measures-instruction-text">Enter the order and move out of the field to see the new order</p>
+              <p className="reorder-measures-modal-subtitle">Select the measures to be shown and their display order</p>
             </div>
             <div className="reorder-measures-button-group">
             <button 
@@ -396,6 +471,8 @@ const ReorderMeasuresModal: React.FC<ReorderMeasuresModalProps> = ({
                     </div>
                   </th>
                   <th className="reorder-measures-th-name">Measure Name</th>
+                  <th className="reorder-measures-th-groups">Group Names</th>
+                  <th className="reorder-measures-th-access">Access</th>
                   <th className="reorder-measures-th-visibility">
                     <label className="reorder-measures-checkbox-wrapper" style={{ justifyContent: 'center', cursor: 'pointer' }}>
                       <input
@@ -417,7 +494,7 @@ const ReorderMeasuresModal: React.FC<ReorderMeasuresModalProps> = ({
               <tbody>
                 {filteredItems.length === 0 ? (
                   <tr>
-                    <td colSpan={3} className="reorder-measures-no-results">
+                    <td colSpan={5} className="reorder-measures-no-results">
                       No measures found matching "{searchTerm}"
                     </td>
                   </tr>
@@ -456,6 +533,35 @@ const ReorderMeasuresModal: React.FC<ReorderMeasuresModalProps> = ({
                       )}
                     </td>
                     <td className="reorder-measures-td-name">{item.name}</td>
+                    <td className="reorder-measures-td-groups">
+                      {item.groupNames.length > 0 ? (
+                        <div className="reorder-measures-groups-list">
+                          {item.groupNames.map((groupName, idx) => (
+                            <span key={idx} className="reorder-measures-group-tag">
+                              {groupName}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="reorder-measures-no-groups">—</span>
+                      )}
+                    </td>
+                    <td className="reorder-measures-td-access">
+                      {item.accessStatus === 'read' ? (
+                        <div 
+                          className="reorder-measures-access-badge-wrapper"
+                          onMouseEnter={() => setHoveredMeasureId(item.id)}
+                          onMouseLeave={() => setHoveredMeasureId(null)}
+                        >
+                          <span className="reorder-measures-read-badge">Read Only</span>
+                          {hoveredMeasureId === item.id && item.readOnlyReason && (
+                            <div className="reorder-measures-tooltip">
+                              {item.readOnlyReason}
+                            </div>
+                          )}
+                        </div>
+                      ) : null}
+                    </td>
                     <td className="reorder-measures-td-visibility">
                       <label className="reorder-measures-checkbox-wrapper">
                         <input

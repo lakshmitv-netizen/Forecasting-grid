@@ -1162,6 +1162,96 @@
       border-bottom: none;
     }
 
+    .preview-table tbody tr.selectable {
+      cursor: pointer;
+    }
+
+    .preview-table tbody tr.selected {
+      background-color: #e8f4f8;
+    }
+
+    .preview-table tbody tr.selectable:hover {
+      background-color: #f3f2f2;
+    }
+
+    .preview-table tbody tr.selected:hover {
+      background-color: #d8eef5;
+    }
+
+    .preview-table .checkbox-cell {
+      width: 40px;
+      padding: 10px 8px;
+      text-align: center;
+    }
+
+    .preview-table .checkbox-cell input[type="checkbox"] {
+      cursor: pointer;
+      width: 16px;
+      height: 16px;
+    }
+
+    /* Hierarchical tree styles */
+    .preview-table tbody tr.child-row {
+      display: none;
+    }
+
+    .preview-table tbody tr.parent-row.expanded + tr.child-row,
+    .preview-table tbody tr.parent-row.expanded ~ tr.child-row {
+      display: table-row;
+    }
+
+    .preview-table tbody tr.parent-row.expanded ~ tr.child-row.child-level-1 {
+      display: table-row;
+    }
+
+    .preview-table tbody tr.parent-row {
+      font-weight: 600;
+    }
+
+    .preview-table .expand-icon {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      margin-right: 8px;
+      cursor: pointer;
+      vertical-align: middle;
+      user-select: none;
+      flex-shrink: 0;
+    }
+
+    .preview-table .expand-icon::before {
+      content: '▶';
+      font-size: 10px;
+      color: #706e6b;
+      transition: transform 0.2s;
+      display: inline-block;
+    }
+
+    .preview-table tbody tr.parent-row.expanded .expand-icon::before {
+      transform: rotate(90deg);
+    }
+
+    .preview-table .hierarchy-indent {
+      display: inline-block;
+      flex-shrink: 0;
+    }
+
+    .preview-table tbody tr.child-level-1 .hierarchy-indent {
+      width: 24px;
+    }
+
+    .preview-table tbody tr.child-level-2 .hierarchy-indent {
+      width: 48px;
+    }
+
+    .preview-table tbody tr.child-level-3 .hierarchy-indent {
+      width: 72px;
+    }
+
+    .preview-table tbody tr.child-level-4 .hierarchy-indent {
+      width: 96px;
+    }
+
     .modal-footer {
       padding: 16px 24px;
       border-top: 1px solid #e5e5e5;
@@ -1542,30 +1632,10 @@
       </div>
 
       <div class="modal-body">
-        <div class="form-group">
-          <label class="form-label" id="modalListLabel">Enterprise List:</label>
-          <div class="listview-input-wrapper">
-            <input 
-              type="text" 
-              class="listview-input" 
-              placeholder="Select Listview"
-              id="listviewInput"
-              readonly
-              onclick="toggleListviewDropdown()"
-            >
-            <svg class="search-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-            </svg>
-            <div class="listview-dropdown" id="listviewDropdown">
-              <!-- Options will be populated dynamically -->
-            </div>
-          </div>
-        </div>
-
         <div class="preview-section">
-          <label class="preview-label" id="previewLabel">Preview</label>
+          <label class="preview-label" id="previewLabel">Preview Category</label>
           <div class="preview-box empty" id="previewBox">
-            <span>Select a listview to preview</span>
+            <span>Loading...</span>
           </div>
         </div>
       </div>
@@ -1574,7 +1644,7 @@
         <button class="slds-button slds-button_neutral" onclick="closeModal()">
           Cancel
         </button>
-        <button class="slds-button slds-button_brand" onclick="saveSelection()">
+        <button class="slds-button slds-button_brand" id="saveSelectionBtn" onclick="saveSelection(); return false;" type="button">
           Save
         </button>
       </div>
@@ -1582,11 +1652,92 @@
   </div>
 
   <script>
+    // Track selected rows in modal
+    let selectedRows = new Set();
+    // Track current modal context
+    let currentModalLevel = null;
+    let currentModalHierarchy = null;
+    // Store selected data for grid preview
+    let selectedPreviewData = [];
+    
+    // Hierarchical lists for accounts and products
+    const accountHierarchyList = [
+      // Enterprise level (no parent)
+      { id: 'ent-1', name: 'Acme Corporation', parentAccount: '', level: 'Enterprise', status: 'Active', region: 'North America', industry: 'Technology' },
+      { id: 'ent-2', name: 'Global Industries Inc.', parentAccount: '', level: 'Enterprise', status: 'Active', region: 'Europe', industry: 'Manufacturing' },
+      { id: 'ent-3', name: 'Tech Solutions Ltd.', parentAccount: '', level: 'Enterprise', status: 'Active', region: 'Asia Pacific', industry: 'Technology' },
+      
+      // Division level (children of Enterprise)
+      { id: 'div-1', name: 'North Division', parentAccount: 'Acme Corporation', level: 'Division', status: 'Active', region: 'North America', industry: 'Technology' },
+      { id: 'div-2', name: 'South Division', parentAccount: 'Acme Corporation', level: 'Division', status: 'Active', region: 'North America', industry: 'Technology' },
+      { id: 'div-3', name: 'East Division', parentAccount: 'Global Industries Inc.', level: 'Division', status: 'Active', region: 'Europe', industry: 'Manufacturing' },
+      { id: 'div-4', name: 'West Division', parentAccount: 'Tech Solutions Ltd.', level: 'Division', status: 'Active', region: 'Asia Pacific', industry: 'Technology' },
+      
+      // Business Unit level (children of Division)
+      { id: 'bu-1', name: 'Enterprise Solutions BU', parentAccount: 'North Division', level: 'Business Unit', status: 'Active', region: 'North America', industry: 'Technology' },
+      { id: 'bu-2', name: 'Cloud Services BU', parentAccount: 'North Division', level: 'Business Unit', status: 'Active', region: 'North America', industry: 'Technology' },
+      { id: 'bu-3', name: 'Manufacturing BU', parentAccount: 'East Division', level: 'Business Unit', status: 'Active', region: 'Europe', industry: 'Manufacturing' },
+      { id: 'bu-4', name: 'Sales Operations BU', parentAccount: 'South Division', level: 'Business Unit', status: 'Active', region: 'North America', industry: 'Technology' },
+      
+      // Account Group level (children of Business Unit)
+      { id: 'ag-1', name: 'Enterprise Systems Group', parentAccount: 'Enterprise Solutions BU', level: 'Account Group', status: 'Active', region: 'North America', industry: 'Technology' },
+      { id: 'ag-2', name: 'Cloud Solutions Group', parentAccount: 'Cloud Services BU', level: 'Account Group', status: 'Active', region: 'North America', industry: 'Technology' },
+      { id: 'ag-3', name: 'Heavy Manufacturing Group', parentAccount: 'Manufacturing BU', level: 'Account Group', status: 'Active', region: 'Europe', industry: 'Manufacturing' },
+      { id: 'ag-4', name: 'Sales Excellence Group', parentAccount: 'Sales Operations BU', level: 'Account Group', status: 'Active', region: 'North America', industry: 'Technology' },
+      
+      // Account level (children of Account Group)
+      { id: 'acc-1', name: 'Acme Corporation - Main', parentAccount: 'Enterprise Systems Group', level: 'Account', status: 'Active', region: 'North America', industry: 'Technology' },
+      { id: 'acc-2', name: 'Acme Corporation - Enterprise', parentAccount: 'Enterprise Systems Group', level: 'Account', status: 'Active', region: 'North America', industry: 'Technology' },
+      { id: 'acc-3', name: 'Cloud Services Account', parentAccount: 'Cloud Solutions Group', level: 'Account', status: 'Active', region: 'North America', industry: 'Technology' },
+      { id: 'acc-4', name: 'Manufacturing Co. - Main', parentAccount: 'Heavy Manufacturing Group', level: 'Account', status: 'Active', region: 'Europe', industry: 'Manufacturing' },
+      { id: 'acc-5', name: 'Tech Solutions - Primary', parentAccount: 'Sales Excellence Group', level: 'Account', status: 'Active', region: 'North America', industry: 'Technology' }
+    ];
+    
+    const productHierarchyList = [
+      // Category level (no parent)
+      { id: 'cat-1', name: 'Transmission Assembly', parentCategory: '', level: 'Category', sku: 'CAT-001', price: '$0', stock: 'N/A', description: 'Transmission assembly components' },
+      { id: 'cat-2', name: 'Chassis Components', parentCategory: '', level: 'Category', sku: 'CAT-002', price: '$0', stock: 'N/A', description: 'Chassis and frame components' },
+      { id: 'cat-3', name: 'Engine Components', parentCategory: '', level: 'Category', sku: 'CAT-003', price: '$0', stock: 'N/A', description: 'Engine parts and components' },
+      { id: 'cat-4', name: 'Electrical Systems', parentCategory: '', level: 'Category', sku: 'CAT-004', price: '$0', stock: 'N/A', description: 'Electrical and wiring systems' },
+      
+      // Subcategory level (children of Category)
+      { id: 'subcat-1', name: 'Manual Transmission', parentCategory: 'Transmission Assembly', level: 'Subcategory', sku: 'SUBCAT-001', price: '$0', stock: 'N/A', description: 'Manual transmission subcategory' },
+      { id: 'subcat-2', name: 'Automatic Transmission', parentCategory: 'Transmission Assembly', level: 'Subcategory', sku: 'SUBCAT-002', price: '$0', stock: 'N/A', description: 'Automatic transmission subcategory' },
+      { id: 'subcat-3', name: 'Frame Assembly', parentCategory: 'Chassis Components', level: 'Subcategory', sku: 'SUBCAT-003', price: '$0', stock: 'N/A', description: 'Chassis frame assembly subcategory' },
+      { id: 'subcat-4', name: 'Structural Components', parentCategory: 'Chassis Components', level: 'Subcategory', sku: 'SUBCAT-004', price: '$0', stock: 'N/A', description: 'Structural components subcategory' },
+      { id: 'subcat-5', name: 'Engine Block', parentCategory: 'Engine Components', level: 'Subcategory', sku: 'SUBCAT-005', price: '$0', stock: 'N/A', description: 'Engine block subcategory' },
+      { id: 'subcat-6', name: 'Cylinder Head', parentCategory: 'Engine Components', level: 'Subcategory', sku: 'SUBCAT-006', price: '$0', stock: 'N/A', description: 'Cylinder head components' },
+      
+      // Product Line level (children of Subcategory)
+      { id: 'pl-1', name: 'TRN 750 Series', parentCategory: 'Manual Transmission', level: 'Product Line', sku: 'PL-001', price: '$2,500-$4,500', stock: '1,250', description: 'Transmission assembly product line' },
+      { id: 'pl-2', name: 'TRN 850 Series', parentCategory: 'Automatic Transmission', level: 'Product Line', sku: 'PL-002', price: '$3,500-$5,500', stock: '850', description: 'Heavy-duty transmission line' },
+      { id: 'pl-3', name: 'Frame Assembly Line', parentCategory: 'Frame Assembly', level: 'Product Line', sku: 'PL-003', price: '$1,200-$2,800', stock: '2,500', description: 'Chassis frame assembly product line' },
+      { id: 'pl-4', name: 'Structural Beam Series', parentCategory: 'Structural Components', level: 'Product Line', sku: 'PL-004', price: '$800-$1,800', stock: '320', description: 'Structural beam components' },
+      { id: 'pl-5', name: 'Engine Block Series', parentCategory: 'Engine Block', level: 'Product Line', sku: 'PL-005', price: '$2,000-$4,500', stock: '320', description: 'Engine block assemblies' },
+      { id: 'pl-6', name: 'Cylinder Head Line', parentCategory: 'Cylinder Head', level: 'Product Line', sku: 'PL-006', price: '$600-$1,200', stock: '580', description: 'Cylinder head components' },
+      
+      // Product Family level (children of Product Line)
+      { id: 'pf-1', name: 'TRN 750 Premium Family', parentCategory: 'TRN 750 Series', level: 'Product Family', sku: 'PF-001', price: '$3,500-$4,500', stock: '800', description: 'Premium transmission assembly family' },
+      { id: 'pf-2', name: 'TRN 850 Professional Family', parentCategory: 'TRN 850 Series', level: 'Product Family', sku: 'PF-002', price: '$4,500-$5,500', stock: '600', description: 'Professional transmission series' },
+      { id: 'pf-3', name: 'Heavy-Duty Frame Family', parentCategory: 'Frame Assembly Line', level: 'Product Family', sku: 'PF-003', price: '$2,000-$2,800', stock: '1,200', description: 'Heavy-duty chassis frame family' },
+      { id: 'pf-4', name: 'Standard Beam Family', parentCategory: 'Structural Beam Series', level: 'Product Family', sku: 'PF-004', price: '$800-$1,200', stock: '200', description: 'Standard structural beam family' },
+      
+      // SKU level (children of Product Family)
+      { id: 'sku-1', name: 'TRN 750-A', parentCategory: 'TRN 750 Premium Family', level: 'SKU', sku: 'SKU-001', price: '$3,500', stock: '400', description: 'TRN 750 Series - Model A' },
+      { id: 'sku-2', name: 'TRN 750-B', parentCategory: 'TRN 750 Premium Family', level: 'SKU', sku: 'SKU-002', price: '$4,000', stock: '300', description: 'TRN 750 Series - Model B' },
+      { id: 'sku-3', name: 'TRN 850-X', parentCategory: 'TRN 850 Professional Family', level: 'SKU', sku: 'SKU-003', price: '$4,500', stock: '300', description: 'TRN 850 Series - Model X' },
+      { id: 'sku-4', name: 'TRN 850-Y', parentCategory: 'TRN 850 Professional Family', level: 'SKU', sku: 'SKU-004', price: '$5,500', stock: '200', description: 'TRN 850 Series - Model Y' },
+      { id: 'sku-5', name: 'Frame HD-100', parentCategory: 'Heavy-Duty Frame Family', level: 'SKU', sku: 'SKU-005', price: '$2,000', stock: '600', description: 'Heavy-duty frame model 100' },
+      { id: 'sku-6', name: 'Beam STD-50', parentCategory: 'Standard Beam Family', level: 'SKU', sku: 'SKU-006', price: '$800', stock: '100', description: 'Standard beam model 50' }
+    ];
+    
     // Step management
     let currentStep = 1;
     let selectedHierarchies = [];
       // Store selected listviews for each hierarchy level: { hierarchy: { level: listviewName } }
       let selectedListviews = {};
+      // Store selected items as objects for each hierarchy level: { hierarchy: { level: [items] } }
+      let selectedItemsPerHierarchy = {};
       // Store enabled (checked) levels for each hierarchy: { hierarchy: { level: true/false } }
       let enabledLevelsPerHierarchy = {};
 
@@ -1948,7 +2099,7 @@
       product: {
         name: 'Product',
         levels: ['Category', 'Subcategory', 'Product Line', 'Product Family', 'SKU'],
-        listviews: ['All Categories', 'Electronics', 'Clothing', 'Home & Garden', 'Sports & Outdoors', 'Automotive', 'Health & Beauty', 'Food & Beverage']
+        listviews: ['All Categories', 'Transmission Assembly', 'Chassis Components', 'Engine Components', 'Electrical Systems', 'Hydraulic Systems', 'Brake Systems', 'Suspension Systems']
       },
       users: {
         name: 'Users',
@@ -2075,80 +2226,94 @@
       updateGridPreview();
     }
 
+    function getHierarchicalList(hierarchy, level) {
+      let list = [];
+      let levelName = '';
+      
+      if (hierarchy === 'account') {
+        list = accountHierarchyList;
+        const levelMap = {
+          1: 'Enterprise',
+          2: 'Division',
+          3: 'Business Unit',
+          4: 'Account Group',
+          5: 'Account'
+        };
+        levelName = levelMap[level] || '';
+      } else if (hierarchy === 'product') {
+        list = productHierarchyList;
+        const levelMap = {
+          1: 'Category',
+          2: 'Subcategory',
+          3: 'Product Line',
+          4: 'Product Family',
+          5: 'SKU'
+        };
+        levelName = levelMap[level] || '';
+      }
+      
+      // Filter to show only items at the selected level
+      return list.filter(item => item.level === levelName);
+    }
+    
     function openSelectRecordsModal(level) {
       const modal = document.getElementById('selectRecordsModal');
       const modalTitle = document.getElementById('modalTitle');
       const modalSubtitle = document.getElementById('modalSubtitle');
-      const modalListLabel = document.getElementById('modalListLabel');
-      const listviewInput = document.getElementById('listviewInput');
-      const dropdown = document.getElementById('listviewDropdown');
       const previewBox = document.getElementById('previewBox');
       const previewLabel = document.getElementById('previewLabel');
+      
+      // Store current modal context
+      currentModalLevel = level;
+      currentModalHierarchy = currentHierarchy;
+      
+      // Clear selected rows when opening modal
+      selectedRows.clear();
       
       const levels = hierarchyLevels[currentHierarchy].levels;
       const levelName = levels[level - 1];
       
       // Update modal content based on level
       modalTitle.textContent = levelName;
-      modalListLabel.textContent = `${levelName} List:`;
       
-      // Update placeholder text based on level name
-      listviewInput.placeholder = `Select ${levelName} Listview`;
-      
-      // Update preview label
-      previewLabel.textContent = `Preview ${levelName}`;
-      
-      // Check if there's already a selected listview for this level
-      const existingListview = selectedListviews[currentHierarchy]?.[level];
-      if (existingListview) {
-        listviewInput.value = existingListview;
-        const previewData = getPreviewData(existingListview, currentHierarchy, level);
-        displayPreview(previewData);
+      // Update preview label dynamically based on hierarchy and level
+      if (currentHierarchy === 'product') {
+        const levelLabels = {
+          1: 'Category',
+          2: 'Subcategory',
+          3: 'Product Line',
+          4: 'Product Family',
+          5: 'SKU'
+        };
+        previewLabel.textContent = `Preview ${levelLabels[level] || levelName}`;
       } else {
-        // Reset input and preview
-        listviewInput.value = '';
-        previewBox.innerHTML = `<span>Select a listview to preview ${levelName.toLowerCase()}</span>`;
-        previewBox.classList.add('empty');
+        previewLabel.textContent = `Preview ${levelName}`;
       }
       
-      // Populate dropdown with hierarchy-specific options
-      populateListviewDropdown();
+      // Load hierarchical list for this level
+      const hierarchicalData = getHierarchicalList(currentHierarchy, level);
+      displayPreview(hierarchicalData);
       
-      // Update modal subtitle with count and listview name if available
-      const counts = {
-        1: 10,
-        2: 100,
-        3: 200,
-        4: 400,
-        5: 800
-      };
+      // Clear modal subtitle
+      modalSubtitle.textContent = '';
       
-      if (existingListview) {
-        modalSubtitle.textContent = existingListview;
-      } else {
-        modalSubtitle.textContent = '';
+      // Clear preview data initially - it will be populated when items are selected
+      selectedPreviewData = [];
+      const previewContainer = document.getElementById('gridPreview');
+      if (previewContainer && currentStep === 2) {
+        previewContainer.innerHTML = '<div style="padding: 20px; text-align: center; color: #706e6b;">No items selected. Select items from the modal to see preview.</div>';
       }
       
       modal.style.display = 'flex';
     }
 
-    function populateListviewDropdown() {
-      const dropdown = document.getElementById('listviewDropdown');
-      const listviews = hierarchyLevels[currentHierarchy].listviews || [];
-      
-      dropdown.innerHTML = '';
-      
-      listviews.forEach(listview => {
-        const option = document.createElement('div');
-        option.className = 'listview-option';
-        option.textContent = listview;
-        option.onclick = () => selectListview(listview);
-        dropdown.appendChild(option);
-      });
-    }
 
     function closeModal() {
       document.getElementById('selectRecordsModal').style.display = 'none';
+      // Don't clear selected rows when closing - keep them for preview
+      // Reset modal context
+      currentModalLevel = null;
+      currentModalHierarchy = null;
     }
 
     function closeModalOnOverlay(event) {
@@ -2158,40 +2323,100 @@
     }
 
     function saveSelection() {
-      // Get the current level being edited
-      const listviewInput = document.getElementById('listviewInput');
-      const listviewName = listviewInput.value;
-      
-      if (!listviewName) {
-        alert('Please select a listview');
-        return;
-      }
-      
-      // Find which level is currently being edited (stored in modal)
-      const modalTitle = document.getElementById('modalTitle').textContent;
-      const levels = hierarchyLevels[currentHierarchy].levels;
-      const levelIndex = levels.indexOf(modalTitle);
-      
-      if (levelIndex !== -1) {
-        // Store the selected listview for this hierarchy and level
-        if (!selectedListviews[currentHierarchy]) {
-          selectedListviews[currentHierarchy] = {};
-        }
-        selectedListviews[currentHierarchy][levelIndex + 1] = listviewName;
+      try {
+        console.log('saveSelection called', { 
+          selectedRows: Array.from(selectedRows), 
+          selectedRowsSize: selectedRows.size,
+          currentModalLevel, 
+          currentModalHierarchy 
+        });
         
-        // Update the level count display with listview name
-        const previewData = getPreviewData(listviewName, currentHierarchy, levelIndex + 1);
-        const count = previewData.length;
-        const levelCountEl = document.getElementById(`level${levelIndex + 1}`).closest('.level-item').querySelector('.level-count');
-        if (levelCountEl) {
-          levelCountEl.textContent = listviewName;
+        // Get selected rows from the modal
+        if (selectedRows.size === 0) {
+          console.warn('No items selected');
+          return;
         }
+        
+        // Check if modal context is set
+        if (currentModalLevel === null || currentModalHierarchy === null) {
+          console.error('Modal context missing:', { currentModalLevel, currentModalHierarchy });
+          return;
+        }
+        
+        // Get hierarchical list for this level (this is what's displayed in the modal)
+        const allData = getHierarchicalList(currentModalHierarchy, currentModalLevel);
+        console.log('All data for level:', allData, 'Length:', allData.length);
+        
+        if (!allData || allData.length === 0) {
+          console.error('No data available for this level');
+          return;
+        }
+        
+        const selectedData = [];
+        
+        // Get selected items based on their indices in the displayed data
+        selectedRows.forEach(index => {
+          console.log('Processing index:', index, 'Data available:', !!allData[index]);
+          if (allData[index]) {
+            selectedData.push(allData[index]);
+          } else {
+            console.warn('Index out of bounds:', index, 'Total items:', allData.length);
+          }
+        });
+        
+        if (selectedData.length === 0) {
+          console.warn('No valid items selected');
+          return;
+        }
+        
+        console.log('Selected data:', selectedData);
+        
+        // Store the selected items for this hierarchy and level
+        if (!selectedListviews[currentModalHierarchy]) {
+          selectedListviews[currentModalHierarchy] = {};
+        }
+        if (!selectedItemsPerHierarchy[currentModalHierarchy]) {
+          selectedItemsPerHierarchy[currentModalHierarchy] = {};
+        }
+        // Store as comma-separated names for display
+        const selectedNames = selectedData.map(item => item.name).join(', ');
+        selectedListviews[currentModalHierarchy][currentModalLevel] = selectedNames;
+        // Store actual item objects
+        selectedItemsPerHierarchy[currentModalHierarchy][currentModalLevel] = selectedData;
+        
+        console.log('Stored selections:', { 
+          hierarchy: currentModalHierarchy, 
+          level: currentModalLevel, 
+          items: selectedData.length,
+          selectedListviews: selectedListviews,
+          selectedItemsPerHierarchy: selectedItemsPerHierarchy
+        });
+        
+        // Store selected data globally for preview
+        selectedPreviewData = selectedData;
+        
+        // Update the level count display with selected count
+        const count = selectedData.length;
+        const levelCountEl = document.getElementById(`level${currentModalLevel}`)?.closest('.level-item')?.querySelector('.level-count');
+        if (levelCountEl) {
+          levelCountEl.textContent = `${count} selected`;
+          console.log('Updated level count:', count);
+        } else {
+          console.warn('Could not find level count element for level:', currentModalLevel);
+        }
+        
+        // Update main preview with selected items
+        updateMainPreview();
+        
+        // Close modal after saving
+        closeModal();
+        
+        console.log('Save completed successfully');
+        // Success - no alert needed, just close modal
+      } catch (error) {
+        console.error('Error in saveSelection:', error);
+        // Log error but don't show alert - user can check console if needed
       }
-      
-      // Update grid preview
-      updateGridPreview();
-      
-      closeModal();
     }
 
 
@@ -2203,28 +2428,6 @@
       alert('Settings saved successfully!');
     }
 
-    function toggleListviewDropdown() {
-      const dropdown = document.getElementById('listviewDropdown');
-      dropdown.classList.toggle('show');
-    }
-
-    function selectListview(listviewName) {
-      const input = document.getElementById('listviewInput');
-      const dropdown = document.getElementById('listviewDropdown');
-      const previewBox = document.getElementById('previewBox');
-      
-      input.value = listviewName;
-      dropdown.classList.remove('show');
-      
-      // Show preview based on selected listview
-      // Get current level from modal
-      const modalTitle = document.getElementById('modalTitle').textContent;
-      const levels = hierarchyLevels[currentHierarchy].levels;
-      const levelIndex = levels.indexOf(modalTitle);
-      const level = levelIndex !== -1 ? levelIndex + 1 : 1;
-      const previewData = getPreviewData(listviewName, currentHierarchy, level);
-      displayPreview(previewData);
-    }
 
     function getPreviewData(listviewName, hierarchy, level) {
       // Use hierarchy and level if provided, otherwise fall back to currentHierarchy
@@ -2457,220 +2660,221 @@
         product: {
           1: { // Category level
             'All Categories': [
-              { name: 'Electronics', sku: 'CAT-001', price: '$0', stock: 'N/A', description: 'Electronic products' },
-              { name: 'Clothing', sku: 'CAT-002', price: '$0', stock: 'N/A', description: 'Apparel and accessories' },
-              { name: 'Home & Garden', sku: 'CAT-003', price: '$0', stock: 'N/A', description: 'Home improvement items' },
-              { name: 'Sports & Outdoors', sku: 'CAT-004', price: '$0', stock: 'N/A', description: 'Sports equipment and outdoor gear' },
-              { name: 'Automotive', sku: 'CAT-005', price: '$0', stock: 'N/A', description: 'Automotive parts and accessories' }
+              { name: 'Transmission Assembly', sku: 'CAT-001', price: '$0', stock: 'N/A', description: 'Transmission assembly components' },
+              { name: 'Chassis Components', sku: 'CAT-002', price: '$0', stock: 'N/A', description: 'Chassis and frame components' },
+              { name: 'Engine Components', sku: 'CAT-003', price: '$0', stock: 'N/A', description: 'Engine parts and components' },
+              { name: 'Electrical Systems', sku: 'CAT-004', price: '$0', stock: 'N/A', description: 'Electrical and wiring systems' },
+              { name: 'Hydraulic Systems', sku: 'CAT-005', price: '$0', stock: 'N/A', description: 'Hydraulic components and systems' }
             ],
-            'Electronics': [
-              { name: 'Electronics', sku: 'CAT-001', price: '$0', stock: 'N/A', description: 'Electronic products' },
-              { name: 'Consumer Electronics', sku: 'CAT-001A', price: '$0', stock: 'N/A', description: 'Consumer electronic devices' },
-              { name: 'Enterprise Electronics', sku: 'CAT-001B', price: '$0', stock: 'N/A', description: 'Enterprise electronic solutions' }
+            'Transmission Assembly': [
+              { name: 'Transmission Assembly', sku: 'CAT-001', price: '$0', stock: 'N/A', description: 'Transmission assembly components' },
+              { name: 'Manual Transmission', sku: 'CAT-001A', price: '$0', stock: 'N/A', description: 'Manual transmission systems' },
+              { name: 'Automatic Transmission', sku: 'CAT-001B', price: '$0', stock: 'N/A', description: 'Automatic transmission systems' }
             ],
-            'Clothing': [
-              { name: 'Clothing', sku: 'CAT-002', price: '$0', stock: 'N/A', description: 'Apparel and accessories' },
-              { name: 'Men\'s Clothing', sku: 'CAT-002A', price: '$0', stock: 'N/A', description: 'Men\'s apparel' },
-              { name: 'Women\'s Clothing', sku: 'CAT-002B', price: '$0', stock: 'N/A', description: 'Women\'s apparel' }
+            'Chassis Components': [
+              { name: 'Chassis Components', sku: 'CAT-002', price: '$0', stock: 'N/A', description: 'Chassis and frame components' },
+              { name: 'Frame Assembly', sku: 'CAT-002A', price: '$0', stock: 'N/A', description: 'Chassis frame assemblies' },
+              { name: 'Structural Components', sku: 'CAT-002B', price: '$0', stock: 'N/A', description: 'Structural chassis parts' }
             ],
-            'Home & Garden': [
-              { name: 'Home & Garden', sku: 'CAT-003', price: '$0', stock: 'N/A', description: 'Home improvement items' },
-              { name: 'Furniture', sku: 'CAT-003A', price: '$0', stock: 'N/A', description: 'Home furniture' },
-              { name: 'Garden Tools', sku: 'CAT-003B', price: '$0', stock: 'N/A', description: 'Gardening equipment' }
+            'Engine Components': [
+              { name: 'Engine Components', sku: 'CAT-003', price: '$0', stock: 'N/A', description: 'Engine parts and components' },
+              { name: 'Engine Block', sku: 'CAT-003A', price: '$0', stock: 'N/A', description: 'Engine block assemblies' },
+              { name: 'Cylinder Head', sku: 'CAT-003B', price: '$0', stock: 'N/A', description: 'Cylinder head components' }
             ],
-            'Sports & Outdoors': [
-              { name: 'Sports & Outdoors', sku: 'CAT-004', price: '$0', stock: 'N/A', description: 'Sports equipment and outdoor gear' },
-              { name: 'Fitness Equipment', sku: 'CAT-004A', price: '$0', stock: 'N/A', description: 'Exercise and fitness gear' },
-              { name: 'Outdoor Gear', sku: 'CAT-004B', price: '$0', stock: 'N/A', description: 'Camping and hiking equipment' }
+            'Electrical Systems': [
+              { name: 'Electrical Systems', sku: 'CAT-004', price: '$0', stock: 'N/A', description: 'Electrical and wiring systems' },
+              { name: 'Wiring Harness', sku: 'CAT-004A', price: '$0', stock: 'N/A', description: 'Electrical wiring harnesses' },
+              { name: 'Control Modules', sku: 'CAT-004B', price: '$0', stock: 'N/A', description: 'Electronic control modules' }
             ],
-            'Automotive': [
-              { name: 'Automotive', sku: 'CAT-005', price: '$0', stock: 'N/A', description: 'Automotive parts and accessories' },
-              { name: 'Car Parts', sku: 'CAT-005A', price: '$0', stock: 'N/A', description: 'Vehicle components' },
-              { name: 'Accessories', sku: 'CAT-005B', price: '$0', stock: 'N/A', description: 'Car accessories' }
+            'Hydraulic Systems': [
+              { name: 'Hydraulic Systems', sku: 'CAT-005', price: '$0', stock: 'N/A', description: 'Hydraulic components and systems' },
+              { name: 'Hydraulic Pumps', sku: 'CAT-005A', price: '$0', stock: 'N/A', description: 'Hydraulic pump assemblies' },
+              { name: 'Hydraulic Valves', sku: 'CAT-005B', price: '$0', stock: 'N/A', description: 'Hydraulic valve components' }
             ],
-            'Health & Beauty': [
-              { name: 'Health & Beauty', sku: 'CAT-006', price: '$0', stock: 'N/A', description: 'Health and beauty products' },
-              { name: 'Skincare', sku: 'CAT-006A', price: '$0', stock: 'N/A', description: 'Skincare products' },
-              { name: 'Cosmetics', sku: 'CAT-006B', price: '$0', stock: 'N/A', description: 'Makeup and cosmetics' }
+            'Brake Systems': [
+              { name: 'Brake Systems', sku: 'CAT-006', price: '$0', stock: 'N/A', description: 'Brake system components' },
+              { name: 'Brake Pads', sku: 'CAT-006A', price: '$0', stock: 'N/A', description: 'Brake pad assemblies' },
+              { name: 'Brake Calipers', sku: 'CAT-006B', price: '$0', stock: 'N/A', description: 'Brake caliper components' }
             ],
-            'Food & Beverage': [
-              { name: 'Food & Beverage', sku: 'CAT-007', price: '$0', stock: 'N/A', description: 'Food and drink products' },
-              { name: 'Beverages', sku: 'CAT-007A', price: '$0', stock: 'N/A', description: 'Drinks and beverages' },
-              { name: 'Snacks', sku: 'CAT-007B', price: '$0', stock: 'N/A', description: 'Snack foods' }
+            'Suspension Systems': [
+              { name: 'Suspension Systems', sku: 'CAT-007', price: '$0', stock: 'N/A', description: 'Suspension system components' },
+              { name: 'Shock Absorbers', sku: 'CAT-007A', price: '$0', stock: 'N/A', description: 'Shock absorber assemblies' },
+              { name: 'Spring Components', sku: 'CAT-007B', price: '$0', stock: 'N/A', description: 'Suspension spring components' }
             ]
           },
           2: { // Subcategory level
             'All Categories': [
-              { name: 'Consumer Electronics', sku: 'SUBCAT-001', price: '$0', stock: 'N/A', description: 'Consumer electronic products' },
-              { name: 'Enterprise Electronics', sku: 'SUBCAT-002', price: '$0', stock: 'N/A', description: 'Enterprise electronic products' },
-              { name: 'Men\'s Apparel', sku: 'SUBCAT-003', price: '$0', stock: 'N/A', description: 'Men\'s clothing subcategory' },
-              { name: 'Women\'s Apparel', sku: 'SUBCAT-004', price: '$0', stock: 'N/A', description: 'Women\'s clothing subcategory' },
-              { name: 'Furniture', sku: 'SUBCAT-005', price: '$0', stock: 'N/A', description: 'Home furniture subcategory' }
+              { name: 'Manual Transmission', sku: 'SUBCAT-001', price: '$0', stock: 'N/A', description: 'Manual transmission subcategory' },
+              { name: 'Automatic Transmission', sku: 'SUBCAT-002', price: '$0', stock: 'N/A', description: 'Automatic transmission subcategory' },
+              { name: 'Frame Assembly', sku: 'SUBCAT-003', price: '$0', stock: 'N/A', description: 'Chassis frame assembly subcategory' },
+              { name: 'Structural Components', sku: 'SUBCAT-004', price: '$0', stock: 'N/A', description: 'Structural components subcategory' },
+              { name: 'Engine Block', sku: 'SUBCAT-005', price: '$0', stock: 'N/A', description: 'Engine block subcategory' }
             ],
-            'Electronics': [
-              { name: 'Consumer Electronics', sku: 'SUBCAT-001', price: '$0', stock: 'N/A', description: 'Consumer electronic products' },
-              { name: 'Enterprise Electronics', sku: 'SUBCAT-002', price: '$0', stock: 'N/A', description: 'Enterprise electronic products' },
-              { name: 'Mobile Devices', sku: 'SUBCAT-001A', price: '$0', stock: 'N/A', description: 'Smartphones and tablets' }
+            'Transmission Assembly': [
+              { name: 'Manual Transmission', sku: 'SUBCAT-001', price: '$0', stock: 'N/A', description: 'Manual transmission subcategory' },
+              { name: 'Automatic Transmission', sku: 'SUBCAT-002', price: '$0', stock: 'N/A', description: 'Automatic transmission subcategory' },
+              { name: 'CVT Transmission', sku: 'SUBCAT-001A', price: '$0', stock: 'N/A', description: 'Continuously variable transmission' }
             ],
-            'Clothing': [
-              { name: 'Men\'s Apparel', sku: 'SUBCAT-003', price: '$0', stock: 'N/A', description: 'Men\'s clothing subcategory' },
-              { name: 'Women\'s Apparel', sku: 'SUBCAT-004', price: '$0', stock: 'N/A', description: 'Women\'s clothing subcategory' },
-              { name: 'Accessories', sku: 'SUBCAT-003A', price: '$0', stock: 'N/A', description: 'Fashion accessories' }
+            'Chassis Components': [
+              { name: 'Frame Assembly', sku: 'SUBCAT-003', price: '$0', stock: 'N/A', description: 'Chassis frame assembly subcategory' },
+              { name: 'Structural Components', sku: 'SUBCAT-004', price: '$0', stock: 'N/A', description: 'Structural components subcategory' },
+              { name: 'Mounting Brackets', sku: 'SUBCAT-003A', price: '$0', stock: 'N/A', description: 'Chassis mounting brackets' }
             ],
-            'Home & Garden': [
-              { name: 'Furniture', sku: 'SUBCAT-005', price: '$0', stock: 'N/A', description: 'Home furniture subcategory' },
-              { name: 'Garden Tools', sku: 'SUBCAT-005A', price: '$0', stock: 'N/A', description: 'Gardening equipment' },
-              { name: 'Home Decor', sku: 'SUBCAT-005B', price: '$0', stock: 'N/A', description: 'Decorative items' }
+            'Engine Components': [
+              { name: 'Engine Block', sku: 'SUBCAT-005', price: '$0', stock: 'N/A', description: 'Engine block subcategory' },
+              { name: 'Cylinder Head', sku: 'SUBCAT-005A', price: '$0', stock: 'N/A', description: 'Cylinder head components' },
+              { name: 'Piston Assembly', sku: 'SUBCAT-005B', price: '$0', stock: 'N/A', description: 'Piston assembly components' }
             ],
-            'Sports & Outdoors': [
-              { name: 'Fitness Equipment', sku: 'SUBCAT-004A', price: '$0', stock: 'N/A', description: 'Exercise equipment' },
-              { name: 'Outdoor Gear', sku: 'SUBCAT-004B', price: '$0', stock: 'N/A', description: 'Camping gear' },
-              { name: 'Athletic Wear', sku: 'SUBCAT-004C', price: '$0', stock: 'N/A', description: 'Sports clothing' }
+            'Electrical Systems': [
+              { name: 'Wiring Harness', sku: 'SUBCAT-004A', price: '$0', stock: 'N/A', description: 'Electrical wiring harnesses' },
+              { name: 'Control Modules', sku: 'SUBCAT-004B', price: '$0', stock: 'N/A', description: 'Electronic control modules' },
+              { name: 'Sensors', sku: 'SUBCAT-004C', price: '$0', stock: 'N/A', description: 'Electronic sensors' }
             ],
-            'Automotive': [
-              { name: 'Car Parts', sku: 'SUBCAT-005A', price: '$0', stock: 'N/A', description: 'Vehicle components' },
-              { name: 'Accessories', sku: 'SUBCAT-005B', price: '$0', stock: 'N/A', description: 'Car accessories' },
-              { name: 'Tires & Wheels', sku: 'SUBCAT-005C', price: '$0', stock: 'N/A', description: 'Tires and wheel accessories' }
+            'Hydraulic Systems': [
+              { name: 'Hydraulic Pumps', sku: 'SUBCAT-005A', price: '$0', stock: 'N/A', description: 'Hydraulic pump assemblies' },
+              { name: 'Hydraulic Valves', sku: 'SUBCAT-005B', price: '$0', stock: 'N/A', description: 'Hydraulic valve components' },
+              { name: 'Hydraulic Lines', sku: 'SUBCAT-005C', price: '$0', stock: 'N/A', description: 'Hydraulic fluid lines' }
             ],
-            'Health & Beauty': [
-              { name: 'Skincare', sku: 'SUBCAT-006A', price: '$0', stock: 'N/A', description: 'Skincare products' },
-              { name: 'Cosmetics', sku: 'SUBCAT-006B', price: '$0', stock: 'N/A', description: 'Makeup products' },
-              { name: 'Hair Care', sku: 'SUBCAT-006C', price: '$0', stock: 'N/A', description: 'Hair care products' }
+            'Brake Systems': [
+              { name: 'Brake Pads', sku: 'SUBCAT-006A', price: '$0', stock: 'N/A', description: 'Brake pad assemblies' },
+              { name: 'Brake Calipers', sku: 'SUBCAT-006B', price: '$0', stock: 'N/A', description: 'Brake caliper components' },
+              { name: 'Brake Discs', sku: 'SUBCAT-006C', price: '$0', stock: 'N/A', description: 'Brake disc components' }
             ],
-            'Food & Beverage': [
-              { name: 'Beverages', sku: 'SUBCAT-007A', price: '$0', stock: 'N/A', description: 'Drinks and beverages' },
-              { name: 'Snacks', sku: 'SUBCAT-007B', price: '$0', stock: 'N/A', description: 'Snack foods' },
-              { name: 'Frozen Foods', sku: 'SUBCAT-007C', price: '$0', stock: 'N/A', description: 'Frozen food products' }
+            'Suspension Systems': [
+              { name: 'Shock Absorbers', sku: 'SUBCAT-007A', price: '$0', stock: 'N/A', description: 'Shock absorber assemblies' },
+              { name: 'Spring Components', sku: 'SUBCAT-007B', price: '$0', stock: 'N/A', description: 'Suspension spring components' },
+              { name: 'Strut Assemblies', sku: 'SUBCAT-007C', price: '$0', stock: 'N/A', description: 'Strut assembly components' }
             ]
           },
           3: { // Product Line level
             'All Categories': [
-              { name: 'Smartphones', sku: 'PL-001', price: '$299-$1299', stock: '1,250', description: 'Mobile phones' },
-              { name: 'Laptops', sku: 'PL-002', price: '$499-$2999', stock: '850', description: 'Portable computers' },
-              { name: 'Men\'s Shirts', sku: 'PL-003', price: '$19-$99', stock: '2,500', description: 'Men\'s shirts product line' },
-              { name: 'Dining Sets', sku: 'PL-004', price: '$199-$899', stock: '320', description: 'Dining room furniture' },
-              { name: 'Running Shoes', sku: 'PL-005', price: '$49-$199', stock: '1,800', description: 'Athletic footwear' }
+              { name: 'TRN 750 Series', sku: 'PL-001', price: '$2,500-$4,500', stock: '1,250', description: 'Transmission assembly product line' },
+              { name: 'TRN 850 Series', sku: 'PL-002', price: '$3,500-$5,500', stock: '850', description: 'Heavy-duty transmission line' },
+              { name: 'Frame Assembly Line', sku: 'PL-003', price: '$1,200-$2,800', stock: '2,500', description: 'Chassis frame assembly product line' },
+              { name: 'Structural Beam Series', sku: 'PL-004', price: '$800-$1,800', stock: '320', description: 'Structural beam components' },
+              { name: 'Wiring Harness Series', sku: 'PL-005', price: '$150-$450', stock: '1,800', description: 'Electrical wiring harnesses' }
             ],
-            'Electronics': [
-              { name: 'Smartphones', sku: 'PL-001', price: '$299-$1299', stock: '1,250', description: 'Mobile phones' },
-              { name: 'Laptops', sku: 'PL-002', price: '$499-$2999', stock: '850', description: 'Portable computers' },
-              { name: 'Tablets', sku: 'PL-001A', price: '$199-$899', stock: '650', description: 'Tablet devices' },
-              { name: 'Smart Watches', sku: 'PL-001B', price: '$99-$599', stock: '420', description: 'Wearable devices' }
+            'Transmission Assembly': [
+              { name: 'TRN 750 Series', sku: 'PL-001', price: '$2,500-$4,500', stock: '1,250', description: 'Transmission assembly product line' },
+              { name: 'TRN 850 Series', sku: 'PL-002', price: '$3,500-$5,500', stock: '850', description: 'Heavy-duty transmission line' },
+              { name: 'TRN 650 Series', sku: 'PL-001A', price: '$1,800-$3,200', stock: '650', description: 'Compact transmission line' },
+              { name: 'CVT Transmission Line', sku: 'PL-001B', price: '$2,200-$4,000', stock: '420', description: 'Continuously variable transmission' }
             ],
-            'Clothing': [
-              { name: 'Men\'s Shirts', sku: 'PL-003', price: '$19-$99', stock: '2,500', description: 'Men\'s shirts product line' },
-              { name: 'Women\'s Dresses', sku: 'PL-003A', price: '$29-$149', stock: '1,800', description: 'Women\'s dresses' },
-              { name: 'Jeans', sku: 'PL-003B', price: '$39-$129', stock: '2,200', description: 'Denim jeans' }
+            'Chassis Components': [
+              { name: 'Frame Assembly Line', sku: 'PL-003', price: '$1,200-$2,800', stock: '2,500', description: 'Chassis frame assembly product line' },
+              { name: 'Structural Beam Series', sku: 'PL-003A', price: '$800-$1,800', stock: '1,800', description: 'Structural beam components' },
+              { name: 'Mounting Bracket Line', sku: 'PL-003B', price: '$150-$350', stock: '2,200', description: 'Chassis mounting brackets' }
             ],
-            'Home & Garden': [
-              { name: 'Dining Sets', sku: 'PL-004', price: '$199-$899', stock: '320', description: 'Dining room furniture' },
-              { name: 'Garden Tools Set', sku: 'PL-004A', price: '$49-$199', stock: '580', description: 'Gardening tool sets' },
-              { name: 'Outdoor Furniture', sku: 'PL-004B', price: '$299-$1,299', stock: '240', description: 'Patio furniture' }
+            'Engine Components': [
+              { name: 'Engine Block Series', sku: 'PL-004', price: '$2,000-$4,500', stock: '320', description: 'Engine block assemblies' },
+              { name: 'Cylinder Head Line', sku: 'PL-004A', price: '$600-$1,200', stock: '580', description: 'Cylinder head components' },
+              { name: 'Piston Assembly Series', sku: 'PL-004B', price: '$400-$900', stock: '240', description: 'Piston assembly components' }
             ],
-            'Sports & Outdoors': [
-              { name: 'Running Shoes', sku: 'PL-005', price: '$49-$199', stock: '1,800', description: 'Athletic footwear' },
-              { name: 'Camping Tents', sku: 'PL-005A', price: '$79-$399', stock: '450', description: 'Camping tents' },
-              { name: 'Yoga Mats', sku: 'PL-005B', price: '$19-$89', stock: '1,200', description: 'Exercise mats' }
+            'Electrical Systems': [
+              { name: 'Wiring Harness Series', sku: 'PL-005', price: '$150-$450', stock: '1,800', description: 'Electrical wiring harnesses' },
+              { name: 'Control Module Line', sku: 'PL-005A', price: '$300-$800', stock: '450', description: 'Electronic control modules' },
+              { name: 'Sensor Array Series', sku: 'PL-005B', price: '$50-$200', stock: '1,200', description: 'Electronic sensor arrays' }
             ],
-            'Automotive': [
-              { name: 'Engine Parts', sku: 'PL-006A', price: '$49-$899', stock: '680', description: 'Engine components' },
-              { name: 'Car Audio', sku: 'PL-006B', price: '$99-$599', stock: '320', description: 'Car stereo systems' },
-              { name: 'Tire Sets', sku: 'PL-006C', price: '$299-$899', stock: '540', description: 'Tire packages' }
+            'Hydraulic Systems': [
+              { name: 'Hydraulic Pump Line', sku: 'PL-006A', price: '$800-$2,500', stock: '680', description: 'Hydraulic pump assemblies' },
+              { name: 'Hydraulic Valve Series', sku: 'PL-006B', price: '$200-$600', stock: '320', description: 'Hydraulic valve components' },
+              { name: 'Hydraulic Line Set', sku: 'PL-006C', price: '$150-$400', stock: '540', description: 'Hydraulic fluid line sets' }
             ],
-            'Health & Beauty': [
-              { name: 'Skincare Sets', sku: 'PL-007A', price: '$29-$199', stock: '850', description: 'Skincare product sets' },
-              { name: 'Makeup Kits', sku: 'PL-007B', price: '$19-$149', stock: '1,100', description: 'Cosmetic kits' },
-              { name: 'Hair Care Products', sku: 'PL-007C', price: '$9-$49', stock: '1,500', description: 'Hair care items' }
+            'Brake Systems': [
+              { name: 'Brake Pad Assembly Line', sku: 'PL-007A', price: '$80-$250', stock: '850', description: 'Brake pad assemblies' },
+              { name: 'Brake Caliper Series', sku: 'PL-007B', price: '$150-$400', stock: '1,100', description: 'Brake caliper components' },
+              { name: 'Brake Disc Line', sku: 'PL-007C', price: '$60-$180', stock: '1,500', description: 'Brake disc components' }
             ],
-            'Food & Beverage': [
-              { name: 'Soft Drinks', sku: 'PL-008A', price: '$2-$12', stock: '5,000', description: 'Carbonated beverages' },
-              { name: 'Snack Packs', sku: 'PL-008B', price: '$3-$15', stock: '3,200', description: 'Snack variety packs' },
-              { name: 'Frozen Meals', sku: 'PL-008C', price: '$4-$18', stock: '2,800', description: 'Frozen food items' }
+            'Suspension Systems': [
+              { name: 'Shock Absorber Series', sku: 'PL-008A', price: '$120-$350', stock: '5,000', description: 'Shock absorber assemblies' },
+              { name: 'Spring Component Line', sku: 'PL-008B', price: '$80-$200', stock: '3,200', description: 'Suspension spring components' },
+              { name: 'Strut Assembly Series', sku: 'PL-008C', price: '$200-$500', stock: '2,800', description: 'Strut assembly components' }
             ]
           },
           4: { // Product Family level
             'All Categories': [
-              { name: 'Premium Smartphone Family', sku: 'PF-001', price: '$299-$999', stock: '800', description: 'High-end smartphone models' },
-              { name: 'Professional Laptop Family', sku: 'PF-002', price: '$499-$1499', stock: '600', description: 'Business laptop series' },
-              { name: 'Classic Shirt Collection', sku: 'PF-003', price: '$19-$99', stock: '1,200', description: 'Classic men\'s shirts' }
+              { name: 'TRN 750 Premium Family', sku: 'PF-001', price: '$3,500-$4,500', stock: '800', description: 'Premium transmission assembly family' },
+              { name: 'TRN 850 Professional Family', sku: 'PF-002', price: '$4,500-$5,500', stock: '600', description: 'Professional transmission series' },
+              { name: 'Heavy-Duty Frame Family', sku: 'PF-003', price: '$2,000-$2,800', stock: '1,200', description: 'Heavy-duty chassis frame family' }
             ],
-            'Electronics': [
-              { name: 'Premium Smartphone Family', sku: 'PF-001', price: '$299-$999', stock: '800', description: 'High-end smartphone models' },
-              { name: 'Professional Laptop Family', sku: 'PF-002', price: '$499-$1499', stock: '600', description: 'Business laptop series' },
-              { name: 'Tablet Pro Series', sku: 'PF-001A', price: '$199-$899', stock: '450', description: 'Professional tablets' }
+            'Transmission Assembly': [
+              { name: 'TRN 750 Premium Family', sku: 'PF-001', price: '$3,500-$4,500', stock: '800', description: 'Premium transmission assembly family' },
+              { name: 'TRN 850 Professional Family', sku: 'PF-002', price: '$4,500-$5,500', stock: '600', description: 'Professional transmission series' },
+              { name: 'TRN 650 Compact Series', sku: 'PF-001A', price: '$2,500-$3,200', stock: '450', description: 'Compact transmission family' }
             ],
-            'Clothing': [
-              { name: 'Classic Shirt Collection', sku: 'PF-003', price: '$19-$99', stock: '1,200', description: 'Classic men\'s shirts' },
-              { name: 'Designer Dress Line', sku: 'PF-003A', price: '$29-$149', stock: '950', description: 'Designer dresses' },
-              { name: 'Premium Denim Collection', sku: 'PF-003B', price: '$39-$129', stock: '1,100', description: 'High-quality jeans' }
+            'Chassis Components': [
+              { name: 'Heavy-Duty Frame Family', sku: 'PF-003', price: '$2,000-$2,800', stock: '1,200', description: 'Heavy-duty chassis frame family' },
+              { name: 'Standard Frame Line', sku: 'PF-003A', price: '$1,200-$1,800', stock: '950', description: 'Standard frame assemblies' },
+              { name: 'Lightweight Frame Collection', sku: 'PF-003B', price: '$800-$1,200', stock: '1,100', description: 'Lightweight frame components' }
             ],
-            'Home & Garden': [
-              { name: 'Modern Dining Collection', sku: 'PF-004A', price: '$199-$899', stock: '320', description: 'Contemporary dining sets' },
-              { name: 'Professional Garden Tools', sku: 'PF-004B', price: '$49-$199', stock: '580', description: 'Professional gardening equipment' },
-              { name: 'Luxury Outdoor Furniture', sku: 'PF-004C', price: '$299-$1,299', stock: '240', description: 'Premium patio furniture' }
+            'Engine Components': [
+              { name: 'V8 Engine Block Family', sku: 'PF-004A', price: '$3,500-$4,500', stock: '320', description: 'V8 engine block assemblies' },
+              { name: 'Cylinder Head Pro Series', sku: 'PF-004B', price: '$900-$1,200', stock: '580', description: 'Professional cylinder head series' },
+              { name: 'Performance Piston Family', sku: 'PF-004C', price: '$600-$900', stock: '240', description: 'High-performance piston assemblies' }
             ],
-            'Sports & Outdoors': [
-              { name: 'Elite Running Series', sku: 'PF-005A', price: '$49-$199', stock: '1,800', description: 'Professional running shoes' },
-              { name: 'Adventure Camping Gear', sku: 'PF-005B', price: '$79-$399', stock: '450', description: 'High-quality camping equipment' },
-              { name: 'Premium Yoga Collection', sku: 'PF-005C', price: '$19-$89', stock: '1,200', description: 'Professional yoga mats' }
+            'Electrical Systems': [
+              { name: 'Premium Wiring Harness Family', sku: 'PF-005A', price: '$300-$450', stock: '1,800', description: 'Premium wiring harnesses' },
+              { name: 'Advanced Control Module Series', sku: 'PF-005B', price: '$500-$800', stock: '450', description: 'Advanced control modules' },
+              { name: 'Professional Sensor Array', sku: 'PF-005C', price: '$150-$200', stock: '1,200', description: 'Professional sensor arrays' }
             ],
-            'Automotive': [
-              { name: 'Performance Engine Parts', sku: 'PF-006A', price: '$49-$899', stock: '680', description: 'High-performance components' },
-              { name: 'Premium Car Audio', sku: 'PF-006B', price: '$99-$599', stock: '320', description: 'High-end stereo systems' },
-              { name: 'All-Season Tire Line', sku: 'PF-006C', price: '$299-$899', stock: '540', description: 'Premium tire sets' }
+            'Hydraulic Systems': [
+              { name: 'High-Pressure Pump Family', sku: 'PF-006A', price: '$1,500-$2,500', stock: '680', description: 'High-pressure hydraulic pumps' },
+              { name: 'Precision Valve Series', sku: 'PF-006B', price: '$400-$600', stock: '320', description: 'Precision hydraulic valves' },
+              { name: 'Heavy-Duty Line Set', sku: 'PF-006C', price: '$300-$400', stock: '540', description: 'Heavy-duty hydraulic lines' }
             ],
-            'Health & Beauty': [
-              { name: 'Luxury Skincare Collection', sku: 'PF-007A', price: '$29-$199', stock: '850', description: 'Premium skincare products' },
-              { name: 'Professional Makeup Line', sku: 'PF-007B', price: '$19-$149', stock: '1,100', description: 'Professional cosmetics' },
-              { name: 'Elite Hair Care Series', sku: 'PF-007C', price: '$9-$49', stock: '1,500', description: 'Premium hair products' }
+            'Brake Systems': [
+              { name: 'Performance Brake Pad Family', sku: 'PF-007A', price: '$150-$250', stock: '850', description: 'Performance brake pad assemblies' },
+              { name: 'Premium Caliper Series', sku: 'PF-007B', price: '$300-$400', stock: '1,100', description: 'Premium brake calipers' },
+              { name: 'Racing Brake Disc Line', sku: 'PF-007C', price: '$120-$180', stock: '1,500', description: 'Racing brake disc components' }
             ],
-            'Food & Beverage': [
-              { name: 'Premium Beverage Line', sku: 'PF-008A', price: '$2-$12', stock: '5,000', description: 'High-quality drinks' },
-              { name: 'Gourmet Snack Collection', sku: 'PF-008B', price: '$3-$15', stock: '3,200', description: 'Premium snack foods' },
-              { name: 'Organic Frozen Meals', sku: 'PF-008C', price: '$4-$18', stock: '2,800', description: 'Organic frozen food' }
+            'Suspension Systems': [
+              { name: 'Performance Shock Family', sku: 'PF-008A', price: '$250-$350', stock: '5,000', description: 'Performance shock absorbers' },
+              { name: 'Heavy-Duty Spring Collection', sku: 'PF-008B', price: '$150-$200', stock: '3,200', description: 'Heavy-duty suspension springs' },
+              { name: 'Racing Strut Series', sku: 'PF-008C', price: '$400-$500', stock: '2,800', description: 'Racing strut assemblies' }
             ]
           },
           5: { // SKU level
             'All Categories': [
-              { name: 'iPhone 15 Pro 256GB', sku: 'SKU-001', price: '$999', stock: '250', description: 'Apple iPhone 15 Pro' },
-              { name: 'MacBook Pro M3', sku: 'SKU-002', price: '$1,999', stock: '180', description: 'Apple MacBook Pro' },
-              { name: 'Classic White Shirt M', sku: 'SKU-003', price: '$49', stock: '320', description: 'Men\'s classic white shirt' }
+              { name: 'TRN 750 - A', sku: 'SKU-001', price: '$3,500', stock: '250', description: 'TRN 750 Series Model A' },
+              { name: 'TRN 750 - B', sku: 'SKU-002', price: '$4,200', stock: '180', description: 'TRN 750 Series Model B' },
+              { name: 'TRN 750 - C', sku: 'SKU-003', price: '$4,500', stock: '320', description: 'TRN 750 Series Model C' }
             ],
-            'Electronics': [
-              { name: 'iPhone 15 Pro 256GB', sku: 'SKU-001', price: '$999', stock: '250', description: 'Apple iPhone 15 Pro' },
-              { name: 'MacBook Pro M3', sku: 'SKU-002', price: '$1,999', stock: '180', description: 'Apple MacBook Pro' },
-              { name: 'iPad Pro 12.9"', sku: 'SKU-001A', price: '$799', stock: '150', description: 'Apple iPad Pro' },
-              { name: 'Apple Watch Series 9', sku: 'SKU-001B', price: '$399', stock: '220', description: 'Apple Watch' }
+            'Transmission Assembly': [
+              { name: 'TRN 750 - A', sku: 'SKU-001', price: '$3,500', stock: '250', description: 'TRN 750 Series Model A' },
+              { name: 'TRN 750 - B', sku: 'SKU-002', price: '$4,200', stock: '180', description: 'TRN 750 Series Model B' },
+              { name: 'TRN 750 - C', sku: 'SKU-001A', price: '$4,500', stock: '150', description: 'TRN 750 Series Model C' },
+              { name: 'TRN 750 - D', sku: 'SKU-001B', price: '$3,800', stock: '220', description: 'TRN 750 Series Model D' },
+              { name: 'TRN 750 - E', sku: 'SKU-001C', price: '$4,000', stock: '200', description: 'TRN 750 Series Model E' }
             ],
-            'Clothing': [
-              { name: 'Classic White Shirt M', sku: 'SKU-003', price: '$49', stock: '320', description: 'Men\'s classic white shirt' },
-              { name: 'Designer Dress Size 8', sku: 'SKU-003A', price: '$89', stock: '180', description: 'Designer evening dress' },
-              { name: 'Premium Jeans 32x32', sku: 'SKU-003B', price: '$79', stock: '250', description: 'Premium denim jeans' }
+            'Chassis Components': [
+              { name: 'Chassis Product 1', sku: 'SKU-003', price: '$2,200', stock: '320', description: 'Chassis component product 1' },
+              { name: 'Chassis Product 2', sku: 'SKU-003A', price: '$2,500', stock: '180', description: 'Chassis component product 2' },
+              { name: 'Frame Assembly Standard', sku: 'SKU-003B', price: '$1,800', stock: '250', description: 'Standard frame assembly' }
             ],
-            'Home & Garden': [
-              { name: '6-Piece Dining Set Oak', sku: 'SKU-004A', price: '$599', stock: '45', description: 'Oak dining room set' },
-              { name: 'Professional Tool Set', sku: 'SKU-004B', price: '$129', stock: '120', description: '10-piece garden tool set' },
-              { name: 'Patio Sofa Set', sku: 'SKU-004C', price: '$899', stock: '35', description: '3-piece outdoor sofa set' }
+            'Engine Components': [
+              { name: 'V8 Engine Block Assembly', sku: 'SKU-004A', price: '$4,200', stock: '45', description: 'V8 engine block complete assembly' },
+              { name: 'Cylinder Head Pro', sku: 'SKU-004B', price: '$1,100', stock: '120', description: 'Professional cylinder head' },
+              { name: 'Piston Assembly Set', sku: 'SKU-004C', price: '$800', stock: '35', description: 'Complete piston assembly set' }
             ],
-            'Sports & Outdoors': [
-              { name: 'Nike Air Max Running Shoes', sku: 'SKU-005A', price: '$129', stock: '280', description: 'Men\'s running shoes size 10' },
-              { name: '4-Person Camping Tent', sku: 'SKU-005B', price: '$249', stock: '85', description: 'Weatherproof camping tent' },
-              { name: 'Premium Yoga Mat', sku: 'SKU-005C', price: '$39', stock: '195', description: 'Non-slip yoga mat' }
+            'Electrical Systems': [
+              { name: 'Main Wiring Harness', sku: 'SKU-005A', price: '$400', stock: '280', description: 'Primary electrical wiring harness' },
+              { name: 'ECU Control Module', sku: 'SKU-005B', price: '$650', stock: '85', description: 'Engine control unit module' },
+              { name: 'Sensor Array Assembly', sku: 'SKU-005C', price: '$180', stock: '195', description: 'Complete sensor array' }
             ],
-            'Automotive': [
-              { name: 'Performance Air Filter', sku: 'SKU-006A', price: '$49', stock: '145', description: 'High-performance air filter' },
-              { name: 'Premium Car Stereo', sku: 'SKU-006B', price: '$399', stock: '65', description: 'Touchscreen car stereo' },
-              { name: 'All-Season Tire Set', sku: 'SKU-006C', price: '$599', stock: '120', description: 'Set of 4 all-season tires' }
+            'Hydraulic Systems': [
+              { name: 'Hydraulic Pump HP-500', sku: 'SKU-006A', price: '$2,200', stock: '145', description: 'High-pressure hydraulic pump' },
+              { name: 'Control Valve Assembly', sku: 'SKU-006B', price: '$550', stock: '65', description: 'Hydraulic control valve assembly' },
+              { name: 'Hydraulic Line Set', sku: 'SKU-006C', price: '$350', stock: '120', description: 'Complete hydraulic line set' }
             ],
-            'Health & Beauty': [
-              { name: 'Anti-Aging Serum', sku: 'SKU-007A', price: '$79', stock: '185', description: 'Premium skincare serum' },
-              { name: 'Professional Makeup Palette', sku: 'SKU-007B', price: '$59', stock: '220', description: '20-color makeup palette' },
-              { name: 'Volumizing Shampoo', sku: 'SKU-007C', price: '$19', stock: '350', description: 'Professional hair care' }
+            'Brake Systems': [
+              { name: 'Performance Brake Pad Set', sku: 'SKU-007A', price: '$220', stock: '185', description: 'High-performance brake pad set' },
+              { name: 'Brake Caliper Assembly', sku: 'SKU-007B', price: '$380', stock: '220', description: 'Complete brake caliper assembly' },
+              { name: 'Racing Brake Disc', sku: 'SKU-007C', price: '$150', stock: '350', description: 'Racing brake disc component' }
             ],
-            'Food & Beverage': [
-              { name: 'Premium Cola 12-Pack', sku: 'SKU-008A', price: '$8', stock: '1,200', description: 'Premium cola beverages' },
-              { name: 'Gourmet Snack Mix', sku: 'SKU-008B', price: '$12', stock: '850', description: 'Variety snack pack' },
-              { name: 'Organic Frozen Meal', sku: 'SKU-008C', price: '$7', stock: '650', description: 'Organic frozen dinner' }
+            'Suspension Systems': [
+              { name: 'Performance Shock Absorber', sku: 'SKU-008A', price: '$320', stock: '1,200', description: 'Performance shock absorber unit' },
+              { name: 'Heavy-Duty Spring Set', sku: 'SKU-008B', price: '$180', stock: '850', description: 'Heavy-duty suspension spring set' },
+              { name: 'Racing Strut Assembly', sku: 'SKU-008C', price: '$480', stock: '650', description: 'Racing strut complete assembly' }
             ]
           }
         },
@@ -3082,16 +3286,514 @@
       if (!data || data.length === 0) {
         previewBox.innerHTML = '<span>No records found</span>';
         previewBox.classList.add('empty');
+        selectedRows.clear();
         return;
       }
       
       previewBox.classList.remove('empty');
       
-      // Determine columns based on hierarchy type
-      const columns = getPreviewColumns();
+      // Determine columns based on hierarchy type - include parent column
+      const columns = getPreviewColumnsWithParent(currentModalHierarchy);
       
       const table = document.createElement('table');
       table.className = 'preview-table';
+      
+      // Create header
+      const thead = document.createElement('thead');
+      const headerRow = document.createElement('tr');
+      
+      // Add checkbox column header
+      const checkboxHeader = document.createElement('th');
+      checkboxHeader.className = 'checkbox-cell';
+      const selectAllCheckbox = document.createElement('input');
+      selectAllCheckbox.type = 'checkbox';
+      selectAllCheckbox.onchange = function() {
+        if (this.checked) {
+          data.forEach((row, index) => {
+            selectedRows.add(index);
+          });
+        } else {
+          selectedRows.clear();
+        }
+        updateCheckboxes();
+        updateMainPreview();
+      };
+      checkboxHeader.appendChild(selectAllCheckbox);
+      headerRow.appendChild(checkboxHeader);
+      
+      columns.forEach(col => {
+        const th = document.createElement('th');
+        th.textContent = col.label;
+        headerRow.appendChild(th);
+      });
+      thead.appendChild(headerRow);
+      table.appendChild(thead);
+      
+      // Create body
+      const tbody = document.createElement('tbody');
+      data.forEach((row, index) => {
+        const tr = document.createElement('tr');
+        tr.className = 'selectable';
+        if (selectedRows.has(index)) {
+          tr.classList.add('selected');
+        }
+        
+        // Add checkbox cell
+        const checkboxCell = document.createElement('td');
+        checkboxCell.className = 'checkbox-cell';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = selectedRows.has(index);
+        checkbox.onchange = function() {
+          if (this.checked) {
+            selectedRows.add(index);
+            tr.classList.add('selected');
+          } else {
+            selectedRows.delete(index);
+            tr.classList.remove('selected');
+          }
+          updateSelectAllCheckbox();
+          updateMainPreview();
+        };
+        checkboxCell.appendChild(checkbox);
+        tr.appendChild(checkboxCell);
+        
+        // Add row click handler
+        tr.onclick = function(e) {
+          if (e.target.type !== 'checkbox' && e.target.tagName !== 'INPUT') {
+            checkbox.checked = !checkbox.checked;
+            checkbox.dispatchEvent(new Event('change'));
+          }
+        };
+        
+        columns.forEach(col => {
+          const td = document.createElement('td');
+          td.textContent = row[col.key] || '-';
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      
+      previewBox.innerHTML = '';
+      previewBox.appendChild(table);
+      
+      // Update select all checkbox state
+      updateSelectAllCheckbox();
+    }
+    
+    function getPreviewColumnsWithParent(hierarchy) {
+      if (hierarchy === 'account') {
+        return [
+          { key: 'name', label: 'Account Name' },
+          { key: 'parentAccount', label: 'Parent Account' },
+          { key: 'level', label: 'Level' },
+          { key: 'status', label: 'Status' },
+          { key: 'region', label: 'Region' },
+          { key: 'industry', label: 'Industry' }
+        ];
+      } else if (hierarchy === 'product') {
+        return [
+          { key: 'name', label: 'Product Name' },
+          { key: 'parentCategory', label: 'Parent Category' },
+          { key: 'level', label: 'Level' },
+          { key: 'sku', label: 'SKU' },
+          { key: 'price', label: 'Price' },
+          { key: 'stock', label: 'Stock' },
+          { key: 'description', label: 'Description' }
+        ];
+      }
+      return [{ key: 'name', label: 'Name' }];
+    }
+    
+    function getUnifiedPreviewColumns() {
+      // Unified columns that work for all hierarchies
+      return [
+        { key: 'name', label: 'Name' },
+        { key: 'parent', label: 'Parent' },
+        { key: 'level', label: 'Level' },
+        { key: 'hierarchy', label: 'Hierarchy' },
+        { key: 'details', label: 'Details' }
+      ];
+    }
+    
+    function getItemValue(item, colKey) {
+      // Map unified column keys to item properties
+      switch(colKey) {
+        case 'name':
+          return item.name || '-';
+        case 'parent':
+          return item.parentAccount || item.parentCategory || '-';
+        case 'level':
+          return item.level || '-';
+        case 'hierarchy':
+          if (item.isCrossHierarchy) {
+            return hierarchyDisplayNames[item.sourceHierarchy] || item.sourceHierarchy;
+          }
+          // Determine hierarchy from item structure
+          if (item.parentAccount !== undefined) return 'Account';
+          if (item.parentCategory !== undefined) return 'Product';
+          return '-';
+        case 'details':
+          // Show relevant details based on hierarchy type
+          if (item.status) return `${item.status} | ${item.region || ''} | ${item.industry || ''}`;
+          if (item.sku) return `SKU: ${item.sku} | ${item.price || ''} | Stock: ${item.stock || ''}`;
+          return item.description || '-';
+        default:
+          return item[colKey] || '-';
+      }
+    }
+    
+    function updateCheckboxes() {
+      const table = document.querySelector('.preview-table');
+      if (!table) return;
+      
+      const rows = table.querySelectorAll('tbody tr');
+      rows.forEach((tr, index) => {
+        const checkbox = tr.querySelector('input[type="checkbox"]');
+        if (checkbox) {
+          checkbox.checked = selectedRows.has(index);
+          if (selectedRows.has(index)) {
+            tr.classList.add('selected');
+          } else {
+            tr.classList.remove('selected');
+          }
+        }
+      });
+    }
+    
+    function updateSelectAllCheckbox() {
+      const table = document.querySelector('.preview-table');
+      if (!table) return;
+      
+      const selectAllCheckbox = table.querySelector('thead input[type="checkbox"]');
+      if (selectAllCheckbox) {
+        const rows = table.querySelectorAll('tbody tr');
+        selectAllCheckbox.checked = rows.length > 0 && selectedRows.size === rows.length;
+        selectAllCheckbox.indeterminate = selectedRows.size > 0 && selectedRows.size < rows.length;
+      }
+    }
+    
+    function buildHierarchyTree(items, hierarchy) {
+      // Build a map of items by name for quick lookup
+      const itemMap = new Map();
+      items.forEach(item => {
+        const parentKey = hierarchy === 'account' ? item.parentAccount : item.parentCategory;
+        itemMap.set(item.name, { ...item, parentKey, children: [] });
+      });
+      
+      // Build parent-child relationships
+      const rootItems = [];
+      itemMap.forEach((item, name) => {
+        if (!item.parentKey || item.parentKey === '') {
+          rootItems.push(item);
+        } else {
+          const parent = itemMap.get(item.parentKey);
+          if (parent) {
+            parent.children.push(item);
+          } else {
+            // Parent not in selected items, treat as root
+            rootItems.push(item);
+          }
+        }
+      });
+      
+      return rootItems;
+    }
+    
+    function renderHierarchicalRow(item, columns, hierarchy, level = 0, rowIndex = { value: 0 }, parentRowId = null) {
+      const rows = [];
+      const isParent = item.children && item.children.length > 0;
+      const rowId = `preview-row-${rowIndex.value++}`;
+      
+      // Determine which hierarchy this item belongs to
+      const itemHierarchy = item.isCrossHierarchy ? item.sourceHierarchy : hierarchy;
+      // Use appropriate columns for this item's hierarchy
+      const itemColumns = item.isCrossHierarchy ? getPreviewColumnsWithParent(itemHierarchy) : columns;
+      
+      const tr = document.createElement('tr');
+      tr.className = isParent ? 'parent-row' : '';
+      tr.setAttribute('data-row-id', rowId);
+      tr.setAttribute('data-level', level);
+      tr.setAttribute('data-hierarchy', itemHierarchy);
+      if (parentRowId) {
+        tr.setAttribute('data-parent-id', parentRowId);
+      }
+      
+      if (level > 0) {
+        tr.className += ' child-row child-level-' + level;
+        tr.style.display = 'none'; // Hide children initially
+      }
+      
+      // Render cells using unified columns
+      columns.forEach((col, colIndex) => {
+        const td = document.createElement('td');
+        
+        if (colIndex === 0) {
+          // First column - add expand icon and indentation
+          const cellContent = document.createElement('div');
+          cellContent.style.display = 'flex';
+          cellContent.style.alignItems = 'center';
+          
+          // Add indentation
+          if (level > 0) {
+            const indent = document.createElement('span');
+            indent.className = 'hierarchy-indent';
+            cellContent.appendChild(indent);
+          }
+          
+          // Add expand/collapse icon for parents
+          if (isParent) {
+            const expandIcon = document.createElement('span');
+            expandIcon.className = 'expand-icon';
+            expandIcon.onclick = function(e) {
+              e.stopPropagation();
+              toggleHierarchyRow(rowId);
+            };
+            cellContent.appendChild(expandIcon);
+          } else {
+            // Add spacer for non-parents to align with parents
+            const spacer = document.createElement('span');
+            spacer.style.width = '24px';
+            spacer.style.display = 'inline-block';
+            cellContent.appendChild(spacer);
+          }
+          
+          // Add item name
+          const nameSpan = document.createElement('span');
+          nameSpan.textContent = item.name || '-';
+          cellContent.appendChild(nameSpan);
+          
+          td.appendChild(cellContent);
+        } else {
+          // Use unified value getter
+          td.textContent = getItemValue(item, col.key);
+        }
+        
+        tr.appendChild(td);
+      });
+      
+      rows.push(tr);
+      
+      // Add children rows (initially hidden)
+      if (isParent && item.children) {
+        item.children.forEach(child => {
+          // Use child's hierarchy if it's cross-hierarchy, otherwise use current hierarchy
+          const childHierarchy = child.isCrossHierarchy ? child.sourceHierarchy : hierarchy;
+          const childRows = renderHierarchicalRow(child, columns, childHierarchy, level + 1, rowIndex, rowId);
+          rows.push(...childRows);
+        });
+      }
+      
+      return rows;
+    }
+    
+    function toggleHierarchyRow(rowId) {
+      const parentRow = document.querySelector(`tr[data-row-id="${rowId}"]`);
+      if (!parentRow) return;
+      
+      const isExpanded = parentRow.classList.contains('expanded');
+      
+      // Toggle expanded class
+      if (isExpanded) {
+        parentRow.classList.remove('expanded');
+        // Hide all descendants
+        hideDescendants(rowId);
+      } else {
+        parentRow.classList.add('expanded');
+        // Show direct children
+        showDirectChildren(rowId);
+      }
+    }
+    
+    function hideDescendants(parentRowId) {
+      // Find all rows with this parent
+      const descendants = document.querySelectorAll(`tr[data-parent-id="${parentRowId}"]`);
+      descendants.forEach(row => {
+        row.style.display = 'none';
+        row.classList.remove('expanded');
+        // Recursively hide their descendants
+        const childRowId = row.getAttribute('data-row-id');
+        if (childRowId) {
+          hideDescendants(childRowId);
+        }
+      });
+    }
+    
+    function showDirectChildren(parentRowId) {
+      // Find direct children (level = parent level + 1)
+      const parentRow = document.querySelector(`tr[data-row-id="${parentRowId}"]`);
+      if (!parentRow) return;
+      
+      const parentLevel = parseInt(parentRow.getAttribute('data-level')) || 0;
+      const directChildren = document.querySelectorAll(`tr[data-parent-id="${parentRowId}"]`);
+      
+      directChildren.forEach(row => {
+        const rowLevel = parseInt(row.getAttribute('data-level')) || 0;
+        if (rowLevel === parentLevel + 1) {
+          // Direct child - show it
+          row.style.display = 'table-row';
+        }
+      });
+    }
+    
+    function getSelectedItemsForHierarchy(hierarchy) {
+      // Get all selected items for all levels of this hierarchy
+      const allSelectedItems = [];
+      if (!selectedItemsPerHierarchy[hierarchy]) return allSelectedItems;
+      
+      Object.keys(selectedItemsPerHierarchy[hierarchy]).forEach(level => {
+        const items = selectedItemsPerHierarchy[hierarchy][level] || [];
+        allSelectedItems.push(...items);
+      });
+      
+      return allSelectedItems;
+    }
+    
+    function getLeafNodes(treeItems) {
+      const leaves = [];
+      
+      function traverse(item) {
+        if (!item.children || item.children.length === 0) {
+          leaves.push(item);
+        } else {
+          item.children.forEach(child => traverse(child));
+        }
+      }
+      
+      treeItems.forEach(item => traverse(item));
+      return leaves;
+    }
+    
+    function attachHierarchyToLeaves(leafNodes, nextHierarchyItems, nextHierarchy) {
+      // Build tree for next hierarchy
+      const nextHierarchyTree = buildHierarchyTree(nextHierarchyItems, nextHierarchy);
+      
+      // Attach root items of next hierarchy to each leaf node
+      leafNodes.forEach(leaf => {
+        if (!leaf.children) {
+          leaf.children = [];
+        }
+        // Clone and attach each root item from next hierarchy
+        nextHierarchyTree.forEach(rootItem => {
+          const clonedItem = JSON.parse(JSON.stringify(rootItem));
+          // Mark as cross-hierarchy child
+          clonedItem.isCrossHierarchy = true;
+          clonedItem.sourceHierarchy = nextHierarchy;
+          leaf.children.push(clonedItem);
+        });
+      });
+    }
+    
+    function buildCombinedHierarchy() {
+      if (!selectedHierarchies || selectedHierarchies.length === 0) return [];
+      
+      // Get selected items for first hierarchy
+      const firstHierarchy = selectedHierarchies[0];
+      if (!firstHierarchy) return [];
+      
+      let firstHierarchyItems = getSelectedItemsForHierarchy(firstHierarchy);
+      
+      // If no items selected, return empty
+      if (firstHierarchyItems.length === 0) return [];
+      
+      // Get full hierarchy list to include descendants
+      let fullHierarchyList = [];
+      if (firstHierarchy === 'account') {
+        fullHierarchyList = accountHierarchyList;
+      } else if (firstHierarchy === 'product') {
+        fullHierarchyList = productHierarchyList;
+      }
+      
+      // Include descendants of selected items
+      const selectedNames = new Set(firstHierarchyItems.map(item => item.name));
+      const itemsToShow = fullHierarchyList.filter(item => {
+        if (selectedNames.has(item.name)) return true;
+        const parentKey = firstHierarchy === 'account' ? item.parentAccount : item.parentCategory;
+        return isDescendantOfSelected(item, parentKey, selectedNames, fullHierarchyList, firstHierarchy);
+      });
+      
+      // Build tree for first hierarchy
+      let combinedTree = buildHierarchyTree(itemsToShow, firstHierarchy);
+      
+      // Attach subsequent hierarchies to leaf nodes
+      for (let i = 1; i < selectedHierarchies.length; i++) {
+        const nextHierarchy = selectedHierarchies[i];
+        if (!nextHierarchy) continue;
+        
+        const nextHierarchyItems = getSelectedItemsForHierarchy(nextHierarchy);
+        
+        if (nextHierarchyItems.length === 0) continue;
+        
+        // Get full hierarchy list for next hierarchy
+        let nextFullList = [];
+        if (nextHierarchy === 'account') {
+          nextFullList = accountHierarchyList;
+        } else if (nextHierarchy === 'product') {
+          nextFullList = productHierarchyList;
+        }
+        
+        // Include descendants
+        const nextSelectedNames = new Set(nextHierarchyItems.map(item => item.name));
+        const nextItemsToShow = nextFullList.filter(item => {
+          if (nextSelectedNames.has(item.name)) return true;
+          const parentKey = nextHierarchy === 'account' ? item.parentAccount : item.parentCategory;
+          return isDescendantOfSelected(item, parentKey, nextSelectedNames, nextFullList, nextHierarchy);
+        });
+        
+        // Get leaf nodes of current tree
+        const leafNodes = getLeafNodes(combinedTree);
+        
+        // Attach next hierarchy to leaves
+        attachHierarchyToLeaves(leafNodes, nextItemsToShow, nextHierarchy);
+      }
+      
+      return combinedTree;
+    }
+    
+    function updateMainPreview() {
+      const previewContainer = document.getElementById('gridPreview');
+      if (!previewContainer || currentStep !== 2) return;
+      
+      // If we have selected hierarchies, build combined hierarchy
+      // Otherwise, show items for current hierarchy only
+      let combinedTree = [];
+      
+      if (selectedHierarchies && selectedHierarchies.length > 0) {
+        combinedTree = buildCombinedHierarchy();
+      } else if (currentModalHierarchy && selectedPreviewData && selectedPreviewData.length > 0) {
+        // Show just the selected items for current hierarchy (when saving from modal)
+        const hierarchy = currentModalHierarchy;
+        let fullHierarchyList = [];
+        if (hierarchy === 'account') {
+          fullHierarchyList = accountHierarchyList;
+        } else if (hierarchy === 'product') {
+          fullHierarchyList = productHierarchyList;
+        }
+        
+        // Include descendants of selected items
+        const selectedNames = new Set(selectedPreviewData.map(item => item.name));
+        const itemsToShow = fullHierarchyList.filter(item => {
+          if (selectedNames.has(item.name)) return true;
+          const parentKey = hierarchy === 'account' ? item.parentAccount : item.parentCategory;
+          return isDescendantOfSelected(item, parentKey, selectedNames, fullHierarchyList, hierarchy);
+        });
+        
+        combinedTree = buildHierarchyTree(itemsToShow, hierarchy);
+      }
+      
+      if (combinedTree.length === 0) {
+        previewContainer.innerHTML = '<div style="padding: 20px; text-align: center; color: #706e6b;">No items selected. Select items from the modal to see preview.</div>';
+        return;
+      }
+      
+      // Determine columns - use unified columns that work for all hierarchies
+      const columns = getUnifiedPreviewColumns();
+      
+      const table = document.createElement('table');
+      table.className = 'preview-table';
+      table.style.width = '100%';
+      table.style.marginTop = '0';
       
       // Create header
       const thead = document.createElement('thead');
@@ -3104,21 +3806,36 @@
       thead.appendChild(headerRow);
       table.appendChild(thead);
       
-      // Create body
+      // Create body with hierarchical rows
       const tbody = document.createElement('tbody');
-      data.forEach(row => {
-        const tr = document.createElement('tr');
-        columns.forEach(col => {
-          const td = document.createElement('td');
-          td.textContent = row[col.key] || '-';
-          tr.appendChild(td);
-        });
-        tbody.appendChild(tr);
+      const rowIndex = { value: 0 };
+      
+      // Get first hierarchy for rendering (use current hierarchy if no hierarchies selected)
+      const firstHierarchy = (selectedHierarchies && selectedHierarchies.length > 0) 
+        ? selectedHierarchies[0] 
+        : (currentModalHierarchy || currentHierarchy || 'account');
+      
+      combinedTree.forEach(rootItem => {
+        const rows = renderHierarchicalRow(rootItem, columns, firstHierarchy, 0, rowIndex);
+        rows.forEach(row => tbody.appendChild(row));
       });
+      
       table.appendChild(tbody);
       
-      previewBox.innerHTML = '';
-      previewBox.appendChild(table);
+      previewContainer.innerHTML = '';
+      previewContainer.appendChild(table);
+    }
+    
+    function isDescendantOfSelected(item, parentKey, selectedNames, fullList, hierarchy) {
+      if (!parentKey || parentKey === '') return false;
+      if (selectedNames.has(parentKey)) return true;
+      
+      // Find parent and check if it's a descendant
+      const parent = fullList.find(p => p.name === parentKey);
+      if (!parent) return false;
+      
+      const parentParentKey = hierarchy === 'account' ? parent.parentAccount : parent.parentCategory;
+      return isDescendantOfSelected(parent, parentParentKey, selectedNames, fullList, hierarchy);
     }
 
     function getPreviewColumns() {
@@ -3154,52 +3871,6 @@
       };
       
       return columnMap[currentHierarchy] || [{ key: 'name', label: 'Name' }];
-    }
-
-    function updateGridPreview() {
-      const previewContainer = document.getElementById('gridPreview');
-      if (!previewContainer || currentStep !== 2) return;
-      
-      if (!data || data.length === 0) {
-        previewBox.innerHTML = '<span>No records found</span>';
-        previewBox.classList.add('empty');
-        return;
-      }
-      
-      previewBox.classList.remove('empty');
-      
-      // Determine columns based on hierarchy type
-      const columns = getPreviewColumns();
-      
-      const table = document.createElement('table');
-      table.className = 'preview-table';
-      
-      // Create header
-      const thead = document.createElement('thead');
-      const headerRow = document.createElement('tr');
-      columns.forEach(col => {
-        const th = document.createElement('th');
-        th.textContent = col.label;
-        headerRow.appendChild(th);
-      });
-      thead.appendChild(headerRow);
-      table.appendChild(thead);
-      
-      // Create body
-      const tbody = document.createElement('tbody');
-      data.forEach(row => {
-        const tr = document.createElement('tr');
-        columns.forEach(col => {
-          const td = document.createElement('td');
-          td.textContent = row[col.key] || '-';
-          tr.appendChild(td);
-        });
-        tbody.appendChild(tr);
-      });
-      table.appendChild(tbody);
-      
-      previewBox.innerHTML = '';
-      previewBox.appendChild(table);
     }
 
     function getPreviewColumns() {
@@ -3520,11 +4191,11 @@
             5: ['Account 1', 'Account 2', 'Account 3']
           },
           product: {
-            1: ['Electronics', 'Clothing'],
-            2: ['Consumer Electronics', 'Enterprise Electronics'],
-            3: ['Smartphones', 'Laptops'],
-            4: ['Product Line A', 'Product Line B'],
-            5: ['SKU-001', 'SKU-002']
+            1: ['Transmission Assembly', 'Chassis Components'],
+            2: ['Manual Transmission', 'Automatic Transmission'],
+            3: ['TRN 750 Series', 'TRN 850 Series'],
+            4: ['TRN 750 Premium Family', 'TRN 850 Professional Family'],
+            5: ['TRN 750 - A', 'TRN 750 - B']
           },
           users: {
             1: ['Sales', 'Marketing'],
@@ -3817,15 +4488,6 @@
       }
     }
 
-    // Close dropdown when clicking outside
-    document.addEventListener('click', function(event) {
-      const dropdown = document.getElementById('listviewDropdown');
-      const input = document.getElementById('listviewInput');
-      
-      if (dropdown && !dropdown.contains(event.target) && event.target !== input) {
-        dropdown.classList.remove('show');
-      }
-    });
 
     // Initialize
     function updatePreviewTitle() {
@@ -3880,6 +4542,36 @@
         usersDropdown.addEventListener('change', updatePreviewTitle);
         // Initialize preview title on page load
         updatePreviewTitle();
+      }
+      
+      // Add event listener for save button
+      const saveBtn = document.getElementById('saveSelectionBtn');
+      if (saveBtn) {
+        saveBtn.addEventListener('click', function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          console.log('Save button clicked via event listener');
+          saveSelection();
+        });
+      } else {
+        console.warn('Save button not found on page load');
+        // Try to add listener when modal opens
+        const originalOpenModal = openSelectRecordsModal;
+        openSelectRecordsModal = function(level) {
+          originalOpenModal.call(this, level);
+          // Add listener after modal is opened
+          setTimeout(() => {
+            const saveBtn = document.getElementById('saveSelectionBtn');
+            if (saveBtn) {
+              saveBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('Save button clicked via event listener (added on modal open)');
+                saveSelection();
+              });
+            }
+          }, 100);
+        };
       }
     });
   </script>

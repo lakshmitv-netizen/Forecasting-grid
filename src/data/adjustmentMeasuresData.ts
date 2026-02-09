@@ -178,6 +178,20 @@ export const adjustmentMeasuresData: MeasureData[] = [
     values: monthlyValue(95000), // Highest value, final aggregation
     children: createHierarchy('measure-final-forecast', 95000, 47500, 9500),
   },
+  // Committed Quantity - Part of both measure groups
+  {
+    id: 'measure-committed-forecast-qty',
+    name: 'Committed Quantity',
+    values: monthlyValue(1100),
+    children: createHierarchy('measure-committed-forecast-qty', 1100, 550, 110),
+  },
+  // Committed Revenue - Part of both measure groups
+  {
+    id: 'measure-committed-forecast-rev',
+    name: 'Committed Revenue',
+    values: monthlyValue(110000),
+    children: createHierarchy('measure-committed-forecast-rev', 110000, 55000, 11000),
+  },
 ];
 
 

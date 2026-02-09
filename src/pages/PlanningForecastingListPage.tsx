@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import Header from '../components/Header';
-import SearchableSelect from '../components/SearchableSelect';
 import '../styles/pages/PlanningForecastingListPage.css';
 
 interface ForecastRecord {
@@ -30,15 +29,66 @@ const PlanningForecastingListPage: React.FC = () => {
     planName: '',
     status: 'draft',
     timeGranularity: 'months',
+    offsetUnit: 'months',
     startDate: '',
     endDate: '',
     planTemplate: '',
     planningAccount: '',
     planningLevel: 'category',
-    listView: ''
+    listView: '',
+    selectDescendents: false
   });
   const [selectedValues, setSelectedValues] = useState<Set<string>>(new Set());
   const [valuesSearchTerm, setValuesSearchTerm] = useState<string>('');
+  const [showSelectedOnly, setShowSelectedOnly] = useState<boolean>(false);
+  
+  // State for account combobox
+  const [accountLevel, setAccountLevel] = useState<string>('');
+  const [accountName, setAccountName] = useState<string>('');
+  const [levelDropdownOpen, setLevelDropdownOpen] = useState<boolean>(false);
+  const [accountDropdownOpen, setAccountDropdownOpen] = useState<boolean>(false);
+  const accountComboboxRef = useRef<HTMLDivElement>(null);
+  
+  // Get account options based on selected level
+  const getAccountOptionsByLevel = (level: string): string[] => {
+    switch (level) {
+      case 'Level 0':
+        return ['Acme Industries', 'Zenith Industries', 'Magnadrive Industries'];
+      case 'Level 1':
+        return ['Magnadrive North America', 'Magnadrive South America', 'Acme North America', 'Acme South America', 'Zenith North America', 'Zenith South America'];
+      case 'Level 2':
+        return ['Magnadrive Michigan Plant', 'Magnadrive Ohio Plant'];
+      default:
+        return [];
+    }
+  };
+  
+  // Handle click outside for account combobox
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (accountComboboxRef.current && !accountComboboxRef.current.contains(event.target as Node)) {
+        setLevelDropdownOpen(false);
+        setAccountDropdownOpen(false);
+      }
+    };
+    
+    if (levelDropdownOpen || accountDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [levelDropdownOpen, accountDropdownOpen]);
+  
+  // Clear account name when level changes (but not on initial mount)
+  const prevAccountLevelRef = useRef<string>('');
+  useEffect(() => {
+    if (prevAccountLevelRef.current !== accountLevel && prevAccountLevelRef.current !== '') {
+      setAccountName('');
+    }
+    prevAccountLevelRef.current = accountLevel;
+  }, [accountLevel]);
   
   // Mock data for the values table based on product level
   const getMockValues = (level: string) => {
@@ -84,78 +134,15 @@ const PlanningForecastingListPage: React.FC = () => {
 
   const mockValues = getMockValues(newRecord.planningLevel);
   
-  // Filter values based on search term
-  const filteredValues = mockValues.filter(value =>
-    value.name.toLowerCase().includes(valuesSearchTerm.toLowerCase())
-  );
-
-  // Helper function to get ordinal suffix
-  const getOrdinalSuffix = (day: number): string => {
-    if (day > 3 && day < 21) return 'th';
-    switch (day % 10) {
-      case 1: return 'st';
-      case 2: return 'nd';
-      case 3: return 'rd';
-      default: return 'th';
+  // Filter values based on search term and showSelectedOnly toggle
+  const filteredValues = mockValues.filter(value => {
+    const matchesSearch = value.name.toLowerCase().includes(valuesSearchTerm.toLowerCase());
+    if (showSelectedOnly) {
+      return matchesSearch && selectedValues.has(value.id);
     }
-  };
+    return matchesSearch;
+  });
 
-  // Helper function to format date
-  const formatDate = (date: Date): string => {
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const month = monthNames[date.getMonth()];
-    const day = date.getDate();
-    const year = date.getFullYear();
-    return `${month} ${day}${getOrdinalSuffix(day)} ${year}`;
-  };
-
-  // Generate period options based on time granularity
-  const getPeriodOptions = (granularity: string): string[] => {
-    switch (granularity) {
-      case 'weeks':
-        // Generate week start dates for 2026 (52 weeks)
-        const weeks: string[] = [];
-        const startDate = new Date(2026, 0, 1); // January 1, 2026
-        
-        for (let i = 0; i < 52; i++) {
-          const weekStartDate = new Date(startDate);
-          weekStartDate.setDate(startDate.getDate() + (i * 7));
-          const weekEndDate = new Date(weekStartDate);
-          weekEndDate.setDate(weekStartDate.getDate() + 6); // End of week (6 days later)
-          
-          const weekNumber = i + 1;
-          const startFormatted = formatDate(weekStartDate);
-          const endFormatted = formatDate(weekEndDate);
-          
-          weeks.push(`Week ${weekNumber} (${startFormatted} to ${endFormatted})`);
-        }
-        return weeks;
-      case 'months':
-        return [
-          'January 2026',
-          'February 2026',
-          'March 2026',
-          'April 2026',
-          'May 2026',
-          'June 2026',
-          'July 2026',
-          'August 2026',
-          'September 2026',
-          'October 2026',
-          'November 2026',
-          'December 2026'
-        ];
-      case 'quarters':
-        return [
-          'Q1 2026',
-          'Q2 2026',
-          'Q3 2026',
-          'Q4 2026'
-        ];
-      default:
-        return [];
-    }
-  };
 
   const handleSelectAll = () => {
     if (selectAll) {
@@ -341,19 +328,11 @@ const PlanningForecastingListPage: React.FC = () => {
                 </div>
                 <div className="list-page-modal-row">
                   <div className="list-page-modal-field list-page-modal-field-full">
-                    <label className="list-page-modal-label">Select Lowest Time Granularity:</label>
+                    <label className="list-page-modal-label">Select Offset Unit:</label>
                     <select 
                       className="list-page-modal-select"
-                      value={newRecord.timeGranularity}
-                      onChange={(e) => {
-                        // Reset start and end periods when granularity changes
-                        setNewRecord({
-                          ...newRecord, 
-                          timeGranularity: e.target.value,
-                          startDate: '',
-                          endDate: ''
-                        });
-                      }}
+                      value={newRecord.offsetUnit}
+                      onChange={(e) => setNewRecord({...newRecord, offsetUnit: e.target.value})}
                     >
                       <option value="weeks">Weeks</option>
                       <option value="months">Months</option>
@@ -363,21 +342,25 @@ const PlanningForecastingListPage: React.FC = () => {
                 </div>
                 <div className="list-page-modal-row">
                   <div className="list-page-modal-field">
-                    <SearchableSelect
-                      label="Start Period:"
+                    <label className="list-page-modal-label">Offset:</label>
+                    <input 
+                      type="number"
+                      className="list-page-modal-input"
                       value={newRecord.startDate}
-                      onChange={(value) => setNewRecord({...newRecord, startDate: value})}
-                      options={getPeriodOptions(newRecord.timeGranularity)}
-                      placeholder="Select Start Period"
+                      onChange={(e) => setNewRecord({...newRecord, startDate: e.target.value})}
+                      placeholder="Enter Offset"
+                      min="0"
                     />
                   </div>
                   <div className="list-page-modal-field">
-                    <SearchableSelect
-                      label="End Period:"
+                    <label className="list-page-modal-label">Offset duration:</label>
+                    <input 
+                      type="number"
+                      className="list-page-modal-input"
                       value={newRecord.endDate}
-                      onChange={(value) => setNewRecord({...newRecord, endDate: value})}
-                      options={getPeriodOptions(newRecord.timeGranularity)}
-                      placeholder="Select End Period"
+                      onChange={(e) => setNewRecord({...newRecord, endDate: e.target.value})}
+                      placeholder="Enter Offset duration"
+                      min="0"
                     />
                   </div>
                 </div>
@@ -413,16 +396,183 @@ const PlanningForecastingListPage: React.FC = () => {
                           </span>
                         </span>
                       </label>
-                      <select 
-                        className="list-page-modal-select"
-                        value={newRecord.planningAccount}
-                        onChange={(e) => setNewRecord({...newRecord, planningAccount: e.target.value})}
-                      >
-                        <option value="">Select Account</option>
-                        <option value="acme-na">Acme North America</option>
-                        <option value="acme-eu">Acme Europe</option>
-                        <option value="acme-apac">Acme APAC</option>
-                      </select>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        <div ref={accountComboboxRef} style={{ position: 'relative', display: 'flex', maxWidth: '500px', width: '100%' }}>
+                          <div className="slds-combobox-group" style={{ display: 'flex', width: '100%', alignItems: 'stretch' }}>
+                            {/* First combobox - Level */}
+                            <div className="slds-combobox" style={{ flex: '0 0 150px', position: 'relative' }}>
+                              <div className="slds-combobox__form-element slds-input-has-icon slds-input-has-icon_right" style={{ position: 'relative' }}>
+                                <input
+                                  type="text"
+                                  className="slds-input slds-combobox__input"
+                                  value={accountLevel}
+                                  placeholder="Select Level"
+                                  readOnly
+                                  onClick={() => {
+                                    setLevelDropdownOpen(!levelDropdownOpen);
+                                    setAccountDropdownOpen(false);
+                                  }}
+                                  style={{
+                                    height: '40px',
+                                    padding: '0 36px 0 12px',
+                                    border: '1px solid #c9c9c9',
+                                    borderTopLeftRadius: '0.25rem',
+                                    borderBottomLeftRadius: '0.25rem',
+                                    borderRight: '2px solid #c9c9c9',
+                                    fontSize: '14px',
+                                    color: '#181818',
+                                    backgroundColor: 'white',
+                                    cursor: 'pointer',
+                                    fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                                    width: '100%',
+                                    boxSizing: 'border-box'
+                                  }}
+                                />
+                                <div style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+                                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M3 4.5L6 7.5L9 4.5" stroke="#666" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                  </svg>
+                                </div>
+                                {levelDropdownOpen && (
+                                  <div className="slds-dropdown slds-dropdown_fluid" style={{
+                                    position: 'absolute',
+                                    top: '100%',
+                                    left: '0',
+                                    width: '150px',
+                                    zIndex: 10000,
+                                    marginTop: '0.125rem',
+                                    backgroundColor: '#ffffff',
+                                    border: '1px solid #c9c9c9',
+                                    borderRadius: '0.25rem',
+                                    boxShadow: '0 2px 8px 0 rgba(0, 0, 0, 0.12)',
+                                    padding: '0.25rem 0',
+                                    maxHeight: '15rem',
+                                    overflowY: 'auto'
+                                  }}>
+                                    <ul className="slds-listbox slds-listbox_vertical" role="listbox">
+                                      {['Level 0', 'Level 1', 'Level 2'].map((level) => (
+                                        <li key={level} role="presentation" className="slds-listbox__item">
+                                          <div
+                                            className={`slds-media slds-listbox__option slds-listbox__option_plain slds-media_small ${accountLevel === level ? 'slds-is-selected' : ''}`}
+                                            role="option"
+                                            onClick={() => {
+                                              setAccountLevel(level);
+                                              setLevelDropdownOpen(false);
+                                              setAccountName(''); // Clear account name when level changes
+                                            }}
+                                            style={{
+                                              padding: '0.5rem 0.75rem',
+                                              cursor: 'pointer',
+                                              backgroundColor: accountLevel === level ? '#f3f2f2' : '#ffffff',
+                                              transition: 'background-color 0.1s ease'
+                                            }}
+                                          >
+                                            <span className="slds-media__body">
+                                              <span className="slds-listbox__option-text">{level}</span>
+                                            </span>
+                                          </div>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            
+                            {/* Second combobox - Account Name */}
+                            <div className="slds-combobox" style={{ flex: '1', position: 'relative' }}>
+                              <div className="slds-combobox__form-element slds-input-has-icon slds-input-has-icon_right" style={{ position: 'relative' }}>
+                                <input
+                                  type="text"
+                                  className="slds-input slds-combobox__input"
+                                  value={accountName}
+                                  placeholder={accountLevel ? "Select Account" : "Select Level First"}
+                                  readOnly
+                                  disabled={!accountLevel}
+                                  onClick={() => {
+                                    if (accountLevel) {
+                                      setAccountDropdownOpen(!accountDropdownOpen);
+                                      setLevelDropdownOpen(false);
+                                    }
+                                  }}
+                                  style={{
+                                    height: '40px',
+                                    padding: '0 36px 0 12px',
+                                    border: '1px solid #c9c9c9',
+                                    borderTopRightRadius: '0.25rem',
+                                    borderBottomRightRadius: '0.25rem',
+                                    borderLeft: 'none',
+                                    fontSize: '14px',
+                                    color: accountLevel ? '#181818' : '#999',
+                                    backgroundColor: accountLevel ? 'white' : '#f3f2f2',
+                                    cursor: accountLevel ? 'pointer' : 'not-allowed',
+                                    fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                                    width: '100%',
+                                    boxSizing: 'border-box'
+                                  }}
+                                />
+                                <div style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+                                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M3 4.5L6 7.5L9 4.5" stroke="#666" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                  </svg>
+                                </div>
+                                {accountDropdownOpen && accountLevel && (
+                                  <div className="slds-dropdown slds-dropdown_fluid" style={{
+                                    position: 'absolute',
+                                    top: '100%',
+                                    right: '0',
+                                    left: '0',
+                                    zIndex: 10000,
+                                    marginTop: '0.125rem',
+                                    backgroundColor: '#ffffff',
+                                    border: '1px solid #c9c9c9',
+                                    borderRadius: '0.25rem',
+                                    boxShadow: '0 2px 8px 0 rgba(0, 0, 0, 0.12)',
+                                    padding: '0.25rem 0',
+                                    maxHeight: '15rem',
+                                    overflowY: 'auto'
+                                  }}>
+                                    <ul className="slds-listbox slds-listbox_vertical" role="listbox">
+                                      {getAccountOptionsByLevel(accountLevel).map((account) => (
+                                        <li key={account} role="presentation" className="slds-listbox__item">
+                                          <div
+                                            className={`slds-media slds-listbox__option slds-listbox__option_plain slds-media_small ${accountName === account ? 'slds-is-selected' : ''}`}
+                                            role="option"
+                                            onClick={() => {
+                                              setAccountName(account);
+                                              setAccountDropdownOpen(false);
+                                              setNewRecord({...newRecord, planningAccount: account.toLowerCase().replace(/\s+/g, '-')});
+                                            }}
+                                            style={{
+                                              padding: '0.5rem 0.75rem',
+                                              cursor: 'pointer',
+                                              backgroundColor: accountName === account ? '#f3f2f2' : '#ffffff',
+                                              transition: 'background-color 0.1s ease'
+                                            }}
+                                          >
+                                            <span className="slds-media__body">
+                                              <span className="slds-listbox__option-text">{account}</span>
+                                            </span>
+                                          </div>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '15px', color: 'var(--color-on-surface-3)', whiteSpace: 'nowrap' }}>
+                          <input
+                            type="checkbox"
+                            checked={newRecord.selectDescendents}
+                            onChange={(e) => setNewRecord({...newRecord, selectDescendents: e.target.checked})}
+                            style={{ cursor: 'pointer' }}
+                          />
+                          <span>Select Descendents</span>
+                        </label>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -446,22 +596,67 @@ const PlanningForecastingListPage: React.FC = () => {
                         }}
                       >
                         <option value="category">Category</option>
-                        <option value="brand">Brand</option>
                         <option value="product">Product</option>
                       </select>
                     </div>
                   </div>
                   <div className="list-page-modal-row">
                     <div className="list-page-modal-field list-page-modal-field-full">
-                      <label className="list-page-modal-label">
-                        Select Values:
-                        <span className="list-page-modal-tooltip-wrapper">
-                          <span className="list-page-modal-tooltip-icon">i</span>
-                          <span className="list-page-modal-tooltip">
-                            All items selected in this list will be populated as values for the selected product level and all their hierarchical descendants will be shown on the grid.
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                        <label className="list-page-modal-label" style={{ marginBottom: 0 }}>
+                          Select Values:
+                          <span className="list-page-modal-tooltip-wrapper">
+                            <span className="list-page-modal-tooltip-icon">i</span>
+                            <span className="list-page-modal-tooltip">
+                              All items selected in this list will be populated as values for the selected product level and all their hierarchical descendants will be shown on the grid.
+                            </span>
                           </span>
-                        </span>
-                      </label>
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', color: 'var(--color-on-surface-3)', marginBottom: 0 }}>
+                          <span>Show selected</span>
+                          <div style={{ position: 'relative', width: '36px', height: '20px' }}>
+                            <input
+                              type="checkbox"
+                              checked={showSelectedOnly}
+                              onChange={(e) => setShowSelectedOnly(e.target.checked)}
+                              style={{
+                                position: 'absolute',
+                                opacity: 0,
+                                width: 0,
+                                height: 0
+                              }}
+                            />
+                            <div
+                              style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                width: '36px',
+                                height: '20px',
+                                backgroundColor: showSelectedOnly ? '#0176d3' : '#c9c9c9',
+                                borderRadius: '10px',
+                                transition: 'background-color 0.2s',
+                                cursor: 'pointer'
+                              }}
+                              onClick={() => setShowSelectedOnly(!showSelectedOnly)}
+                            >
+                              <div
+                                style={{
+                                  position: 'absolute',
+                                  top: '2px',
+                                  left: showSelectedOnly ? '18px' : '2px',
+                                  width: '16px',
+                                  height: '16px',
+                                  backgroundColor: 'white',
+                                  borderRadius: '50%',
+                                  transition: 'left 0.2s',
+                                  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.3)'
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </label>
+                      </div>
                       <div className="list-page-modal-values-table-container">
                         <table className="list-page-modal-values-table">
                           <thead>
