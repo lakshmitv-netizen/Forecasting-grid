@@ -476,7 +476,10 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   }, [data, calculateMeasureValues]);
 
   // Expand default measures - only expand edited measures, keep others collapsed
+  // This effect only runs on initial load or when gridData/industry changes, not on every editedCells change
   useEffect(() => {
+    // Only run this on initial mount or when gridData/industry changes significantly
+    // Don't reset expansion state when editedCells changes - let the handleCellChange expansion logic handle it
     const expandedRowIds = new Set<string>();
     
     // Helper function to extract measure ID from rowId
@@ -549,9 +552,17 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       });
     }
     
-    // If no edited measures found, keep all collapsed (empty set)
-    setExpandedRows(expandedRowIds);
-  }, [gridData, industry, cellEditHistory, editedCells]);
+    // Only set expanded rows if we have edited measures, otherwise preserve current state
+    // This prevents collapsing measures when editedCells changes
+    if (editedMeasureIds.size > 0) {
+      setExpandedRows(prev => {
+        // Merge with existing expanded rows instead of replacing
+        const newSet = new Set(prev);
+        expandedRowIds.forEach(id => newSet.add(id));
+        return newSet;
+      });
+    }
+  }, [gridData, industry, cellEditHistory]); // Removed editedCells from dependencies
 
   const toggleExpand = (id: string) => {
     setExpandedRows((prev) => {
@@ -1378,6 +1389,9 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     // Add to editedCells if there's a value change OR if there's a note (to show orange background)
     // Note-only entries (delta === 0 && hasNote) should show edited background
     if (delta !== 0 || hasNote) {
+      // Check if this is a new edit (cell not already in editedCells)
+      const isNewEdit = !editedCells.has(cellKey);
+      
       setEditedCells(prev => {
         const newMap = new Map(prev);
         if (!newMap.has(cellKey)) {
@@ -1386,6 +1400,58 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
         }
         return newMap;
       });
+      
+      // Expand the measure that contains this edited cell (only for new edits)
+      if (isNewEdit) {
+        // Extract measure ID from rowId using the same logic as the useEffect
+        const getMeasureIdFromRowId = (rId: string): string | null => {
+          // Check if rowId is directly a measure ID
+          const directMeasure = gridData.find(m => m.id === rId);
+          if (directMeasure) {
+            return directMeasure.id;
+          }
+          
+          // Extract measure ID from rowId pattern: account-measure-xxx, category-xxx-measure-xxx, product-xxx-measure-xxx
+          const parts = rId.split('-');
+          const measureIndex = parts.findIndex(part => part === 'measure');
+          if (measureIndex !== -1 && measureIndex < parts.length - 1) {
+            return parts.slice(measureIndex, measureIndex + 2).join('-');
+          }
+          
+          return null;
+        };
+        
+        const measureId = getMeasureIdFromRowId(rowId);
+        if (measureId) {
+          // Expand the measure and all its children immediately
+          const measure = gridData.find(m => m.id === measureId);
+          if (measure) {
+            const expandedIds = new Set<string>();
+            expandedIds.add(measureId);
+            
+            // Recursive function to collect all row IDs within this measure
+            const collectAllIds = (rows: GridRowType[]) => {
+              for (const row of rows) {
+                expandedIds.add(row.id);
+                if (row.children && row.children.length > 0) {
+                  collectAllIds(row.children);
+                }
+              }
+            };
+            
+            if (measure.children && measure.children.length > 0) {
+              collectAllIds(measure.children);
+            }
+            
+            // Update expanded rows state
+            setExpandedRows(prev => {
+              const newSet = new Set(prev);
+              expandedIds.forEach(id => newSet.add(id));
+              return newSet;
+            });
+          }
+        }
+      }
       
       // ROOT CAUSE FIX: If a cell was saved impacted but is now being edited again,
       // remove it from savedImpactedCells because it's now directly edited
@@ -2146,7 +2212,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       isInternalUpdateRef.current = true; // Mark as internal update to prevent sync loop
       onDataChange(finalData);
     }
-  }, [gridData, updateValue, onDataChange, calculateMeasureValues, recalculateTimeAggregations, distributeQuarterToMonths, distributeYearToQuarters, historyIndex, editedCells]);
+  }, [gridData, updateValue, onDataChange, calculateMeasureValues, recalculateTimeAggregations, distributeQuarterToMonths, distributeYearToQuarters, historyIndex, editedCells, handleExpandMeasure]);
 
   // Collect all visible rows in order for keyboard navigation
   const getAllVisibleRows = useCallback((): GridRowType[] => {
