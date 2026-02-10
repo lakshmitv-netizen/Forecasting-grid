@@ -313,18 +313,6 @@ const PlanningForecastingListPage: React.FC = () => {
                       placeholder="Enter Plan Name"
                     />
                   </div>
-                  <div className="list-page-modal-field">
-                    <label className="list-page-modal-label">Status:</label>
-                    <select 
-                      className="list-page-modal-select"
-                      value={newRecord.status}
-                      onChange={(e) => setNewRecord({...newRecord, status: e.target.value})}
-                    >
-                      <option value="draft">Draft</option>
-                      <option value="active">Active</option>
-                      <option value="completed">Completed</option>
-                    </select>
-                  </div>
                 </div>
                 <div className="list-page-modal-row">
                   <div className="list-page-modal-field list-page-modal-field-full">

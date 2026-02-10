@@ -2212,7 +2212,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       isInternalUpdateRef.current = true; // Mark as internal update to prevent sync loop
       onDataChange(finalData);
     }
-  }, [gridData, updateValue, onDataChange, calculateMeasureValues, recalculateTimeAggregations, distributeQuarterToMonths, distributeYearToQuarters, historyIndex, editedCells, handleExpandMeasure]);
+  }, [gridData, updateValue, onDataChange, calculateMeasureValues, recalculateTimeAggregations, distributeQuarterToMonths, distributeYearToQuarters, historyIndex, editedCells, handleExpandMeasure, selectedCells, focusedCell, findRowById]);
 
   // Collect all visible rows in order for keyboard navigation
   const getAllVisibleRows = useCallback((): GridRowType[] => {
@@ -2273,6 +2273,167 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   const handleSaveRef = useRef<(() => void) | null>(null);
   
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    // Handle Copy (Ctrl+C / Cmd+C)
+    if ((e.ctrlKey || e.metaKey) && e.key === 'c' && !e.shiftKey && !e.altKey) {
+      const activeElement = document.activeElement as HTMLElement;
+      const isTyping = activeElement && (
+        activeElement.tagName === 'INPUT' ||
+        activeElement.tagName === 'TEXTAREA' ||
+        (activeElement.isContentEditable === true)
+      );
+      
+      // Don't copy if user is typing in an input field (let browser handle it)
+      if (isTyping) {
+        return;
+      }
+      
+      // Copy selected cells or focused cell
+      if (selectedCells && selectedCells.size > 0) {
+        e.preventDefault();
+        
+        // Get cell values from selected cells
+        const sortedCells = Array.from(selectedCells).sort();
+        
+        // Group cells by row to maintain row order
+        const cellsByRow = new Map<string, string[]>();
+        sortedCells.forEach(cellKey => {
+          const [rowId, ...monthKeyParts] = cellKey.split('-');
+          const monthKey = monthKeyParts.join('-') as keyof GridRowType['values'];
+          
+          if (!cellsByRow.has(rowId)) {
+            cellsByRow.set(rowId, []);
+          }
+          
+          const row = findRowById(rowId, gridData);
+          const measure = gridData.find(m => m.id === rowId);
+          const targetRow = row || measure;
+          
+          if (targetRow && targetRow.values[monthKey] !== undefined) {
+            const value = targetRow.values[monthKey];
+            cellsByRow.get(rowId)!.push(value.toString());
+          }
+        });
+        
+        // Convert to tab-separated values (one row per selected cell, tab-separated columns)
+        const rows: string[] = [];
+        cellsByRow.forEach((values) => {
+          rows.push(values.join('\t'));
+        });
+        
+        const clipboardText = rows.join('\n');
+        navigator.clipboard.writeText(clipboardText).catch(err => {
+          console.error('Failed to copy to clipboard:', err);
+        });
+      } else if (focusedCell) {
+        // Copy focused cell
+        e.preventDefault();
+        const row = findRowById(focusedCell.rowId, gridData);
+        const measure = gridData.find(m => m.id === focusedCell.rowId);
+        const targetRow = row || measure;
+        
+        if (targetRow && targetRow.values[focusedCell.monthKey] !== undefined) {
+          const value = targetRow.values[focusedCell.monthKey];
+          navigator.clipboard.writeText(value.toString()).catch(err => {
+            console.error('Failed to copy to clipboard:', err);
+          });
+        }
+      }
+      return;
+    }
+    
+    // Handle Paste (Ctrl+V / Cmd+V)
+    if ((e.ctrlKey || e.metaKey) && e.key === 'v' && !e.shiftKey && !e.altKey) {
+      const activeElement = document.activeElement as HTMLElement;
+      const isTyping = activeElement && (
+        activeElement.tagName === 'INPUT' ||
+        activeElement.tagName === 'TEXTAREA' ||
+        (activeElement.isContentEditable === true)
+      );
+      
+      // Don't paste if user is typing in an input field (let browser handle it)
+      if (isTyping) {
+        return;
+      }
+      
+      e.preventDefault();
+      
+      // Read from clipboard
+      navigator.clipboard.readText().then(clipboardText => {
+        if (!clipboardText.trim()) return;
+        
+        // Parse clipboard data (support tab-separated values)
+        const lines = clipboardText.split('\n').filter(line => line.trim());
+        if (lines.length === 0) return;
+        
+        // Use getAllVisibleRows if available, otherwise compute inline
+        const visibleRows = getAllVisibleRows();
+        const visibleTimeKeys = getVisibleTimeKeys();
+        
+        if (visibleRows.length === 0 || visibleTimeKeys.length === 0) return;
+        
+        // Determine target cells
+        let targetCells: Array<{ rowId: string; monthKey: keyof GridRowType['values'] }> = [];
+        
+        if (selectedCells && selectedCells.size > 0) {
+          // Paste into selected cells
+          const sortedCells = Array.from(selectedCells).sort();
+          sortedCells.forEach(cellKey => {
+            const [rowId, ...monthKeyParts] = cellKey.split('-');
+            const monthKey = monthKeyParts.join('-') as keyof GridRowType['values'];
+            targetCells.push({ rowId, monthKey });
+          });
+        } else if (focusedCell) {
+          // Paste starting from focused cell
+          const startRowIndex = visibleRows.findIndex(r => r.id === focusedCell.rowId);
+          const startColIndex = visibleTimeKeys.findIndex(k => k === focusedCell.monthKey);
+          
+          if (startRowIndex !== -1 && startColIndex !== -1) {
+            lines.forEach((line, lineIndex) => {
+              const values = line.split('\t');
+              values.forEach((_, colIndex) => {
+                const rowIndex = startRowIndex + lineIndex;
+                const colIdx = startColIndex + colIndex;
+                
+                if (rowIndex < visibleRows.length && colIdx < visibleTimeKeys.length) {
+                  const row = visibleRows[rowIndex];
+                  if (row && row.type !== 'measure') {
+                    targetCells.push({
+                      rowId: row.id,
+                      monthKey: visibleTimeKeys[colIdx]
+                    });
+                  }
+                }
+              });
+            });
+          }
+        }
+        
+        // Parse values and paste
+        const valuesToPaste: string[] = [];
+        lines.forEach(line => {
+          const values = line.split('\t');
+          valuesToPaste.push(...values);
+        });
+        
+        // Paste values into target cells
+        targetCells.forEach((targetCell, index) => {
+          if (index < valuesToPaste.length) {
+            const valueStr = valuesToPaste[index].trim();
+            if (valueStr) {
+              const numValue = parseFloat(valueStr.replace(/,/g, ''));
+              if (!isNaN(numValue)) {
+                handleCellChange(targetCell.rowId, targetCell.monthKey, numValue);
+              }
+            }
+          }
+        });
+      }).catch(err => {
+        console.error('Failed to read from clipboard:', err);
+      });
+      
+      return;
+    }
+    
     // Handle Save shortcut (S key) - only if footer is visible and not typing in input
     if (e.key === 's' || e.key === 'S') {
       const activeElement = document.activeElement as HTMLElement;
@@ -2432,7 +2593,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
         cellElement.focus();
       }
     }
-  }, [focusedCell, getAllVisibleRows, getVisibleTimeKeys, handleCellChange, editedCells, impactedCells]);
+  }, [focusedCell, getAllVisibleRows, getVisibleTimeKeys, handleCellChange, editedCells, impactedCells, selectedCells, gridData, findRowById, expandedRows]);
 
   // Expose cell change handler for programmatic updates (mass update)
   // Also expose a function to get current cell value from gridData
