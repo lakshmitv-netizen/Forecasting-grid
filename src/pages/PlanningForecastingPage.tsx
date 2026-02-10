@@ -121,12 +121,6 @@ const PlanningForecastingPage: React.FC = () => {
               >
                 Details
               </button>
-              <button 
-                className={`planning-tab ${leftTab === 'grid-config' ? 'active' : ''}`}
-                onClick={() => setLeftTab('grid-config')}
-              >
-                Plan Data
-              </button>
             </div>
             <div className="planning-panel-content">
               {leftTab === 'details' && (
@@ -147,10 +141,6 @@ const PlanningForecastingPage: React.FC = () => {
                   <div className="planning-info-field">
                     <label className="planning-info-label">End Period</label>
                     <div className="planning-info-value">Dec 31st 2026</div>
-                  </div>
-                  <div className="planning-info-field">
-                    <label className="planning-info-label">Default Measure Group</label>
-                    <div className="planning-info-value">Revenue & Quantity Category</div>
                   </div>
                   <div className="planning-info-field">
                     <label className="planning-info-label">Default Time Granularity</label>

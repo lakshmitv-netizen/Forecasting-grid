@@ -475,62 +475,83 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     setGridData(calculatedData);
   }, [data, calculateMeasureValues]);
 
-  // Expand default measures based on industry
+  // Expand default measures - only expand edited measures, keep others collapsed
   useEffect(() => {
     const expandedRowIds = new Set<string>();
     
-    if (industry === 'consumer-goods') {
-      // For Consumer Goods: Expand Planned Volume by default
-      const plannedVolumeMeasure = gridData.find(measure => measure.id === 'measure-planned-volume');
-      
-      if (plannedVolumeMeasure && plannedVolumeMeasure.children) {
-        // Expand the measure itself
-        expandedRowIds.add(plannedVolumeMeasure.id);
-        
-        // Expand all children (accounts, categories, products)
-        const expandAllChildren = (rows: GridRowType[]) => {
-          for (const row of rows) {
-            expandedRowIds.add(row.id);
-            if (row.children && row.children.length > 0) {
-              expandAllChildren(row.children);
-            }
-          }
-        };
-        
-        expandAllChildren(plannedVolumeMeasure.children);
+    // Helper function to extract measure ID from rowId
+    const getMeasureIdFromRowId = (rowId: string): string | null => {
+      // Check if rowId is directly a measure ID
+      const directMeasure = gridData.find(m => m.id === rowId);
+      if (directMeasure) {
+        return directMeasure.id;
       }
-    } else {
-      // For Manufacturing: Expand Sales Agreement Quantity by default, keep Chassis Components closed
-      const salesAgreementQtyMeasure = gridData.find(measure => measure.id === 'measure-sa-qty');
       
-      if (salesAgreementQtyMeasure && salesAgreementQtyMeasure.children) {
-        // Expand the measure itself
-        expandedRowIds.add(salesAgreementQtyMeasure.id);
-        
-        // Expand the account (MagnaDrive - Michigan Plant)
-        const account = salesAgreementQtyMeasure.children.find(row => row.type === 'account');
-        if (account && account.children) {
-          expandedRowIds.add(account.id);
-          
-          // Expand only Transmission Assembly, keep Chassis Components closed
-          for (const category of account.children) {
-            if (category.name === 'Transmission Assembly') {
-              expandedRowIds.add(category.id);
-              // Also expand Transmission Assembly's children (products)
-              if (category.children) {
-                for (const product of category.children) {
-                  expandedRowIds.add(product.id);
-                }
-              }
-            }
-            // Chassis Components is not added, so it stays closed
-          }
+      // Extract measure ID from rowId pattern: account-measure-xxx, category-xxx-measure-xxx, product-xxx-measure-xxx
+      const parts = rowId.split('-');
+      const measureIndex = parts.findIndex(part => part === 'measure');
+      if (measureIndex !== -1 && measureIndex < parts.length - 1) {
+        return parts.slice(measureIndex, measureIndex + 2).join('-');
+      }
+      
+      return null;
+    };
+    
+    // Find all measures that have edits from cellEditHistory (saved edits) and editedCells (unsaved edits)
+    const editedMeasureIds = new Set<string>();
+    
+    // Check saved edits from cellEditHistory
+    if (cellEditHistory && cellEditHistory.length > 0) {
+      cellEditHistory.forEach(entry => {
+        const measureId = getMeasureIdFromRowId(entry.rowId);
+        if (measureId) {
+          editedMeasureIds.add(measureId);
         }
-      }
+      });
     }
     
+    // Check unsaved edits from editedCells
+    if (editedCells && editedCells.size > 0) {
+      editedCells.forEach((_, cellKey) => {
+        // cellKey format: `${rowId}-${monthKey}`
+        // Extract rowId by removing the last part (monthKey)
+        const rowId = cellKey.split('-').slice(0, -1).join('-');
+        const measureId = getMeasureIdFromRowId(rowId);
+        if (measureId) {
+          editedMeasureIds.add(measureId);
+        }
+      });
+    }
+    
+    // Expand only edited measures and all their children
+    if (editedMeasureIds.size > 0) {
+      editedMeasureIds.forEach(measureId => {
+        const measure = gridData.find(m => m.id === measureId);
+        if (measure) {
+          // Expand the measure itself
+          expandedRowIds.add(measure.id);
+          
+          // Recursive function to expand all children
+          const expandAllChildren = (rows: GridRowType[]) => {
+            for (const row of rows) {
+              expandedRowIds.add(row.id);
+              if (row.children && row.children.length > 0) {
+                expandAllChildren(row.children);
+              }
+            }
+          };
+          
+          // Expand all children if measure has children
+          if (measure.children && measure.children.length > 0) {
+            expandAllChildren(measure.children);
+          }
+        }
+      });
+    }
+    
+    // If no edited measures found, keep all collapsed (empty set)
     setExpandedRows(expandedRowIds);
-  }, [gridData, industry]);
+  }, [gridData, industry, cellEditHistory, editedCells]);
 
   const toggleExpand = (id: string) => {
     setExpandedRows((prev) => {
@@ -567,6 +588,65 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     }
     
     setExpandedRows(allExpandableIds);
+  }, [gridData]);
+
+  // Expand all rows within a specific measure
+  const handleExpandMeasure = useCallback((measureId: string) => {
+    const measure = gridData.find(m => m.id === measureId);
+    if (!measure) return;
+    
+    const expandedIds = new Set<string>();
+    expandedIds.add(measureId);
+    
+    // Recursive function to collect all row IDs within this measure
+    const collectAllIds = (rows: GridRowType[]) => {
+      for (const row of rows) {
+        expandedIds.add(row.id);
+        if (row.children && row.children.length > 0) {
+          collectAllIds(row.children);
+        }
+      }
+    };
+    
+    if (measure.children && measure.children.length > 0) {
+      collectAllIds(measure.children);
+    }
+    
+    setExpandedRows(prev => {
+      const newSet = new Set(prev);
+      expandedIds.forEach(id => newSet.add(id));
+      return newSet;
+    });
+  }, [gridData]);
+
+  // Collapse all rows within a specific measure
+  const handleCollapseMeasure = useCallback((measureId: string) => {
+    const measure = gridData.find(m => m.id === measureId);
+    if (!measure) return;
+    
+    const collapsedIds = new Set<string>();
+    
+    // Recursive function to collect all row IDs within this measure
+    const collectAllIds = (rows: GridRowType[]) => {
+      for (const row of rows) {
+        collapsedIds.add(row.id);
+        if (row.children && row.children.length > 0) {
+          collectAllIds(row.children);
+        }
+      }
+    };
+    
+    if (measure.children && measure.children.length > 0) {
+      collectAllIds(measure.children);
+    }
+    
+    setExpandedRows(prev => {
+      const newSet = new Set(prev);
+      // Remove measure and all its children, but keep other measures expanded
+      newSet.delete(measureId);
+      collapsedIds.forEach(id => newSet.delete(id));
+      return newSet;
+    });
   }, [gridData]);
 
   // Collapse all rows
@@ -3090,6 +3170,8 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                     measureGroupContext={measureGroupContext}
                     onMeasureGroupContextChange={onMeasureGroupContextChange}
                     sharedMeasureIds={sharedMeasureIds}
+                    onExpandMeasure={handleExpandMeasure}
+                    onCollapseMeasure={handleCollapseMeasure}
                   />
               );
               }
@@ -3137,6 +3219,8 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                   measureGroupContext={measureGroupContext}
                   onMeasureGroupContextChange={onMeasureGroupContextChange}
                   sharedMeasureIds={sharedMeasureIds}
+                  onExpandMeasure={handleExpandMeasure}
+                  onCollapseMeasure={handleCollapseMeasure}
                 />
               );
             })

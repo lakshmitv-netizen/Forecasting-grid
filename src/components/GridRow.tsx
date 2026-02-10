@@ -45,6 +45,8 @@ interface GridRowProps {
   measureGroupContext?: Map<string, string>; // Per-measure group context for shared measures
   onMeasureGroupContextChange?: (measureId: string, groupContext: string) => void; // Callback to change per-measure group context
   sharedMeasureIds?: string[]; // IDs of measures that exist in multiple groups
+  onExpandMeasure?: (measureId: string) => void; // Callback to expand all rows within a measure
+  onCollapseMeasure?: (measureId: string) => void; // Callback to collapse all rows within a measure
 }
 
 const GridRowComponent: React.FC<GridRowProps> = ({
@@ -85,6 +87,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
   measureGroupContext = new Map<string, string>(),
   onMeasureGroupContextChange,
   sharedMeasureIds = [],
+  onExpandMeasure,
+  onCollapseMeasure,
 }) => {
   const hasChildren = row.children && row.children.length > 0;
   const [editingCell, setEditingCell] = useState<{ monthKey: keyof GridRowType['values'] } | null>(null);
@@ -101,6 +105,9 @@ const GridRowComponent: React.FC<GridRowProps> = ({
   const [warningPopoverPosition, setWarningPopoverPosition] = useState<{ top: number; left: number } | null>(null);
   const warningIconRef = useRef<HTMLSpanElement>(null);
   const [isGroupDropdownOpen, setIsGroupDropdownOpen] = useState(false);
+  const [showMeasureMenu, setShowMeasureMenu] = useState(false);
+  const [measureMenuPosition, setMeasureMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const measureMenuRef = useRef<HTMLButtonElement>(null);
   
   // Update popover position when showing
   useEffect(() => {
@@ -127,6 +134,32 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showReadonlyWarning]);
+
+  // Update measure menu position when showing
+  useEffect(() => {
+    if (showMeasureMenu && measureMenuRef.current) {
+      const rect = measureMenuRef.current.getBoundingClientRect();
+      setMeasureMenuPosition({
+        top: rect.bottom + 8,
+        left: rect.left
+      });
+    }
+  }, [showMeasureMenu]);
+
+  // Close measure menu when clicking outside
+  useEffect(() => {
+    if (!showMeasureMenu) return;
+    
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.measure-menu-dropdown') && !measureMenuRef.current?.contains(target)) {
+        setShowMeasureMenu(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showMeasureMenu]);
   
   // Convert savedImpactedCells Set to array so React can detect changes
   // Use state to force re-render when savedImpactedCells changes
@@ -1722,6 +1755,115 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                   document.body
                 )}
               </span>
+            )}
+            {/* 3-dot menu button for measure rows */}
+            {row.type === 'measure' && (
+              <button
+                ref={measureMenuRef}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowMeasureMenu(!showMeasureMenu);
+                }}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginLeft: 'auto',
+                  marginRight: '8px',
+                  padding: '4px',
+                  border: 'none',
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  borderRadius: '4px',
+                  transition: 'background-color 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#f3f4f6';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="8" cy="3" r="1.5" fill="#6b7280"/>
+                  <circle cx="8" cy="8" r="1.5" fill="#6b7280"/>
+                  <circle cx="8" cy="13" r="1.5" fill="#6b7280"/>
+                </svg>
+                {/* Dropdown menu rendered via portal */}
+                {showMeasureMenu && measureMenuPosition && createPortal(
+                  <div
+                    className="measure-menu-dropdown"
+                    style={{
+                      position: 'fixed',
+                      top: measureMenuPosition.top,
+                      left: measureMenuPosition.left,
+                      backgroundColor: 'white',
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '6px',
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                      zIndex: 10000,
+                      minWidth: '160px',
+                      overflow: 'hidden'
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div
+                      onClick={() => {
+                        if (onExpandMeasure) {
+                          onExpandMeasure(row.id);
+                        }
+                        setShowMeasureMenu(false);
+                      }}
+                      style={{
+                        padding: '10px 12px',
+                        fontSize: '13px',
+                        color: '#374151',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        transition: 'background-color 0.15s'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = '#f3f4f6';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'white';
+                      }}
+                    >
+                      <span>Expand All</span>
+                    </div>
+                    <div
+                      onClick={() => {
+                        if (onCollapseMeasure) {
+                          onCollapseMeasure(row.id);
+                        }
+                        setShowMeasureMenu(false);
+                      }}
+                      style={{
+                        padding: '10px 12px',
+                        fontSize: '13px',
+                        color: '#374151',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        borderTop: '1px solid #e5e7eb',
+                        transition: 'background-color 0.15s'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = '#f3f4f6';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'white';
+                      }}
+                    >
+                      <span>Collapse All</span>
+                    </div>
+                  </div>,
+                  document.body
+                )}
+              </button>
             )}
           </div>
         </td>

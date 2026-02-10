@@ -521,6 +521,16 @@
 .grid-row.measure-row {
   background-color: #F3F3F3 !important;
   font-weight: var(--font-weight-semibold) !important;
+  /* Sticky positioning - stick right below the header */
+  position: sticky;
+  /* Calculate top offset to match header height: padding-top + line-height + padding-bottom + border-bottom */
+  /* Header padding: clamp(5px, calc(5px + 4px * (100vh - 600px) / 600px), 9px) */
+  /* Header line-height: 18px */
+  /* Header border-bottom: 1px */
+  /* Total: 18px + 2 * clamp(5px, calc(5px + 4px * (100vh - 600px) / 600px), 9px) + 1px */
+  top: clamp(29px, calc(29px + 8px * (100vh - 600px) / 600px), 37px);
+  z-index: 9; /* Just below header (z-index: 10) */
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
 }
 
 .grid-row.dimension-row {
@@ -619,6 +629,13 @@
 /* Measure rows - keep their original background color */
 .grid-row.measure-row .grid-cell:first-child {
   background-color: #F3F3F3 !important;
+  /* Sticky first column for measure rows - stick both horizontally and vertically */
+  position: sticky;
+  left: 0;
+  /* Match the top offset of the parent measure row */
+  top: clamp(29px, calc(29px + 8px * (100vh - 600px) / 600px), 37px);
+  z-index: 19; /* Higher than measure row (9) but below header corner (20) */
+  box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1) !important;
 }
 
 /* Measure row cells - increase minimum height */

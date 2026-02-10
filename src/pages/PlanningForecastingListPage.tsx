@@ -328,7 +328,7 @@ const PlanningForecastingListPage: React.FC = () => {
                 </div>
                 <div className="list-page-modal-row">
                   <div className="list-page-modal-field list-page-modal-field-full">
-                    <label className="list-page-modal-label">Select Offset Unit:</label>
+                    <label className="list-page-modal-label">Time Granularity:</label>
                     <select 
                       className="list-page-modal-select"
                       value={newRecord.offsetUnit}
@@ -353,13 +353,13 @@ const PlanningForecastingListPage: React.FC = () => {
                     />
                   </div>
                   <div className="list-page-modal-field">
-                    <label className="list-page-modal-label">Offset duration:</label>
+                    <label className="list-page-modal-label">Display Duration:</label>
                     <input 
                       type="number"
                       className="list-page-modal-input"
                       value={newRecord.endDate}
                       onChange={(e) => setNewRecord({...newRecord, endDate: e.target.value})}
-                      placeholder="Enter Offset duration"
+                      placeholder="Enter Display Duration"
                       min="0"
                     />
                   </div>
@@ -396,8 +396,8 @@ const PlanningForecastingListPage: React.FC = () => {
                           </span>
                         </span>
                       </label>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                        <div ref={accountComboboxRef} style={{ position: 'relative', display: 'flex', maxWidth: '500px', width: '100%' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                        <div ref={accountComboboxRef} style={{ position: 'relative', display: 'flex', flex: '0 1 auto', minWidth: '300px' }}>
                           <div className="slds-combobox-group" style={{ display: 'flex', width: '100%', alignItems: 'stretch' }}>
                             {/* First combobox - Level */}
                             <div className="slds-combobox" style={{ flex: '0 0 150px', position: 'relative' }}>
@@ -563,7 +563,7 @@ const PlanningForecastingListPage: React.FC = () => {
                             </div>
                           </div>
                         </div>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '15px', color: 'var(--color-on-surface-3)', whiteSpace: 'nowrap' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '15px', color: 'var(--color-on-surface-3)', whiteSpace: 'nowrap', marginLeft: '8px' }}>
                           <input
                             type="checkbox"
                             checked={newRecord.selectDescendents}
