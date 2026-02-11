@@ -41,6 +41,7 @@ const PlanningForecastingListPage: React.FC = () => {
   const [selectedValues, setSelectedValues] = useState<Set<string>>(new Set());
   const [valuesSearchTerm, setValuesSearchTerm] = useState<string>('');
   const [showSelectedOnly, setShowSelectedOnly] = useState<boolean>(false);
+  const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
   
   // State for account combobox
   const [accountLevel, setAccountLevel] = useState<string>('');
@@ -220,7 +221,7 @@ const PlanningForecastingListPage: React.FC = () => {
                     </svg>
                   </th>
                   <th className="list-page-th">
-                    <span>Admin Template</span>
+                    <span>Plan Configuration</span>
                     <svg className="list-page-sort-icon" viewBox="0 0 24 24" fill="currentColor">
                       <path d="M7 10l5 5 5-5H7z"/>
                     </svg>
@@ -368,6 +369,38 @@ const PlanningForecastingListPage: React.FC = () => {
                   </div>
                 </div>
               </div>
+
+              {/* USER SCOPE Section - Only for Template 2 */}
+              {newRecord.planTemplate === 'template-2' && (
+                <div className="list-page-modal-section">
+                  <h3 className="list-page-modal-section-title">User Scope</h3>
+                  <div className="list-page-modal-row">
+                    <div className="list-page-modal-field list-page-modal-field-full">
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {['John Smith', 'Sarah Johnson', 'Michael Brown', 'Emily Davis', 'David Wilson', 'Lisa Anderson'].map((userName) => (
+                          <label key={userName} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={selectedUsers.has(userName)}
+                              onChange={(e) => {
+                                const newSelectedUsers = new Set(selectedUsers);
+                                if (e.target.checked) {
+                                  newSelectedUsers.add(userName);
+                                } else {
+                                  newSelectedUsers.delete(userName);
+                                }
+                                setSelectedUsers(newSelectedUsers);
+                              }}
+                              style={{ cursor: 'pointer' }}
+                            />
+                            <span style={{ fontSize: '14px', color: 'var(--color-on-surface-3)' }}>{userName}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* ACCOUNT SCOPE Section - Progressive Disclosure */}
               {newRecord.planTemplate && (
