@@ -186,19 +186,19 @@ const PlanningForecastingListPage: React.FC = () => {
   const [accountDropdownOpen, setAccountDropdownOpen] = useState<boolean>(false);
   const accountComboboxRef = useRef<HTMLDivElement>(null);
   
-  // Get account options based on selected level
-  const _getAccountOptionsByLevel = (level: string): string[] => {
-    switch (level) {
-      case 'Level 0':
-        return ['Acme Industries', 'Zenith Industries', 'Magnadrive Industries'];
-      case 'Level 1':
-        return ['Magnadrive North America', 'Magnadrive South America', 'Acme North America', 'Acme South America', 'Zenith North America', 'Zenith South America'];
-      case 'Level 2':
-        return ['Magnadrive Michigan Plant', 'Magnadrive Ohio Plant'];
-      default:
-        return [];
-    }
-  };
+  // Get account options based on selected level (unused - kept for potential future use)
+  // const _getAccountOptionsByLevel = (level: string): string[] => {
+  //   switch (level) {
+  //     case 'Level 0':
+  //       return ['Acme Industries', 'Zenith Industries', 'Magnadrive Industries'];
+  //     case 'Level 1':
+  //       return ['Magnadrive North America', 'Magnadrive South America', 'Acme North America', 'Acme South America', 'Zenith North America', 'Zenith South America'];
+  //     case 'Level 2':
+  //       return ['Magnadrive Michigan Plant', 'Magnadrive Ohio Plant'];
+  //     default:
+  //       return [];
+  //   }
+  // };
   
   // Handle click outside for account combobox
   useEffect(() => {
@@ -244,7 +244,7 @@ const PlanningForecastingListPage: React.FC = () => {
   const prevAccountLevelRef = useRef<string>('');
   useEffect(() => {
     if (prevAccountLevelRef.current !== accountLevel && prevAccountLevelRef.current !== '') {
-      setAccountName('');
+      _setAccountName('');
     }
     prevAccountLevelRef.current = accountLevel;
   }, [accountLevel]);
@@ -293,14 +293,14 @@ const PlanningForecastingListPage: React.FC = () => {
 
   const mockValues = getMockValues(newRecord.planningLevel);
   
-  // Filter values based on search term and showSelectedOnly toggle
-  const _filteredValues = mockValues.filter(value => {
-    const matchesSearch = value.name.toLowerCase().includes(_valuesSearchTerm.toLowerCase());
-    if (_showSelectedOnly) {
-      return matchesSearch && selectedValues.has(value.id);
-    }
-    return matchesSearch;
-  });
+  // Filter values based on search term and showSelectedOnly toggle (unused - kept for potential future use)
+  // const _filteredValues = mockValues.filter(value => {
+  //   const matchesSearch = value.name.toLowerCase().includes(_valuesSearchTerm.toLowerCase());
+  //   if (_showSelectedOnly) {
+  //     return matchesSearch && selectedValues.has(value.id);
+  //   }
+  //   return matchesSearch;
+  // });
 
 
   const handleSelectAll = () => {
