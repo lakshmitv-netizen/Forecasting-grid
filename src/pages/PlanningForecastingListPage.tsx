@@ -35,10 +35,10 @@ const PlanningForecastingListPage: React.FC = () => {
     listView: '',
     selectDescendents: false
   });
-  const [_selectedValues, setSelectedValues] = useState<Set<string>>(new Set());
-  const [_valuesSearchTerm, _setValuesSearchTerm] = useState<string>('');
-  const [_showSelectedOnly, _setShowSelectedOnly] = useState<boolean>(false);
-  const [_selectedUsers, _setSelectedUsers] = useState<Set<string>>(new Set());
+  const [selectedValues, setSelectedValues] = useState<Set<string>>(new Set());
+  const [valuesSearchTerm, setValuesSearchTerm] = useState<string>('');
+  const [showSelectedOnly, setShowSelectedOnly] = useState<boolean>(false);
+  const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
   
   // State for plan configuration combobox
   const [planConfigSearchTerm, setPlanConfigSearchTerm] = useState<string>('');
@@ -54,10 +54,10 @@ const PlanningForecastingListPage: React.FC = () => {
   
   // Plan configuration options
   const planConfigOptions = [
-    { id: 'template-1', name: 'Plan View 1', meta: 'Account Hierarchy Starting at L1 • Followed by Products hierarchy' },
-    { id: 'template-2', name: 'Plan View 2', meta: 'Account Hierarchy Starting at L3 • Followed by Products hierarchy' },
-    { id: 'plan-view-3a', name: 'Plan View 3', meta: 'Product Hierarchy Starting at L3 • Followed by Accounts hierarchy' },
-    { id: 'plan-view-3b', name: 'Plan View 4', meta: 'Product Hierarchy Starting at L3 • Followed by Products, Users, Territories hierarchy' }
+    { id: 'template-1', name: 'Plan View 1', meta: 'Account Hierarchy Starting at L1 • Followed by Products Hierarchy' },
+    { id: 'template-2', name: 'Plan View 2', meta: 'Account Hierarchy Starting at L3 • Followed by Products Hierarchy' },
+    { id: 'plan-view-3a', name: 'Plan View 3', meta: 'Product Hierarchy Starting at L3 • Followed by Accounts Hierarchy' },
+    { id: 'plan-view-3b', name: 'Plan View 4', meta: 'Product Hierarchy Starting at L3 • Followed by Products, Users, Territories Hierarchy' }
   ];
   
   // Get selected plan config for display
@@ -180,14 +180,14 @@ const PlanningForecastingListPage: React.FC = () => {
       );
   
   // State for account combobox
-  const [__accountLevel, _setAccountLevel] = useState<string>('');
-  const [_accountName, _setAccountName] = useState<string>('');
+  const [accountLevel, setAccountLevel] = useState<string>('');
+  const [accountName, setAccountName] = useState<string>('');
   const [levelDropdownOpen, setLevelDropdownOpen] = useState<boolean>(false);
   const [accountDropdownOpen, setAccountDropdownOpen] = useState<boolean>(false);
   const accountComboboxRef = useRef<HTMLDivElement>(null);
   
   // Get account options based on selected level
-  const _getAccountOptionsByLevel = (level: string): string[] => {
+  const getAccountOptionsByLevel = (level: string): string[] => {
     switch (level) {
       case 'Level 0':
         return ['Acme Industries', 'Zenith Industries', 'Magnadrive Industries'];
@@ -243,11 +243,11 @@ const PlanningForecastingListPage: React.FC = () => {
   // Clear account name when level changes (but not on initial mount)
   const prevAccountLevelRef = useRef<string>('');
   useEffect(() => {
-    if (prevAccountLevelRef.current !== _accountLevel && prevAccountLevelRef.current !== '') {
-      _setAccountName('');
+    if (prevAccountLevelRef.current !== accountLevel && prevAccountLevelRef.current !== '') {
+      setAccountName('');
     }
-    prevAccountLevelRef.current = _accountLevel;
-  }, [_accountLevel]);
+    prevAccountLevelRef.current = accountLevel;
+  }, [accountLevel]);
   
   // Mock data for the values table based on product level
   const getMockValues = (level: string) => {
@@ -291,7 +291,16 @@ const PlanningForecastingListPage: React.FC = () => {
     }
   };
 
-  const _mockValues = _getMockValues(newRecord.planningLevel);
+  const mockValues = getMockValues(newRecord.planningLevel);
+  
+  // Filter values based on search term and showSelectedOnly toggle
+  const filteredValues = mockValues.filter(value => {
+    const matchesSearch = value.name.toLowerCase().includes(valuesSearchTerm.toLowerCase());
+    if (showSelectedOnly) {
+      return matchesSearch && selectedValues.has(value.id);
+    }
+    return matchesSearch;
+  });
 
 
   const handleSelectAll = () => {
@@ -459,6 +468,7 @@ const PlanningForecastingListPage: React.FC = () => {
                       className="list-page-modal-select"
                       value={newRecord.status}
                       onChange={(e) => setNewRecord({...newRecord, status: e.target.value})}
+                      style={!newRecord.status ? { color: '#999' } : {}}
                     >
                       <option value="draft">Draft</option>
                     </select>
@@ -471,6 +481,7 @@ const PlanningForecastingListPage: React.FC = () => {
                       className="list-page-modal-select"
                       value={newRecord.fiscalYear}
                       onChange={(e) => setNewRecord({...newRecord, fiscalYear: e.target.value})}
+                      style={!newRecord.fiscalYear ? { color: '#999' } : {}}
                     >
                       <option value="">Select Fiscal Year</option>
                       <option value="2026">2026 (Jan - Dec)</option>

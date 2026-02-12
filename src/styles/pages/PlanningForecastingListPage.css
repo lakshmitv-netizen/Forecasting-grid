@@ -609,6 +609,11 @@
   box-sizing: border-box !important;
 }
 
+.list-page-modal-select:invalid,
+.list-page-modal-select[value=""] {
+  color: #999 !important;
+}
+
 .list-page-modal-select:hover {
   border-color: #0176d3 !important;
 }
