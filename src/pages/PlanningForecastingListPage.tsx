@@ -8,17 +8,18 @@ interface ForecastRecord {
   id: string;
   name: string;
   adminTemplate: string;
-  startPeriod: string;
-  endPeriod: string;
+  fiscalYear: string;
+  rootRecord: string;
+  status: string;
 }
 
 const mockRecords: ForecastRecord[] = [
-  { id: 'fy26', name: 'Planning & Forecasting FY26', adminTemplate: 'KAM_MonthlyForecastUpdate_Template', startPeriod: 'Jan 1st 2026', endPeriod: 'Dec 31st 2026' },
-  { id: 'fy25', name: 'Planning & Forecasting FY25', adminTemplate: 'Account_HealthMonitoring_Template', startPeriod: 'Jan 1st 2025', endPeriod: 'Dec 31st 2025' },
-  { id: 'fy24', name: 'Planning & Forecasting FY24', adminTemplate: 'Product_Performance_Template', startPeriod: 'Jan 1st 2024', endPeriod: 'Dec 31st 2024' },
-  { id: 'fy23', name: 'Planning & Forecasting FY23', adminTemplate: 'Regional_SalesForecast_Template', startPeriod: 'Jan 1st 2023', endPeriod: 'Dec 31st 2023' },
-  { id: 'fy22', name: 'Planning & Forecasting FY22', adminTemplate: 'Quarterly_BusinessReview_Template', startPeriod: 'Jan 1st 2022', endPeriod: 'Dec 31st 2022' },
-  { id: 'fy21', name: 'Planning & Forecasting FY21', adminTemplate: 'Annual_BudgetPlanning_Template', startPeriod: 'Jan 1st 2021', endPeriod: 'Dec 31st 2021' },
+  { id: 'fy26', name: 'Planning & Forecasting FY26', adminTemplate: 'Plan View 1', fiscalYear: '2026', rootRecord: 'Acme', status: 'Draft' },
+  { id: 'fy25', name: 'Planning & Forecasting FY25', adminTemplate: 'Plan View 2', fiscalYear: '2025', rootRecord: 'MagnaDrive', status: 'Draft' },
+  { id: 'fy24', name: 'Planning & Forecasting FY24', adminTemplate: 'Plan View 3', fiscalYear: '2024', rootRecord: 'Zenith Industries', status: 'Draft' },
+  { id: 'fy23', name: 'Planning & Forecasting FY23', adminTemplate: 'Plan View 4', fiscalYear: '2023', rootRecord: 'Acme NYC', status: 'Draft' },
+  { id: 'fy22', name: 'Planning & Forecasting FY22', adminTemplate: 'Plan View 1', fiscalYear: '2022', rootRecord: 'TRN 750 - A', status: 'Draft' },
+  { id: 'fy21', name: 'Planning & Forecasting FY21', adminTemplate: 'Plan View 2', fiscalYear: '2021', rootRecord: 'TRN 750 - B', status: 'Draft' },
 ];
 
 const PlanningForecastingListPage: React.FC = () => {
@@ -379,19 +380,25 @@ const PlanningForecastingListPage: React.FC = () => {
                     </svg>
                   </th>
                   <th className="list-page-th">
+                    <span>Fiscal Year</span>
+                    <svg className="list-page-sort-icon" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M7 10l5 5 5-5H7z"/>
+                    </svg>
+                  </th>
+                  <th className="list-page-th">
                     <span>Plan Configuration</span>
                     <svg className="list-page-sort-icon" viewBox="0 0 24 24" fill="currentColor">
                       <path d="M7 10l5 5 5-5H7z"/>
                     </svg>
                   </th>
                   <th className="list-page-th">
-                    <span>Start Period</span>
+                    <span>Root Record</span>
                     <svg className="list-page-sort-icon" viewBox="0 0 24 24" fill="currentColor">
                       <path d="M7 10l5 5 5-5H7z"/>
                     </svg>
                   </th>
                   <th className="list-page-th">
-                    <span>End Period</span>
+                    <span>Plan Status</span>
                     <svg className="list-page-sort-icon" viewBox="0 0 24 24" fill="currentColor">
                       <path d="M7 10l5 5 5-5H7z"/>
                     </svg>
@@ -418,11 +425,12 @@ const PlanningForecastingListPage: React.FC = () => {
                         {record.name}
                       </Link>
                     </td>
+                    <td className="list-page-td">{record.fiscalYear}</td>
                     <td className="list-page-td">
                       <a href="#" className="list-page-link">{record.adminTemplate}</a>
                     </td>
-                    <td className="list-page-td">{record.startPeriod}</td>
-                    <td className="list-page-td">{record.endPeriod}</td>
+                    <td className="list-page-td">{record.rootRecord}</td>
+                    <td className="list-page-td">{record.status}</td>
                     <td className="list-page-td-actions">
                       <button className="list-page-row-action-btn">
                         <svg viewBox="0 0 24 24" fill="currentColor">
