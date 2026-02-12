@@ -35,7 +35,7 @@ const PlanningForecastingListPage: React.FC = () => {
     listView: '',
     selectDescendents: false
   });
-  const [selectedValues, setSelectedValues] = useState<Set<string>>(new Set());
+  const [_selectedValues, setSelectedValues] = useState<Set<string>>(new Set());
   const [_valuesSearchTerm, _setValuesSearchTerm] = useState<string>('');
   const [_showSelectedOnly, _setShowSelectedOnly] = useState<boolean>(false);
   const [_selectedUsers, _setSelectedUsers] = useState<Set<string>>(new Set());
@@ -291,7 +291,7 @@ const PlanningForecastingListPage: React.FC = () => {
     }
   };
 
-  const mockValues = getMockValues(newRecord.planningLevel);
+  const _mockValues = getMockValues(newRecord.planningLevel);
   
   // Filter values based on search term and showSelectedOnly toggle (unused - kept for potential future use)
   // const _filteredValues = mockValues.filter(value => {
