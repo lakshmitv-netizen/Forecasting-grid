@@ -28,10 +28,7 @@ const PlanningForecastingListPage: React.FC = () => {
   const [newRecord, setNewRecord] = useState({
     planName: '',
     status: 'draft',
-    timeGranularity: 'months',
-    offsetUnit: 'months',
-    startDate: '',
-    endDate: '',
+    fiscalYear: '',
     planTemplate: '',
     planningAccount: '',
     planningLevel: 'category',
@@ -42,6 +39,145 @@ const PlanningForecastingListPage: React.FC = () => {
   const [valuesSearchTerm, setValuesSearchTerm] = useState<string>('');
   const [showSelectedOnly, setShowSelectedOnly] = useState<boolean>(false);
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
+  
+  // State for plan configuration combobox
+  const [planConfigSearchTerm, setPlanConfigSearchTerm] = useState<string>('');
+  const [planConfigDropdownOpen, setPlanConfigDropdownOpen] = useState<boolean>(false);
+  const [planConfigDropdownPosition, setPlanConfigDropdownPosition] = useState<{top: number, left: number, width: number} | null>(null);
+  const planConfigComboboxRef = useRef<HTMLDivElement>(null);
+  
+  // State for root record
+  const [rootRecordSearchTerm, setRootRecordSearchTerm] = useState<string>('');
+  const [rootRecordDropdownOpen, setRootRecordDropdownOpen] = useState<boolean>(false);
+  const [rootRecordDropdownPosition, setRootRecordDropdownPosition] = useState<{top: number, left: number, width: number} | null>(null);
+  const rootRecordComboboxRef = useRef<HTMLDivElement>(null);
+  
+  // Plan configuration options
+  const planConfigOptions = [
+    { id: 'template-1', name: 'Plan View 1', meta: 'Account Hierarchy Starting at L1 • Followed by Products hierarchy' },
+    { id: 'template-2', name: 'Plan View 2', meta: 'Account Hierarchy Starting at L3 • Followed by Products hierarchy' },
+    { id: 'plan-view-3a', name: 'Plan View 3', meta: 'Product Hierarchy Starting at L3 • Followed by Accounts hierarchy' },
+    { id: 'plan-view-3b', name: 'Plan View 4', meta: 'Product Hierarchy Starting at L3 • Followed by Products, Users, Territories hierarchy' }
+  ];
+  
+  // Get selected plan config for display
+  const selectedPlanConfig = planConfigOptions.find(opt => opt.id === newRecord.planTemplate);
+  
+  // Helper function to extract level and type from plan config meta
+  const getRootRecordInfo = () => {
+    if (!selectedPlanConfig) return { type: '', level: '', placeholder: 'Select Root Record' };
+    
+    const meta = selectedPlanConfig.meta;
+    // Extract type (Account Hierarchy, Product Hierarchy, etc.) and level (L1, L3, etc.)
+    const accountMatch = meta.match(/Account Hierarchy Starting at (L\d+)/);
+    const productMatch = meta.match(/Product Hierarchy Starting at (L\d+)/);
+    
+    if (accountMatch) {
+      const level = accountMatch[1];
+      return {
+        type: 'Account',
+        level: level,
+        placeholder: `Select ${level} Account`,
+        supportingText: `This Plan Configuration starts at Accounts at level ${level}`
+      };
+    } else if (productMatch) {
+      const level = productMatch[1];
+      return {
+        type: 'Product',
+        level: level,
+        placeholder: `Select ${level} Product`,
+        supportingText: `This Plan Configuration starts at Products at level ${level}`
+      };
+    }
+    
+    return { type: '', level: '', placeholder: 'Select Root Record', supportingText: '' };
+  };
+  
+  const rootRecordInfo = getRootRecordInfo();
+  
+  // Get root record options based on plan configuration
+  const getRootRecordOptions = (): string[] => {
+    if (!selectedPlanConfig) return [];
+    
+    const meta = selectedPlanConfig.meta;
+    const accountMatch = meta.match(/Account Hierarchy Starting at (L\d+)/);
+    const productMatch = meta.match(/Product Hierarchy Starting at (L\d+)/);
+    
+    if (accountMatch) {
+      const level = accountMatch[1];
+      if (level === 'L1') {
+        return ['Acme', 'MagnaDrive', 'Zenith Industries'];
+      } else if (level === 'L3') {
+        return ['Acme NYC', 'Magnadrive Michigan Power Plant', 'Zenith Ohio Plant'];
+      }
+    } else if (productMatch) {
+      const level = productMatch[1];
+      if (level === 'L3') {
+        return ['TRN 750 - A', 'TRN 750 - B', 'TRN 750 - C', 'TRN 850 - A', 'TRN 650 - A'];
+      }
+    }
+    
+    return [];
+  };
+  
+  const rootRecordOptions = getRootRecordOptions();
+  
+  // Filter root record options based on search
+  const filteredRootRecordOptions = rootRecordSearchTerm.trim() === ''
+    ? rootRecordOptions
+    : rootRecordOptions.filter(option =>
+        option.toLowerCase().includes(rootRecordSearchTerm.toLowerCase())
+      );
+  
+  // Update dropdown position when it opens
+  useEffect(() => {
+    if (planConfigDropdownOpen && planConfigComboboxRef.current) {
+      const rect = planConfigComboboxRef.current.getBoundingClientRect();
+      setPlanConfigDropdownPosition({
+        top: rect.bottom + 4,
+        left: rect.left,
+        width: rect.width
+      });
+    } else {
+      setPlanConfigDropdownPosition(null);
+    }
+  }, [planConfigDropdownOpen]);
+  
+  // Update root record dropdown position when it opens
+  useEffect(() => {
+    if (rootRecordDropdownOpen && rootRecordComboboxRef.current) {
+      const rect = rootRecordComboboxRef.current.getBoundingClientRect();
+      setRootRecordDropdownPosition({
+        top: rect.bottom + 4,
+        left: rect.left,
+        width: rect.width
+      });
+    } else {
+      setRootRecordDropdownPosition(null);
+    }
+  }, [rootRecordDropdownOpen]);
+  
+  // Update search term when plan template changes externally
+  useEffect(() => {
+    if (selectedPlanConfig && planConfigSearchTerm !== selectedPlanConfig.name) {
+      setPlanConfigSearchTerm(selectedPlanConfig.name);
+    } else if (!newRecord.planTemplate && planConfigSearchTerm) {
+      setPlanConfigSearchTerm('');
+    }
+    // Clear root record when plan config changes
+    if (newRecord.planTemplate) {
+      setRootRecordSearchTerm('');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newRecord.planTemplate]);
+  
+  // Filter plan config options based on search - show all if search is empty
+  const filteredPlanConfigOptions = planConfigSearchTerm.trim() === '' 
+    ? planConfigOptions 
+    : planConfigOptions.filter(option => 
+        option.name.toLowerCase().includes(planConfigSearchTerm.toLowerCase()) ||
+        option.meta.toLowerCase().includes(planConfigSearchTerm.toLowerCase())
+      );
   
   // State for account combobox
   const [accountLevel, setAccountLevel] = useState<string>('');
@@ -67,20 +203,42 @@ const PlanningForecastingListPage: React.FC = () => {
   // Handle click outside for account combobox
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (accountComboboxRef.current && !accountComboboxRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      
+      if (accountComboboxRef.current && !accountComboboxRef.current.contains(target)) {
         setLevelDropdownOpen(false);
         setAccountDropdownOpen(false);
       }
+      
+      // Check if click is outside plan config combobox and not on the portal dropdown
+      if (planConfigDropdownOpen && planConfigComboboxRef.current) {
+        const isClickOnCombobox = planConfigComboboxRef.current.contains(target);
+        const isClickOnDropdown = (target as Element).closest('.slds-dropdown.slds-dropdown_fluid');
+        if (!isClickOnCombobox && !isClickOnDropdown) {
+          setPlanConfigDropdownOpen(false);
+          setPlanConfigDropdownPosition(null);
+        }
+      }
+      
+      // Check if click is outside root record combobox and not on the portal dropdown
+      if (rootRecordDropdownOpen && rootRecordComboboxRef.current) {
+        const isClickOnCombobox = rootRecordComboboxRef.current.contains(target);
+        const isClickOnDropdown = (target as Element).closest('.slds-dropdown.slds-dropdown_fluid');
+        if (!isClickOnCombobox && !isClickOnDropdown) {
+          setRootRecordDropdownOpen(false);
+          setRootRecordDropdownPosition(null);
+        }
+      }
     };
     
-    if (levelDropdownOpen || accountDropdownOpen) {
+    if (levelDropdownOpen || accountDropdownOpen || planConfigDropdownOpen || rootRecordDropdownOpen) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [levelDropdownOpen, accountDropdownOpen]);
+  }, [levelDropdownOpen, accountDropdownOpen, planConfigDropdownOpen, rootRecordDropdownOpen]);
   
   // Clear account name when level changes (but not on initial mount)
   const prevAccountLevelRef = useRef<string>('');
@@ -288,21 +446,11 @@ const PlanningForecastingListPage: React.FC = () => {
         }}>
           <div className={`list-page-modal ${newRecord.planTemplate ? 'list-page-modal-expanded' : ''}`} onClick={(e) => e.stopPropagation()}>
             <div className="list-page-modal-header">
-              <button className="list-page-modal-close" onClick={() => {
-                setIsModalOpen(false);
-                setSelectedValues(new Set());
-              }}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="18" y1="6" x2="6" y2="18"></line>
-                  <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
-              </button>
               <h2 className="list-page-modal-title">Create New Plan</h2>
             </div>
             <div className="list-page-modal-body">
               {/* BASIC DETAILS Section */}
               <div className="list-page-modal-section">
-                <h3 className="list-page-modal-section-title">Basic Details</h3>
                 <div className="list-page-modal-row">
                   <div className="list-page-modal-field">
                     <label className="list-page-modal-label">Plan Name:</label>
@@ -314,437 +462,323 @@ const PlanningForecastingListPage: React.FC = () => {
                       placeholder="Enter Plan Name"
                     />
                   </div>
-                </div>
-                <div className="list-page-modal-row">
-                  <div className="list-page-modal-field list-page-modal-field-full">
-                    <label className="list-page-modal-label">Time Granularity:</label>
+                  <div className="list-page-modal-field">
+                    <label className="list-page-modal-label">Plan Status:</label>
                     <select 
                       className="list-page-modal-select"
-                      value={newRecord.offsetUnit}
-                      onChange={(e) => setNewRecord({...newRecord, offsetUnit: e.target.value})}
+                      value={newRecord.status}
+                      onChange={(e) => setNewRecord({...newRecord, status: e.target.value})}
                     >
-                      <option value="weeks">Weeks</option>
-                      <option value="months">Months</option>
-                      <option value="quarters">Quarters</option>
+                      <option value="draft">Draft</option>
                     </select>
                   </div>
                 </div>
                 <div className="list-page-modal-row">
-                  <div className="list-page-modal-field">
-                    <label className="list-page-modal-label">Offset:</label>
-                    <input 
-                      type="number"
-                      className="list-page-modal-input"
-                      value={newRecord.startDate}
-                      onChange={(e) => setNewRecord({...newRecord, startDate: e.target.value})}
-                      placeholder="Enter Offset"
-                      min="0"
-                    />
-                  </div>
-                  <div className="list-page-modal-field">
-                    <label className="list-page-modal-label">Display Duration:</label>
-                    <input 
-                      type="number"
-                      className="list-page-modal-input"
-                      value={newRecord.endDate}
-                      onChange={(e) => setNewRecord({...newRecord, endDate: e.target.value})}
-                      placeholder="Enter Display Duration"
-                      min="0"
-                    />
+                  <div className="list-page-modal-field list-page-modal-field-full">
+                    <label className="list-page-modal-label">Fiscal Year:</label>
+                    <select 
+                      className="list-page-modal-select"
+                      value={newRecord.fiscalYear}
+                      onChange={(e) => setNewRecord({...newRecord, fiscalYear: e.target.value})}
+                    >
+                      <option value="">Select Fiscal Year</option>
+                      <option value="2026">2026 (Jan - Dec)</option>
+                      <option value="2025">2025 (Jan - Dec)</option>
+                      <option value="2024">2024 (Jan - Dec)</option>
+                      <option value="2023">2023 (Jan - Dec)</option>
+                      <option value="2022">2022 (Jan - Dec)</option>
+                      <option value="2021">2021 (Jan - Dec)</option>
+                    </select>
+                    <div style={{ marginTop: '8px', display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+                      <div style={{
+                        width: '16px',
+                        height: '16px',
+                        borderRadius: '50%',
+                        backgroundColor: '#666',
+                        color: 'white',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '11px',
+                        fontWeight: 'bold',
+                        flexShrink: 0,
+                        marginTop: '2px'
+                      }}>
+                        i
+                      </div>
+                      <span style={{ fontSize: '12px', color: '#666', lineHeight: '1.5' }}>
+                        Default time granularity shown will be in months
+                      </span>
+                    </div>
                   </div>
                 </div>
                 <div className="list-page-modal-row">
                   <div className="list-page-modal-field list-page-modal-field-full">
-                      <label className="list-page-modal-label">Select Admin Template:</label>
-                    <select 
-                      className="list-page-modal-select"
-                      value={newRecord.planTemplate}
-                      onChange={(e) => setNewRecord({...newRecord, planTemplate: e.target.value})}
-                    >
-                      <option value="">Select Plan Template</option>
-                      <option value="template-1">Template 1</option>
-                      <option value="template-2">Template 2</option>
-                      <option value="template-3">Template 3</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              {/* USER SCOPE Section - Only for Template 2 */}
-              {newRecord.planTemplate === 'template-2' && (
-                <div className="list-page-modal-section">
-                  <h3 className="list-page-modal-section-title">User Scope</h3>
-                  <div className="list-page-modal-row">
-                    <div className="list-page-modal-field list-page-modal-field-full">
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {['John Smith', 'Sarah Johnson', 'Michael Brown', 'Emily Davis', 'David Wilson', 'Lisa Anderson'].map((userName) => (
-                          <label key={userName} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                            <input
-                              type="checkbox"
-                              checked={selectedUsers.has(userName)}
-                              onChange={(e) => {
-                                const newSelectedUsers = new Set(selectedUsers);
-                                if (e.target.checked) {
-                                  newSelectedUsers.add(userName);
-                                } else {
-                                  newSelectedUsers.delete(userName);
-                                }
-                                setSelectedUsers(newSelectedUsers);
-                              }}
-                              style={{ cursor: 'pointer' }}
-                            />
-                            <span style={{ fontSize: '14px', color: 'var(--color-on-surface-3)' }}>{userName}</span>
-                          </label>
-                        ))}
+                    <label className="list-page-modal-label">Plan Configuration:</label>
+                    <div ref={planConfigComboboxRef} style={{ position: 'relative' }}>
+                      <div className="slds-combobox">
+                        <div className="slds-combobox__form-element slds-input-has-icon slds-input-has-icon_right" style={{ position: 'relative' }}>
+                          <input
+                            type="text"
+                            className="slds-input slds-combobox__input"
+                            value={planConfigDropdownOpen ? planConfigSearchTerm : (selectedPlanConfig ? selectedPlanConfig.name : planConfigSearchTerm)}
+                            placeholder="Select Plan Configuration"
+                            onChange={(e) => {
+                              setPlanConfigSearchTerm(e.target.value);
+                              setPlanConfigDropdownOpen(true);
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPlanConfigDropdownOpen(true);
+                              // Clear search term when clicking to show all options
+                              if (selectedPlanConfig && planConfigSearchTerm === selectedPlanConfig.name) {
+                                setPlanConfigSearchTerm('');
+                              } else if (!planConfigSearchTerm) {
+                                setPlanConfigSearchTerm('');
+                              }
+                            }}
+                            onFocus={(e) => {
+                              e.stopPropagation();
+                              setPlanConfigDropdownOpen(true);
+                              // Clear search term when focusing to show all options
+                              if (selectedPlanConfig && planConfigSearchTerm === selectedPlanConfig.name) {
+                                setPlanConfigSearchTerm('');
+                              } else if (!planConfigSearchTerm) {
+                                setPlanConfigSearchTerm('');
+                              }
+                            }}
+                            style={{
+                              height: '40px',
+                              padding: '0 36px 0 12px',
+                              border: '1px solid #c9c9c9',
+                              borderRadius: '0.25rem',
+                              fontSize: '14px',
+                              color: '#181818',
+                              backgroundColor: 'white',
+                              fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                              width: '100%',
+                              boxSizing: 'border-box'
+                            }}
+                          />
+                          <div style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+                            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                              <path d="M5.5 9.5C7.70914 9.5 9.5 7.70914 9.5 5.5C9.5 3.29086 7.70914 1.5 5.5 1.5C3.29086 1.5 1.5 3.29086 1.5 5.5C1.5 7.70914 3.29086 9.5 5.5 9.5Z" stroke="#666" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                              <path d="M8.5 8.5L10.5 10.5" stroke="#666" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          </div>
+                          {planConfigDropdownOpen && planConfigDropdownPosition && createPortal(
+                            <div 
+                              className="slds-dropdown slds-dropdown_fluid" 
+                              onClick={(e) => e.stopPropagation()}
+                              style={{
+                                position: 'fixed',
+                                top: `${planConfigDropdownPosition.top}px`,
+                                left: `${planConfigDropdownPosition.left}px`,
+                                width: `${planConfigDropdownPosition.width}px`,
+                                zIndex: 99999,
+                                backgroundColor: '#ffffff',
+                                border: '1px solid #c9c9c9',
+                                borderRadius: '0.25rem',
+                                boxShadow: '0 2px 8px 0 rgba(0, 0, 0, 0.12)',
+                                padding: '0.25rem 0',
+                                maxHeight: '20rem',
+                                overflowY: 'auto'
+                              }}>
+                              <ul className="slds-listbox slds-listbox_vertical" role="listbox">
+                                {filteredPlanConfigOptions.length > 0 ? (
+                                  filteredPlanConfigOptions.map((option) => (
+                                    <li key={option.id} role="presentation" className="slds-listbox__item">
+                                      <div
+                                        className={`slds-media slds-listbox__option slds-listbox__option_plain slds-media_small ${newRecord.planTemplate === option.id ? 'slds-is-selected' : ''}`}
+                                        role="option"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          e.preventDefault();
+                                          setNewRecord({...newRecord, planTemplate: option.id});
+                                          setPlanConfigSearchTerm(option.name);
+                                          setPlanConfigDropdownOpen(false);
+                                          setPlanConfigDropdownPosition(null);
+                                        }}
+                                        style={{
+                                          padding: '0.75rem',
+                                          cursor: 'pointer',
+                                          backgroundColor: newRecord.planTemplate === option.id ? '#f3f2f2' : '#ffffff',
+                                          transition: 'background-color 0.1s ease'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                          if (newRecord.planTemplate !== option.id) {
+                                            e.currentTarget.style.backgroundColor = '#e3f2fd';
+                                          }
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          if (newRecord.planTemplate !== option.id) {
+                                            e.currentTarget.style.backgroundColor = '#ffffff';
+                                          }
+                                        }}
+                                      >
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                          <div style={{ fontSize: '14px', fontWeight: 500, color: '#181818', marginBottom: '4px' }}>
+                                            {option.name}
+                                          </div>
+                                          <div style={{ fontSize: '14px', fontWeight: 400, color: '#666', lineHeight: '1.5' }}>
+                                            {option.meta}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </li>
+                                  ))
+                                ) : (
+                                  <li role="presentation" className="slds-listbox__item">
+                                    <div style={{ padding: '0.75rem', color: '#666', fontSize: '14px' }}>
+                                      No results found
+                                    </div>
+                                  </li>
+                                )}
+                              </ul>
+                            </div>,
+                            document.body
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
-              )}
-
-              {/* ACCOUNT SCOPE Section - Progressive Disclosure */}
-              {newRecord.planTemplate && (
-                <div className="list-page-modal-section">
-                  <h3 className="list-page-modal-section-title">Account Scope</h3>
+                
+                {/* ROOT RECORD Field */}
+                {newRecord.planTemplate && (
                   <div className="list-page-modal-row">
                     <div className="list-page-modal-field list-page-modal-field-full">
-                      <label className="list-page-modal-label">
-                        Select Account:
-                        <span className="list-page-modal-tooltip-wrapper">
-                          <span className="list-page-modal-tooltip-icon">i</span>
-                          <span className="list-page-modal-tooltip">
-                            All account nodes marked as "Planning" under the selected account will be displayed on the grid.
-                          </span>
-                        </span>
-                      </label>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
-                        <div ref={accountComboboxRef} style={{ position: 'relative', display: 'flex', flex: '0 1 auto', minWidth: '300px' }}>
-                          <div className="slds-combobox-group" style={{ display: 'flex', width: '100%', alignItems: 'stretch' }}>
-                            {/* First combobox - Level */}
-                            <div className="slds-combobox" style={{ flex: '0 0 150px', position: 'relative' }}>
-                              <div className="slds-combobox__form-element slds-input-has-icon slds-input-has-icon_right" style={{ position: 'relative' }}>
-                                <input
-                                  type="text"
-                                  className="slds-input slds-combobox__input"
-                                  value={accountLevel}
-                                  placeholder="Select Level"
-                                  readOnly
-                                  onClick={() => {
-                                    setLevelDropdownOpen(!levelDropdownOpen);
-                                    setAccountDropdownOpen(false);
-                                  }}
-                                  style={{
-                                    height: '40px',
-                                    padding: '0 36px 0 12px',
-                                    border: '1px solid #c9c9c9',
-                                    borderTopLeftRadius: '0.25rem',
-                                    borderBottomLeftRadius: '0.25rem',
-                                    borderRight: '2px solid #c9c9c9',
-                                    fontSize: '14px',
-                                    color: '#181818',
-                                    backgroundColor: 'white',
-                                    cursor: 'pointer',
-                                    fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-                                    width: '100%',
-                                    boxSizing: 'border-box'
-                                  }}
-                                />
-                                <div style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
-                                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M3 4.5L6 7.5L9 4.5" stroke="#666" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                  </svg>
-                                </div>
-                                {levelDropdownOpen && (
-                                  <div className="slds-dropdown slds-dropdown_fluid" style={{
-                                    position: 'absolute',
-                                    top: '100%',
-                                    left: '0',
-                                    width: '150px',
-                                    zIndex: 10000,
-                                    marginTop: '0.125rem',
-                                    backgroundColor: '#ffffff',
-                                    border: '1px solid #c9c9c9',
-                                    borderRadius: '0.25rem',
-                                    boxShadow: '0 2px 8px 0 rgba(0, 0, 0, 0.12)',
-                                    padding: '0.25rem 0',
-                                    maxHeight: '15rem',
-                                    overflowY: 'auto'
-                                  }}>
-                                    <ul className="slds-listbox slds-listbox_vertical" role="listbox">
-                                      {['Level 0', 'Level 1', 'Level 2'].map((level) => (
-                                        <li key={level} role="presentation" className="slds-listbox__item">
-                                          <div
-                                            className={`slds-media slds-listbox__option slds-listbox__option_plain slds-media_small ${accountLevel === level ? 'slds-is-selected' : ''}`}
-                                            role="option"
-                                            onClick={() => {
-                                              setAccountLevel(level);
-                                              setLevelDropdownOpen(false);
-                                              setAccountName(''); // Clear account name when level changes
-                                            }}
-                                            style={{
-                                              padding: '0.5rem 0.75rem',
-                                              cursor: 'pointer',
-                                              backgroundColor: accountLevel === level ? '#f3f2f2' : '#ffffff',
-                                              transition: 'background-color 0.1s ease'
-                                            }}
-                                          >
-                                            <span className="slds-media__body">
-                                              <span className="slds-listbox__option-text">{level}</span>
-                                            </span>
-                                          </div>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  </div>
-                                )}
-                              </div>
+                      <label className="list-page-modal-label">Root Record:</label>
+                      <div ref={rootRecordComboboxRef} style={{ position: 'relative' }}>
+                        <div className="slds-combobox">
+                          <div className="slds-combobox__form-element slds-input-has-icon slds-input-has-icon_right" style={{ position: 'relative' }}>
+                            <input
+                              type="text"
+                              className="slds-input slds-combobox__input"
+                              value={rootRecordSearchTerm}
+                              placeholder={rootRecordInfo.placeholder}
+                              onChange={(e) => {
+                                setRootRecordSearchTerm(e.target.value);
+                                setRootRecordDropdownOpen(true);
+                              }}
+                              onFocus={() => setRootRecordDropdownOpen(true)}
+                              disabled={!newRecord.planTemplate}
+                              style={{
+                                height: '40px',
+                                padding: '0 36px 0 12px',
+                                border: '1px solid #c9c9c9',
+                                borderRadius: '0.25rem',
+                                fontSize: '14px',
+                                color: newRecord.planTemplate ? '#181818' : '#999',
+                                backgroundColor: newRecord.planTemplate ? 'white' : '#f3f2f2',
+                                fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                                width: '100%',
+                                boxSizing: 'border-box',
+                                cursor: newRecord.planTemplate ? 'text' : 'not-allowed'
+                              }}
+                            />
+                            <div style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+                              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M5.5 9.5C7.70914 9.5 9.5 7.70914 9.5 5.5C9.5 3.29086 7.70914 1.5 5.5 1.5C3.29086 1.5 1.5 3.29086 1.5 5.5C1.5 7.70914 3.29086 9.5 5.5 9.5Z" stroke="#666" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                                <path d="M8.5 8.5L10.5 10.5" stroke="#666" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
                             </div>
-                            
-                            {/* Second combobox - Account Name */}
-                            <div className="slds-combobox" style={{ flex: '1', position: 'relative' }}>
-                              <div className="slds-combobox__form-element slds-input-has-icon slds-input-has-icon_right" style={{ position: 'relative' }}>
-                                <input
-                                  type="text"
-                                  className="slds-input slds-combobox__input"
-                                  value={accountName}
-                                  placeholder={accountLevel ? "Select Account" : "Select Level First"}
-                                  readOnly
-                                  disabled={!accountLevel}
-                                  onClick={() => {
-                                    if (accountLevel) {
-                                      setAccountDropdownOpen(!accountDropdownOpen);
-                                      setLevelDropdownOpen(false);
-                                    }
-                                  }}
-                                  style={{
-                                    height: '40px',
-                                    padding: '0 36px 0 12px',
-                                    border: '1px solid #c9c9c9',
-                                    borderTopRightRadius: '0.25rem',
-                                    borderBottomRightRadius: '0.25rem',
-                                    borderLeft: 'none',
-                                    fontSize: '14px',
-                                    color: accountLevel ? '#181818' : '#999',
-                                    backgroundColor: accountLevel ? 'white' : '#f3f2f2',
-                                    cursor: accountLevel ? 'pointer' : 'not-allowed',
-                                    fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-                                    width: '100%',
-                                    boxSizing: 'border-box'
-                                  }}
-                                />
-                                <div style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
-                                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M3 4.5L6 7.5L9 4.5" stroke="#666" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                  </svg>
-                                </div>
-                                {accountDropdownOpen && accountLevel && (
-                                  <div className="slds-dropdown slds-dropdown_fluid" style={{
-                                    position: 'absolute',
-                                    top: '100%',
-                                    right: '0',
-                                    left: '0',
-                                    zIndex: 10000,
-                                    marginTop: '0.125rem',
-                                    backgroundColor: '#ffffff',
-                                    border: '1px solid #c9c9c9',
-                                    borderRadius: '0.25rem',
-                                    boxShadow: '0 2px 8px 0 rgba(0, 0, 0, 0.12)',
-                                    padding: '0.25rem 0',
-                                    maxHeight: '15rem',
-                                    overflowY: 'auto'
-                                  }}>
-                                    <ul className="slds-listbox slds-listbox_vertical" role="listbox">
-                                      {getAccountOptionsByLevel(accountLevel).map((account) => (
-                                        <li key={account} role="presentation" className="slds-listbox__item">
-                                          <div
-                                            className={`slds-media slds-listbox__option slds-listbox__option_plain slds-media_small ${accountName === account ? 'slds-is-selected' : ''}`}
-                                            role="option"
-                                            onClick={() => {
-                                              setAccountName(account);
-                                              setAccountDropdownOpen(false);
-                                              setNewRecord({...newRecord, planningAccount: account.toLowerCase().replace(/\s+/g, '-')});
-                                            }}
-                                            style={{
-                                              padding: '0.5rem 0.75rem',
-                                              cursor: 'pointer',
-                                              backgroundColor: accountName === account ? '#f3f2f2' : '#ffffff',
-                                              transition: 'background-color 0.1s ease'
-                                            }}
-                                          >
-                                            <span className="slds-media__body">
-                                              <span className="slds-listbox__option-text">{account}</span>
-                                            </span>
-                                          </div>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
+                            {rootRecordDropdownOpen && newRecord.planTemplate && rootRecordDropdownPosition && createPortal(
+                              <div 
+                                className="slds-dropdown slds-dropdown_fluid" 
+                                onClick={(e) => e.stopPropagation()}
+                                style={{
+                                  position: 'fixed',
+                                  top: `${rootRecordDropdownPosition.top}px`,
+                                  left: `${rootRecordDropdownPosition.left}px`,
+                                  width: `${rootRecordDropdownPosition.width}px`,
+                                  zIndex: 99999,
+                                  backgroundColor: '#ffffff',
+                                  border: '1px solid #c9c9c9',
+                                  borderRadius: '0.25rem',
+                                  boxShadow: '0 2px 8px 0 rgba(0, 0, 0, 0.12)',
+                                  padding: '0.25rem 0',
+                                  maxHeight: '15rem',
+                                  overflowY: 'auto'
+                                }}>
+                                <ul className="slds-listbox slds-listbox_vertical" role="listbox">
+                                  {filteredRootRecordOptions.length > 0 ? (
+                                    filteredRootRecordOptions.map((option) => (
+                                      <li key={option} role="presentation" className="slds-listbox__item">
+                                        <div
+                                          className={`slds-media slds-listbox__option slds-listbox__option_plain slds-media_small ${rootRecordSearchTerm === option ? 'slds-is-selected' : ''}`}
+                                          role="option"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            e.preventDefault();
+                                            setRootRecordSearchTerm(option);
+                                            setRootRecordDropdownOpen(false);
+                                            setRootRecordDropdownPosition(null);
+                                          }}
+                                          style={{
+                                            padding: '0.5rem 0.75rem',
+                                            cursor: 'pointer',
+                                            backgroundColor: rootRecordSearchTerm === option ? '#f3f2f2' : '#ffffff',
+                                            transition: 'background-color 0.1s ease'
+                                          }}
+                                          onMouseEnter={(e) => {
+                                            if (rootRecordSearchTerm !== option) {
+                                              e.currentTarget.style.backgroundColor = '#e3f2fd';
+                                            }
+                                          }}
+                                          onMouseLeave={(e) => {
+                                            if (rootRecordSearchTerm !== option) {
+                                              e.currentTarget.style.backgroundColor = '#ffffff';
+                                            }
+                                          }}
+                                        >
+                                          <span className="slds-media__body">
+                                            <span className="slds-listbox__option-text">{option}</span>
+                                          </span>
+                                        </div>
+                                      </li>
+                                    ))
+                                  ) : (
+                                    <li role="presentation" className="slds-listbox__item">
+                                      <div style={{ padding: '0.75rem', color: '#666', fontSize: '14px' }}>
+                                        {newRecord.planTemplate ? 'No options available' : 'Select a Plan Configuration first'}
+                                      </div>
+                                    </li>
+                                  )}
+                                </ul>
+                              </div>,
+                              document.body
+                            )}
                           </div>
                         </div>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '15px', color: 'var(--color-on-surface-3)', whiteSpace: 'nowrap', marginLeft: '8px' }}>
-                          <input
-                            type="checkbox"
-                            checked={newRecord.selectDescendents}
-                            onChange={(e) => setNewRecord({...newRecord, selectDescendents: e.target.checked})}
-                            style={{ cursor: 'pointer' }}
-                          />
-                          <span>Select Descendents</span>
-                        </label>
                       </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* PRODUCT SCOPE Section - Progressive Disclosure */}
-              {newRecord.planTemplate && (
-                <div className="list-page-modal-section">
-                  <h3 className="list-page-modal-section-title">Product Scope</h3>
-                  <div className="list-page-modal-row">
-                    <div className="list-page-modal-field list-page-modal-field-full">
-                      <label className="list-page-modal-label">Product Level:</label>
-                      <select 
-                        className="list-page-modal-select"
-                        value={newRecord.planningLevel}
-                        onChange={(e) => {
-                          setNewRecord({...newRecord, planningLevel: e.target.value});
-                          // Clear selected values and search term when level changes
-                          setSelectedValues(new Set());
-                          setValuesSearchTerm('');
-                        }}
-                      >
-                        <option value="category">Category</option>
-                        <option value="product">Product</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div className="list-page-modal-row">
-                    <div className="list-page-modal-field list-page-modal-field-full">
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                        <label className="list-page-modal-label" style={{ marginBottom: 0 }}>
-                          Select Values:
-                          <span className="list-page-modal-tooltip-wrapper">
-                            <span className="list-page-modal-tooltip-icon">i</span>
-                            <span className="list-page-modal-tooltip">
-                              All items selected in this list will be populated as values for the selected product level and all their hierarchical descendants will be shown on the grid.
-                            </span>
-                          </span>
-                        </label>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', color: 'var(--color-on-surface-3)', marginBottom: 0 }}>
-                          <span>Show selected</span>
-                          <div style={{ position: 'relative', width: '36px', height: '20px' }}>
-                            <input
-                              type="checkbox"
-                              checked={showSelectedOnly}
-                              onChange={(e) => setShowSelectedOnly(e.target.checked)}
-                              style={{
-                                position: 'absolute',
-                                opacity: 0,
-                                width: 0,
-                                height: 0
-                              }}
-                            />
-                            <div
-                              style={{
-                                position: 'absolute',
-                                top: 0,
-                                left: 0,
-                                width: '36px',
-                                height: '20px',
-                                backgroundColor: showSelectedOnly ? '#0176d3' : '#c9c9c9',
-                                borderRadius: '10px',
-                                transition: 'background-color 0.2s',
-                                cursor: 'pointer'
-                              }}
-                              onClick={() => setShowSelectedOnly(!showSelectedOnly)}
-                            >
-                              <div
-                                style={{
-                                  position: 'absolute',
-                                  top: '2px',
-                                  left: showSelectedOnly ? '18px' : '2px',
-                                  width: '16px',
-                                  height: '16px',
-                                  backgroundColor: 'white',
-                                  borderRadius: '50%',
-                                  transition: 'left 0.2s',
-                                  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.3)'
-                                }}
-                              />
-                            </div>
+                      {rootRecordInfo.supportingText && (
+                        <div style={{ marginTop: '8px', display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+                          <div style={{
+                            width: '16px',
+                            height: '16px',
+                            borderRadius: '50%',
+                            backgroundColor: '#666',
+                            color: 'white',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '11px',
+                            fontWeight: 'bold',
+                            flexShrink: 0,
+                            marginTop: '2px'
+                          }}>
+                            i
                           </div>
-                        </label>
-                      </div>
-                      <div className="list-page-modal-values-table-container">
-                        <table className="list-page-modal-values-table">
-                          <thead>
-                            <tr>
-                              <th className="list-page-modal-values-th-checkbox">
-                                <input 
-                                  type="checkbox" 
-                                  checked={selectedValues.size === filteredValues.length && filteredValues.length > 0}
-                                  onChange={(e) => {
-                                    if (e.target.checked) {
-                                      setSelectedValues(new Set(filteredValues.map(v => v.id)));
-                                    } else {
-                                      setSelectedValues(new Set());
-                                    }
-                                  }}
-                                  className="list-page-modal-values-checkbox"
-                                />
-                              </th>
-                              <th className="list-page-modal-values-th-name">
-                                <div className="list-page-modal-values-header-content">
-                                  <span>Name</span>
-                                  <div className="list-page-modal-values-search-wrapper">
-                                    <svg className="list-page-modal-values-search-icon" width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                      <path d="M6.33333 11.6667C9.27885 11.6667 11.6667 9.27885 11.6667 6.33333C11.6667 3.38781 9.27885 1 6.33333 1C3.38781 1 1 3.38781 1 6.33333C1 9.27885 3.38781 11.6667 6.33333 11.6667Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                      <path d="M13 13L10.1 10.1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                    </svg>
-                                    <input
-                                      type="text"
-                                      className="list-page-modal-values-search-input"
-                                      placeholder="Search..."
-                                      value={valuesSearchTerm}
-                                      onChange={(e) => setValuesSearchTerm(e.target.value)}
-                                    />
-                                  </div>
-                                </div>
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {filteredValues.map((value) => (
-                              <tr key={value.id} className="list-page-modal-values-row">
-                                <td className="list-page-modal-values-td-checkbox">
-                                  <input 
-                                    type="checkbox" 
-                                    checked={selectedValues.has(value.id)}
-                                    onChange={(e) => {
-                                      const newSelected = new Set(selectedValues);
-                                      if (e.target.checked) {
-                                        newSelected.add(value.id);
-                                      } else {
-                                        newSelected.delete(value.id);
-                                      }
-                                      setSelectedValues(newSelected);
-                                    }}
-                                    className="list-page-modal-values-checkbox"
-                                  />
-                                </td>
-                                <td className="list-page-modal-values-td-name">{value.name}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                          <span style={{ fontSize: '12px', color: '#666', lineHeight: '1.5' }}>
+                            {rootRecordInfo.supportingText}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
             <div className="list-page-modal-footer">
               <button className="list-page-modal-cancel" onClick={() => {
