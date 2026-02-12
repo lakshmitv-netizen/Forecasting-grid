@@ -291,7 +291,7 @@ const PlanningForecastingListPage: React.FC = () => {
     }
   };
 
-  const _mockValues = getMockValues(newRecord.planningLevel);
+  // const _mockValues = getMockValues(newRecord.planningLevel);
   
   // Filter values based on search term and showSelectedOnly toggle (unused - kept for potential future use)
   // const _filteredValues = mockValues.filter(value => {
