@@ -426,9 +426,7 @@ const PlanningForecastingListPage: React.FC = () => {
                       </Link>
                     </td>
                     <td className="list-page-td">{record.fiscalYear}</td>
-                    <td className="list-page-td">
-                      <a href="#" className="list-page-link">{record.adminTemplate}</a>
-                    </td>
+                    <td className="list-page-td">{record.adminTemplate}</td>
                     <td className="list-page-td">{record.rootRecord}</td>
                     <td className="list-page-td">{record.status}</td>
                     <td className="list-page-td-actions">

@@ -127,28 +127,24 @@ const PlanningForecastingPage: React.FC = () => {
                 <div className="planning-information-section">
                   <h3 className="planning-section-title">Information</h3>
                   <div className="planning-info-field">
-                    <label className="planning-info-label">Name</label>
+                    <label className="planning-info-label">Plan Name</label>
                     <div className="planning-info-value">Planning & Forecasting FY26</div>
                   </div>
                   <div className="planning-info-field">
-                    <label className="planning-info-label">Admin Template</label>
-                    <a href="#" className="planning-info-link">KAM_MonthlyForecastUpdate_Template</a>
+                    <label className="planning-info-label">Plan Status</label>
+                    <div className="planning-info-value">Draft</div>
                   </div>
                   <div className="planning-info-field">
-                    <label className="planning-info-label">Start Period</label>
-                    <div className="planning-info-value">Jan 1st 2026</div>
+                    <label className="planning-info-label">Fiscal Year</label>
+                    <div className="planning-info-value">2026</div>
                   </div>
                   <div className="planning-info-field">
-                    <label className="planning-info-label">End Period</label>
-                    <div className="planning-info-value">Dec 31st 2026</div>
+                    <label className="planning-info-label">Plan Configuration</label>
+                    <div className="planning-info-value">Plan View 1</div>
                   </div>
                   <div className="planning-info-field">
-                    <label className="planning-info-label">Default Time Granularity</label>
-                    <div className="planning-info-value">Months</div>
-                  </div>
-                  <div className="planning-info-field">
-                    <label className="planning-info-label">Account</label>
-                    <div className="planning-info-value">MagnaDrive - Michigan Plant</div>
+                    <label className="planning-info-label">Root Record</label>
+                    <div className="planning-info-value">Acme</div>
                   </div>
                 </div>
               )}
