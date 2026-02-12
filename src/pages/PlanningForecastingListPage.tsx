@@ -249,47 +249,47 @@ const PlanningForecastingListPage: React.FC = () => {
     prevAccountLevelRef.current = accountLevel;
   }, [accountLevel]);
   
-  // Mock data for the values table based on product level
-  const getMockValues = (level: string) => {
-    switch (level) {
-      case 'category':
-        return [
-          { id: 'transmission-assembly', name: 'Transmission Assembly' },
-          { id: 'chassis-components', name: 'Chassis Components' },
-          { id: 'engine-components', name: 'Engine Components' },
-          { id: 'electrical-systems', name: 'Electrical Systems' },
-          { id: 'hydraulic-systems', name: 'Hydraulic Systems' },
-          { id: 'brake-systems', name: 'Brake Systems' },
-          { id: 'suspension-systems', name: 'Suspension Systems' }
-        ];
-      case 'brand':
-        return [
-          { id: 'trn-750-series', name: 'TRN 750 Series' },
-          { id: 'trn-850-series', name: 'TRN 850 Series' },
-          { id: 'trn-650-series', name: 'TRN 650 Series' },
-          { id: 'chassis-heavy-duty', name: 'Heavy-Duty Chassis' },
-          { id: 'chassis-standard', name: 'Standard Chassis' },
-          { id: 'chassis-lightweight', name: 'Lightweight Chassis' },
-          { id: 'engine-v8', name: 'V8 Engine Line' },
-          { id: 'engine-v6', name: 'V6 Engine Line' }
-        ];
-      case 'product':
-        return [
-          { id: 'trn-750-a', name: 'TRN 750 - A' },
-          { id: 'trn-750-b', name: 'TRN 750 - B' },
-          { id: 'trn-750-c', name: 'TRN 750 - C' },
-          { id: 'trn-750-d', name: 'TRN 750 - D' },
-          { id: 'trn-750-e', name: 'TRN 750 - E' },
-          { id: 'chassis-product-1', name: 'Chassis Product 1' },
-          { id: 'chassis-product-2', name: 'Chassis Product 2' },
-          { id: 'engine-block-assembly', name: 'Engine Block Assembly' },
-          { id: 'cylinder-head-pro', name: 'Cylinder Head Pro' },
-          { id: 'piston-assembly-set', name: 'Piston Assembly Set' }
-        ];
-      default:
-        return [];
-    }
-  };
+  // Mock data for the values table based on product level (unused - kept for potential future use)
+  // const getMockValues = (level: string) => {
+  //   switch (level) {
+  //     case 'category':
+  //       return [
+  //         { id: 'transmission-assembly', name: 'Transmission Assembly' },
+  //         { id: 'chassis-components', name: 'Chassis Components' },
+  //         { id: 'engine-components', name: 'Engine Components' },
+  //         { id: 'electrical-systems', name: 'Electrical Systems' },
+  //         { id: 'hydraulic-systems', name: 'Hydraulic Systems' },
+  //         { id: 'brake-systems', name: 'Brake Systems' },
+  //         { id: 'suspension-systems', name: 'Suspension Systems' }
+  //       ];
+  //     case 'brand':
+  //       return [
+  //         { id: 'trn-750-series', name: 'TRN 750 Series' },
+  //         { id: 'trn-850-series', name: 'TRN 850 Series' },
+  //         { id: 'trn-650-series', name: 'TRN 650 Series' },
+  //         { id: 'chassis-heavy-duty', name: 'Heavy-Duty Chassis' },
+  //         { id: 'chassis-standard', name: 'Standard Chassis' },
+  //         { id: 'chassis-lightweight', name: 'Lightweight Chassis' },
+  //         { id: 'engine-v8', name: 'V8 Engine Line' },
+  //         { id: 'engine-v6', name: 'V6 Engine Line' }
+  //       ];
+  //     case 'product':
+  //       return [
+  //         { id: 'trn-750-a', name: 'TRN 750 - A' },
+  //         { id: 'trn-750-b', name: 'TRN 750 - B' },
+  //         { id: 'trn-750-c', name: 'TRN 750 - C' },
+  //         { id: 'trn-750-d', name: 'TRN 750 - D' },
+  //         { id: 'trn-750-e', name: 'TRN 750 - E' },
+  //         { id: 'chassis-product-1', name: 'Chassis Product 1' },
+  //         { id: 'chassis-product-2', name: 'Chassis Product 2' },
+  //         { id: 'engine-block-assembly', name: 'Engine Block Assembly' },
+  //         { id: 'cylinder-head-pro', name: 'Cylinder Head Pro' },
+  //         { id: 'piston-assembly-set', name: 'Piston Assembly Set' }
+  //       ];
+  //     default:
+  //       return [];
+  //   }
+  // };
 
   // const _mockValues = getMockValues(newRecord.planningLevel);
   
