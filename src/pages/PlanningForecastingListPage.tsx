@@ -36,9 +36,9 @@ const PlanningForecastingListPage: React.FC = () => {
     selectDescendents: false
   });
   const [selectedValues, setSelectedValues] = useState<Set<string>>(new Set());
-  const [valuesSearchTerm, setValuesSearchTerm] = useState<string>('');
-  const [showSelectedOnly, setShowSelectedOnly] = useState<boolean>(false);
-  const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
+  const [_valuesSearchTerm, _setValuesSearchTerm] = useState<string>('');
+  const [_showSelectedOnly, _setShowSelectedOnly] = useState<boolean>(false);
+  const [_selectedUsers, _setSelectedUsers] = useState<Set<string>>(new Set());
   
   // State for plan configuration combobox
   const [planConfigSearchTerm, setPlanConfigSearchTerm] = useState<string>('');
@@ -180,14 +180,14 @@ const PlanningForecastingListPage: React.FC = () => {
       );
   
   // State for account combobox
-  const [accountLevel, setAccountLevel] = useState<string>('');
-  const [accountName, setAccountName] = useState<string>('');
+  const [accountLevel, _setAccountLevel] = useState<string>('');
+  const [_accountName, _setAccountName] = useState<string>('');
   const [levelDropdownOpen, setLevelDropdownOpen] = useState<boolean>(false);
   const [accountDropdownOpen, setAccountDropdownOpen] = useState<boolean>(false);
   const accountComboboxRef = useRef<HTMLDivElement>(null);
   
   // Get account options based on selected level
-  const getAccountOptionsByLevel = (level: string): string[] => {
+  const _getAccountOptionsByLevel = (level: string): string[] => {
     switch (level) {
       case 'Level 0':
         return ['Acme Industries', 'Zenith Industries', 'Magnadrive Industries'];
@@ -294,9 +294,9 @@ const PlanningForecastingListPage: React.FC = () => {
   const mockValues = getMockValues(newRecord.planningLevel);
   
   // Filter values based on search term and showSelectedOnly toggle
-  const filteredValues = mockValues.filter(value => {
-    const matchesSearch = value.name.toLowerCase().includes(valuesSearchTerm.toLowerCase());
-    if (showSelectedOnly) {
+  const _filteredValues = mockValues.filter(value => {
+    const matchesSearch = value.name.toLowerCase().includes(_valuesSearchTerm.toLowerCase());
+    if (_showSelectedOnly) {
       return matchesSearch && selectedValues.has(value.id);
     }
     return matchesSearch;
