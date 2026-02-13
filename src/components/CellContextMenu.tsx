@@ -10,6 +10,7 @@ interface CellContextMenuProps {
   onToggleLock: () => void;
   onMassUpdate?: () => void;
   onViewEditHistory?: () => void;
+  onMarkAsRead?: () => void;
   isLocked: boolean;
   canPaste: boolean;
   isEditable: boolean;
@@ -25,6 +26,7 @@ const CellContextMenu: React.FC<CellContextMenuProps> = ({
   onToggleLock,
   onMassUpdate,
   onViewEditHistory,
+  onMarkAsRead,
   isLocked,
   canPaste,
   isEditable,
@@ -146,7 +148,6 @@ const CellContextMenu: React.FC<CellContextMenuProps> = ({
             </svg>
             <span className="cell-context-menu-label">Bulk Edit</span>
           </button>
-          <div className="cell-context-menu-separator" />
         </>
       )}
 
@@ -162,7 +163,24 @@ const CellContextMenu: React.FC<CellContextMenuProps> = ({
             </svg>
             <span className="cell-context-menu-label">View Edit History</span>
           </button>
-          <div className="cell-context-menu-separator" />
+        </>
+      )}
+
+      {/* Mark as Read - only show for multi-cell selection */}
+      {onMarkAsRead && hasMultipleSelection && (
+        <>
+          {onMassUpdate && (
+            <div className="cell-context-menu-separator" />
+          )}
+          <button 
+            className="cell-context-menu-item"
+            onClick={() => handleAction(onMarkAsRead)}
+          >
+            <svg className="cell-context-menu-icon" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+            </svg>
+            <span className="cell-context-menu-label">Mark as read</span>
+          </button>
         </>
       )}
 

@@ -14,12 +14,12 @@ interface ForecastRecord {
 }
 
 const mockRecords: ForecastRecord[] = [
-  { id: 'fy26', name: 'Planning & Forecasting FY26', adminTemplate: 'Plan View 1', fiscalYear: '2026', rootRecord: 'Acme', status: 'Draft' },
-  { id: 'fy25', name: 'Planning & Forecasting FY25', adminTemplate: 'Plan View 2', fiscalYear: '2025', rootRecord: 'MagnaDrive', status: 'Draft' },
-  { id: 'fy24', name: 'Planning & Forecasting FY24', adminTemplate: 'Plan View 3', fiscalYear: '2024', rootRecord: 'Zenith Industries', status: 'Draft' },
-  { id: 'fy23', name: 'Planning & Forecasting FY23', adminTemplate: 'Plan View 4', fiscalYear: '2023', rootRecord: 'Acme NYC', status: 'Draft' },
-  { id: 'fy22', name: 'Planning & Forecasting FY22', adminTemplate: 'Plan View 1', fiscalYear: '2022', rootRecord: 'TRN 750 - A', status: 'Draft' },
-  { id: 'fy21', name: 'Planning & Forecasting FY21', adminTemplate: 'Plan View 2', fiscalYear: '2021', rootRecord: 'TRN 750 - B', status: 'Draft' },
+  { id: 'fy26', name: 'Planning & Forecasting FY26', adminTemplate: 'KAMPlanConfig', fiscalYear: '2026', rootRecord: 'Acme', status: 'Draft' },
+  { id: 'fy25', name: 'Planning & Forecasting FY25', adminTemplate: 'KAMForecastConfig', fiscalYear: '2025', rootRecord: 'MagnaDrive', status: 'Draft' },
+  { id: 'fy24', name: 'Planning & Forecasting FY24', adminTemplate: 'RMPlanConfig', fiscalYear: '2024', rootRecord: 'Zenith Industries', status: 'Draft' },
+  { id: 'fy23', name: 'Planning & Forecasting FY23', adminTemplate: 'RMForecastConfig', fiscalYear: '2023', rootRecord: 'Acme NYC', status: 'Draft' },
+  { id: 'fy22', name: 'Planning & Forecasting FY22', adminTemplate: 'KAMPlanConfig', fiscalYear: '2022', rootRecord: 'TRN 750 - A', status: 'Draft' },
+  { id: 'fy21', name: 'Planning & Forecasting FY21', adminTemplate: 'KAMForecastConfig', fiscalYear: '2021', rootRecord: 'TRN 750 - B', status: 'Draft' },
 ];
 
 const PlanningForecastingListPage: React.FC = () => {
@@ -55,10 +55,10 @@ const PlanningForecastingListPage: React.FC = () => {
   
   // Plan configuration options
   const planConfigOptions = [
-    { id: 'template-1', name: 'Plan View 1', meta: 'Account Hierarchy Starting at L1 • Followed by Products Hierarchy' },
-    { id: 'template-2', name: 'Plan View 2', meta: 'Account Hierarchy Starting at L3 • Followed by Products Hierarchy' },
-    { id: 'plan-view-3a', name: 'Plan View 3', meta: 'Product Hierarchy Starting at L3 • Followed by Accounts Hierarchy' },
-    { id: 'plan-view-3b', name: 'Plan View 4', meta: 'Product Hierarchy Starting at L3 • Followed by Products, Users, Territories Hierarchy' }
+    { id: 'template-1', name: 'KAMPlanConfig', meta: 'Account Hierarchy Starting at L3 • Followed by Products Hierarchy' },
+    { id: 'template-2', name: 'KAMForecastConfig', meta: 'Account Hierarchy Starting at L1 • Followed by Products Hierarchy' },
+    { id: 'plan-view-3a', name: 'RMPlanConfig', meta: 'Product Hierarchy Starting at L3 • Followed by Accounts Hierarchy' },
+    { id: 'plan-view-3b', name: 'RMForecastConfig', meta: 'Product Hierarchy Starting at L3 • Followed by Products, Users, Territories Hierarchy' }
   ];
   
   // Get selected plan config for display

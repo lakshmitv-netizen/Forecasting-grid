@@ -519,8 +519,9 @@
 
 /* Measure rows in "Measures / Dimensions x Time" layout - header rows */
 .grid-row.measure-row {
-  background-color: #F3F3F3 !important;
-  font-weight: var(--font-weight-semibold) !important;
+  background-color: var(--color-surface-white) !important;
+  font-weight: 700 !important; /* Bold font weight */
+  font-size: 14px !important; /* Font size */
   /* Sticky positioning - stick right below the header */
   position: sticky;
   /* Calculate top offset to match header height: padding-top + line-height + padding-bottom + border-bottom */
@@ -531,6 +532,11 @@
   top: clamp(29px, calc(29px + 8px * (100vh - 600px) / 600px), 37px);
   z-index: 9; /* Just below header (z-index: 10) */
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+  border-top: 1px solid #707070 !important;
+}
+
+.grid-row.measure-row:hover {
+  background-color: #F5F9FF !important;
 }
 
 .grid-row.dimension-row {
@@ -626,9 +632,9 @@
   background-color: #F5F9FF !important; /* Light blue hover color */
 }
 
-/* Measure rows - keep their original background color */
+/* Measure rows - white background like other cells */
 .grid-row.measure-row .grid-cell:first-child {
-  background-color: #F3F3F3 !important;
+  background-color: white !important;
   /* Sticky first column for measure rows - stick both horizontally and vertically */
   position: sticky;
   left: 0;
@@ -636,18 +642,37 @@
   top: clamp(29px, calc(29px + 8px * (100vh - 600px) / 600px), 37px);
   z-index: 19; /* Higher than measure row (9) but below header corner (20) */
   box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1) !important;
+  border-top: 1px solid #707070 !important;
+  border-right: 1px solid #707070 !important;
+  border-bottom: 1px solid #707070 !important;
 }
 
-/* Measure row cells - increase minimum height */
+/* Measure row cells - increase minimum height, white background like other cells */
 .grid-row.measure-row .grid-cell {
   /* Responsive min-height: min 28px (for short screens), max 42px (for tall screens) - noticeably taller than regular cells */
   min-height: clamp(28px, calc(28px + 14px * (100vh - 600px) / 600px), 42px) !important;
   padding-top: clamp(8px, calc(8px + 4px * (100vh - 600px) / 600px), 12px) !important;
   padding-bottom: clamp(8px, calc(8px + 4px * (100vh - 600px) / 600px), 12px) !important;
+  background-color: var(--color-surface-white) !important;
+  border-top: 1px solid #707070 !important;
+  border-right: 1px solid #707070 !important;
+  border-bottom: 1px solid #707070 !important;
+  font-weight: 700 !important; /* Bold font weight for measure cells */
+  font-size: 14px !important; /* Font size */
 }
 
 .grid-row.measure-row:hover .grid-cell:first-child {
-  background-color: #F3F3F3 !important;
+  background-color: #F5F9FF !important; /* Light blue hover color like other cells */
+}
+
+/* Measure row - blue hover highlight on entire row like other rows */
+.grid-row.measure-row:hover .grid-cell {
+  background-color: #F5F9FF !important;
+}
+
+/* Measure row edited cells - override hover to show orange background */
+.grid-row.measure-row:hover .cell-value-cell.edited-cell {
+  background-color: #f9e3b6 !important; /* Keep orange even on hover */
 }
 
 /* Dimension rows first column in Dimensions / Time x Measures view */
@@ -685,17 +710,39 @@
   background-color: white !important;
 }
 
-/* Measure rows first column - keep grey even when focused/selected */
+/* Measure rows first column - white background like other cells */
 .grid-row.measure-row .grid-cell:first-child.cell-focused {
-  background-color: #F3F3F3 !important;
+  background-color: white !important;
 }
 
 .grid-row.measure-row .grid-cell:first-child:focus {
-  background-color: #F3F3F3 !important;
+  background-color: white !important;
 }
 
 .grid-row.measure-row .grid-cell:first-child.cell-selected {
-  background-color: #F3F3F3 !important;
+  background-color: white !important;
+  border: 2px solid #000000 !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+/* Measure row cells - show selection border like non-measure cells */
+.grid-row.measure-row .grid-cell.cell-selected {
+  border: 2px solid #000000 !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.grid-row.measure-row .grid-cell.cell-selected.edited-cell {
+  background-color: #f9e3b6 !important;
+  border: 2px solid #000000 !important;
+  box-shadow: none !important;
+}
+
+.grid-row.measure-row .grid-cell.cell-selected.impacted-cell {
+  background-color: #fef5e7 !important;
+  border: 2px solid #000000 !important;
+  box-shadow: none !important;
 }
 
 /* Dimension rows first column - keep grey even when focused/selected */
@@ -787,6 +834,7 @@
   transition: transform 0.2s;
 }
 
+
 .chevron-icon.expanded svg {
   transform: rotate(90deg);
 }
@@ -805,6 +853,14 @@
   color: var(--color-dark-text) !important;
   font-size: var(--font-size-base) !important;
   line-height: var(--line-height-base) !important;
+}
+
+/* Make measure names prominent - same formatting as measure cell values */
+.grid-row.measure-row .cell-name {
+  font-weight: 700 !important; /* Bold font weight */
+  font-size: 14px !important; /* Font size */
+  color: #000000 !important; /* Black text color for maximum prominence */
+  letter-spacing: 0.2px !important; /* Slight letter spacing for emphasis */
 }
 
 .cell-value {
@@ -833,11 +889,11 @@
     repeating-linear-gradient(
       -45deg,
       transparent,
-      transparent 5px,
-      #e0e0e0 5px,
-      #e0e0e0 6px
+      transparent 6px,
+      #f6f6f6 6px,
+      #f6f6f6 10px
     ),
-    #f8f8f8 !important;
+    #ffffff !important;
   cursor: default !important;
 }
 
@@ -845,19 +901,44 @@
   cursor: default !important;
 }
 
-/* Actual measure row for readonly measures (Last Year data) - same background as other measures, no texture */
-.readonly-measure-row-actual {
-  background-color: #F3F3F3 !important;
+/* Actual measure row for readonly measures (Last Year data) - striped texture */
+.grid-row.readonly-measure-row-actual {
+  background: 
+    repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 6px,
+      #f0f0f0 6px,
+      #f0f0f0 10px
+    ),
+    #ffffff !important;
   font-weight: var(--font-weight-semibold) !important;
 }
 
-.readonly-measure-row-actual > td {
-  background-color: #F3F3F3 !important;
+.grid-row.readonly-measure-row-actual .grid-cell,
+.grid-row.readonly-measure-row-actual .grid-cell:first-child {
+  background: 
+    repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 6px,
+      #f0f0f0 6px,
+      #f0f0f0 10px
+    ),
+    #ffffff !important;
 }
 
-/* Dimension rows under readonly measures - texture on value cells, grey first column */
-.readonly-dimension-row > td:first-child {
-  background: #F3F3F3 !important; /* Grey background to match measure rows */
+/* Dimension rows under readonly measures - striped texture on first column (dimension names) and value cells */
+.grid-row.readonly-dimension-row .grid-cell:first-child {
+  background: 
+    repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 6px,
+      #f6f6f6 6px,
+      #f6f6f6 10px
+    ),
+    #ffffff !important;
 }
 
 .cell-value-cell.edited-cell {
@@ -898,9 +979,15 @@
   vertical-align: middle;
 }
 
-/* Keep measure row background color for impacted cells in measure rows */
+/* Measure row cells have same background as other cells */
 .grid-row.measure-row .cell-value-cell.impacted-cell {
-  background-color: #F3F3F3 !important;
+  background-color: #fef5e7 !important; /* Same as other impacted cells */
+}
+
+/* Measure row edited cells - ensure orange background shows */
+.grid-row.measure-row .cell-value-cell.edited-cell {
+  background-color: #f9e3b6 !important; /* Light orange/beige background */
+  border: 1px solid #c9c9c9 !important; /* Gray border */
 }
 
 .cell-value-wrapper-impacted-container {
@@ -1094,7 +1181,30 @@
 }
 
 .grid-row.measure-row .cell-value-cell:hover {
-  background-color: inherit;
+  background-color: #F5F9FF !important; /* Blue hover like other cells */
+}
+
+/* Make measure cell values more prominent */
+.grid-row.measure-row .cell-value {
+  font-weight: 700 !important; /* Bold font weight */
+  font-size: 14px !important; /* Font size */
+  color: #000000 !important; /* Black text color for maximum prominence */
+  letter-spacing: 0.2px !important; /* Slight letter spacing for emphasis */
+}
+
+/* Make chevrons in measure rows thicker and bigger */
+.grid-row.measure-row .chevron-icon {
+  width: 20px !important; /* Bigger icon */
+  height: 20px !important; /* Bigger icon */
+}
+
+.grid-row.measure-row .chevron-icon svg {
+  width: 16px !important; /* Bigger SVG */
+  height: 16px !important; /* Bigger SVG */
+}
+
+.grid-row.measure-row .chevron-icon svg path {
+  stroke-width: 3.5 !important; /* Thicker stroke */
 }
 
 .cell-value-cell:focus {
@@ -1197,6 +1307,35 @@
   border-left: 10px solid transparent;
   z-index: 1; /* Lower than frozen column (5), frozen header (10), and corner (20) */
   pointer-events: none;
+}
+
+/* Hide indicators for cells marked as read */
+.cell-marked-read .cell-note-indicator,
+td[data-cell-read="true"] .cell-note-indicator,
+.cell-read-hidden,
+.cell-marked-read .cell-value-left-icon,
+td[data-cell-read="true"] .cell-value-left-icon,
+.cell-value-wrapper-edited-container.cell-marked-read .cell-value-left-icon,
+.cell-value-wrapper-saved-container.cell-marked-read .cell-value-left-icon,
+.cell-value-wrapper-impacted-container.cell-marked-read .cell-value-left-icon {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+}
+
+.cell-marked-read .cell-value-left-icon.cell-arrow-increase,
+.cell-marked-read .cell-value-left-icon.cell-arrow-decrease,
+td[data-cell-read="true"] .cell-value-left-icon.cell-arrow-increase,
+td[data-cell-read="true"] .cell-value-left-icon.cell-arrow-decrease,
+.cell-value-wrapper-edited-container.cell-marked-read .cell-value-left-icon.cell-arrow-increase,
+.cell-value-wrapper-edited-container.cell-marked-read .cell-value-left-icon.cell-arrow-decrease,
+.cell-value-wrapper-saved-container.cell-marked-read .cell-value-left-icon.cell-arrow-increase,
+.cell-value-wrapper-saved-container.cell-marked-read .cell-value-left-icon.cell-arrow-decrease,
+.cell-value-wrapper-impacted-container.cell-marked-read .cell-value-left-icon.cell-arrow-increase,
+.cell-value-wrapper-impacted-container.cell-marked-read .cell-value-left-icon.cell-arrow-decrease {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
 }
 
 

@@ -37,6 +37,7 @@ interface HierarchicalGridProps {
   cellEditHistory?: import('../types/editHistory').CellEditHistoryEntry[]; // Edit history to check for notes
   onCellFocusWithHistory?: (cellKey: string, cellRect: DOMRect | null, cellValue?: number, isLocked?: boolean) => void; // Callback when a cell is focused
   lockedCells?: Set<string>; // Set of locked cell keys that cannot be edited or impacted
+  readCells?: string[]; // Array of cell keys marked as read (will not show note indicators)
   onCellContextMenu?: (e: React.MouseEvent, cellKey: string, cellValue: number, isLocked: boolean, isEditable: boolean) => void; // Callback for right-click context menu
   onUndoHandler?: (handler: () => void) => void; // Callback to register undo handler
   onRedoHandler?: (handler: () => void) => void; // Callback to register redo handler
@@ -91,6 +92,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   onEditHistory,
   cellEditHistory = [],
   lockedCells = new Set<string>(),
+  readCells = [],
   onUndoHandler,
   onRedoHandler,
   onCanUndoChange,
@@ -3352,7 +3354,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                 
                 return (
                   <GridRowComponent
-                    key={measure.id}
+                    key={`${measure.id}-read-${readCells.length > 0 ? [...readCells].sort().join('-') : 'none'}`}
                     row={filteredRow}
                     level={0}
                     isExpanded={expandedRows.has(measure.id)}
@@ -3382,6 +3384,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                     editHistory={cellEditHistory}
                     onCellFocusWithHistory={onCellFocusWithHistory}
                     lockedCells={lockedCells}
+                    readCells={readCells}
                     onCellContextMenu={onCellContextMenu}
                     selectedCells={selectedCells}
                     onCellSelect={onCellSelect}
@@ -3406,7 +3409,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
               // No filtering - render normally
               return (
                 <GridRowComponent
-                  key={measure.id}
+                  key={`${measure.id}-read-${readCells.length > 0 ? [...readCells].sort().join('-') : 'none'}`}
                   row={rowAfterImpactedFilter}
                   level={0}
                   isExpanded={expandedRows.has(measure.id)}
@@ -3431,6 +3434,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                   editHistory={cellEditHistory}
                   onCellFocusWithHistory={onCellFocusWithHistory}
                   lockedCells={lockedCells}
+                  readCells={readCells}
                   onCellContextMenu={onCellContextMenu}
                   selectedCells={selectedCells}
                   onCellSelect={onCellSelect}

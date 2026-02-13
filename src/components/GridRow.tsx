@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { GridRow as GridRowType } from '../types';
 import { extractSearchTerms, separateSearchTerms, matchesNumber } from '../utils/searchUtils';
@@ -30,6 +30,7 @@ interface GridRowProps {
   editHistory?: CellEditHistoryEntry[]; // Edit history to check for notes
   onCellFocusWithHistory?: (cellKey: string, cellRect: DOMRect | null, cellValue?: number, isLocked?: boolean, isImpacted?: boolean) => void; // Callback when a cell is focused
   lockedCells?: Set<string>; // Set of locked cell keys that cannot be edited
+  readCells?: string[]; // Array of cell keys marked as read (will not show note indicators)
   onCellContextMenu?: (e: React.MouseEvent, cellKey: string, cellValue: number, isLocked: boolean, isEditable: boolean) => void; // Callback for right-click context menu
   selectedCells?: Set<string>; // Set of selected cell keys
   onCellSelect?: (cellKey: string, event: React.MouseEvent) => void; // Callback when a cell is clicked for selection
@@ -72,6 +73,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
   editHistory = [],
   onCellFocusWithHistory,
   lockedCells = new Set<string>(),
+  readCells = [],
   onCellContextMenu,
   selectedCells = new Set(),
   onCellSelect,
@@ -91,6 +93,13 @@ const GridRowComponent: React.FC<GridRowProps> = ({
   onCollapseMeasure,
 }) => {
   const hasChildren = row.children && row.children.length > 0;
+  // Force re-render when readCells changes by using it in a useEffect
+  useEffect(() => {
+    // This effect runs when readCells changes, ensuring the component re-renders
+  }, [readCells]);
+
+  // Memoize readCells as Set for O(1) lookup - ensures we catch all cells marked as read
+  const readCellsSet = useMemo(() => new Set(readCells || []), [readCells]);
   const [editingCell, setEditingCell] = useState<{ monthKey: keyof GridRowType['values'] } | null>(null);
   const [editValue, setEditValue] = useState<string>('');
   const [adjustmentNote, setAdjustmentNote] = useState<string>('');
@@ -302,11 +311,6 @@ const GridRowComponent: React.FC<GridRowProps> = ({
       return;
     }
     console.log('[GridRow] Cell value clicked (entering edit mode):', { rowId: row.id, rowType: row.type, monthKey });
-    // Measure rows are calculated values and should not be editable
-    if (row.type === 'measure') {
-      console.log('[GridRow] Measure row is not editable, returning');
-      return;
-    }
     if (!onCellChange) {
       console.log('[GridRow] No onCellChange handler, returning');
       return;
@@ -336,11 +340,6 @@ const GridRowComponent: React.FC<GridRowProps> = ({
 
   const handleCellEnterKey = (monthKey: keyof GridRowType['values']) => {
     console.log('[GridRow] Enter key pressed (entering edit mode):', { rowId: row.id, rowType: row.type, monthKey });
-    // Measure rows are calculated values and should not be editable
-    if (row.type === 'measure') {
-      console.log('[GridRow] Measure row is not editable, returning');
-      return;
-    }
     if (!onCellChange) {
       console.log('[GridRow] No onCellChange handler, returning');
       return;
@@ -1109,6 +1108,10 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     // Check if cell is locked
     const isCellLocked = lockedCells.has(cellKey);
     
+    // Check if cell is marked as read - calculate early so we can use it throughout
+    const cellKeyAlt = `${row.id}-${monthKey}`;
+    const isMarkedAsRead = readCellsSet.size > 0 && (readCellsSet.has(cellKey) || readCellsSet.has(cellKeyAlt));
+    
     const editedOriginalValue = editedCells?.get(cellKey);
     const impactedOriginalValue = impactedCells?.get(cellKey);
     const savedIconColor = savedEditedCells?.get(cellKey);
@@ -1130,7 +1133,6 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     // This handles the case where a cell had a note, then got impacted, then was saved
     // Check both cellKey formats to ensure we catch it regardless of format differences
     // IMPORTANT: savedImpactedCells is a Set<string>, check it directly and also use the memoized array
-    const cellKeyAlt = `${row.id}-${monthKey}`;
     // Use savedImpactedCellsArray from useMemo (defined at component level) to ensure React detects changes
     // Check if cell is in savedImpactedCells using multiple methods to be absolutely sure
     const wasImpactedAndSaved = savedImpactedCells && (
@@ -1189,7 +1191,9 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     // CRITICAL: If cell is saved impacted, force hasNote to false regardless of what we calculated above
     // This is the final gate to prevent showing the triangle
     // EXTRA SAFETY: Even if hasNote was set to true above, if cell is saved impacted, suppress it
-    const finalHasNoteForRender = (isDefinitelySavedImpacted || isImpacted) ? false : hasNote;
+    // Also check if cell is marked as read - if so, don't show note indicator OR arrow indicators
+    // Note: isMarkedAsRead is already calculated earlier in the function (line ~1106)
+    const finalHasNoteForRender = (isDefinitelySavedImpacted || isImpacted || isMarkedAsRead) ? false : hasNote;
     
     // Check if this is a readonly measure (Last Year data)
     const isReadonlyMeasure = row.id.includes('measure-ly-order') || 
@@ -1199,11 +1203,10 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     // Block editing for cells that belong to Adjustment Measures Category (read-only context)
     const isAdjustmentGroupCell = row.groupContext === 'Adjustment Measures Category';
     
-    // Measure rows are not editable - they are calculated values
-    // Locked cells are also not editable
+    // Locked cells are not editable
     // Readonly measures (Last Year data) are not editable
     // Adjustment Measures Group cells are not editable
-    const isEditable = row.type !== 'measure' && onCellChange && !isCellLocked && !isReadonlyMeasure && !isAdjustmentGroupCell;
+    const isEditable = onCellChange && !isCellLocked && !isReadonlyMeasure && !isAdjustmentGroupCell;
     
     // Calculate delta as percentage
     let deltaPercent: number | null = null;
@@ -1224,14 +1227,30 @@ const GridRowComponent: React.FC<GridRowProps> = ({
       console.log('[GridRow] Rendering impacted cell:', { rowId: row.id, monthKey, cellKey, originalValue, currentValue, deltaPercent });
     }
     
+    // If cell is marked as read, render as normal cell (no indicators)
+    if (isMarkedAsRead) {
+      return (
+        <span 
+          className={`cell-value ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
+          style={{ cursor: isEditable ? 'pointer' : 'default' }}
+        >
+          {valueMatchesSearch ? (
+            <SearchHighlight text={formatValue(currentValue, row.name?.toLowerCase().includes('quantity'), row.name)} searchTerms={otherTerms} />
+          ) : (
+            formatValue(currentValue, row.name?.toLowerCase().includes('quantity'), row.name)
+          )}
+        </span>
+      );
+    }
+    
     if (isDirectlyEdited) {
       const isIncrement = deltaPercent !== null && deltaPercent > 0;
       const deltaColor = isIncrement ? '#ff5d2d' : '#2E76E1';
       
       return (
         <>
-          <div className="cell-value-wrapper-edited-container">
-            <div className="cell-value-left-icon">
+          <div className={`cell-value-wrapper-edited-container ${isMarkedAsRead ? 'cell-marked-read' : ''}`}>
+            <div className={`cell-value-left-icon ${isMarkedAsRead ? 'cell-read-hidden' : ''}`}>
               {isCellLocked ? (
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
                   <rect x="5" y="11" width="14" height="9" rx="1" fill="#6b7280"/>
@@ -1261,7 +1280,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
           </div>
           {/* Dog ear triangle indicator for cells with notes */}
           {/* Show note indicator if cell has a note (from editHistory for saved notes, or unsavedNotes for unsaved notes) */}
-          {finalHasNoteForRender && (
+          {finalHasNoteForRender && !isMarkedAsRead && (
             <div className="cell-note-indicator"></div>
           )}
         </>
@@ -1275,8 +1294,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
       
       return (
         <>
-          <div className="cell-value-wrapper-edited-container">
-            <div className="cell-value-left-icon">
+          <div className={`cell-value-wrapper-edited-container ${isMarkedAsRead ? 'cell-marked-read' : ''}`}>
+            <div className={`cell-value-left-icon ${isMarkedAsRead ? 'cell-read-hidden' : ''}`}>
               {isCellLocked ? (
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
                   <rect x="5" y="11" width="14" height="9" rx="1" fill="#6b7280"/>
@@ -1315,15 +1334,16 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     // Even if it has edit history from editHistory prop, impacted cells should not show old indicators
     // Also check if this cell was impacted and saved - if so, don't show old notes
     // CRITICAL: Check isImpacted FIRST - if impacted, never show old indicators
-    if (isSavedEdited && !isImpacted && !wasImpactedAndSaved) {
+    // Also check if cell is marked as read - if so, don't show indicators
+    if (isSavedEdited && !isImpacted && !wasImpactedAndSaved && !isMarkedAsRead) {
       const iconColor = savedIconColor || '#2E76E1'; // Use stored color or default blue
       // Use saved icon color to determine arrow direction (orange = increase, blue = decrease)
       const isIncrease = iconColor === '#ff5d2d' || iconColor === '#FF5D2D';
       
       return (
         <>
-          <div className="cell-value-wrapper-saved-container" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <div className={`cell-value-left-icon ${!isCellLocked && (isIncrease ? 'cell-arrow-increase' : 'cell-arrow-decrease')}`}>
+          <div className={`cell-value-wrapper-saved-container ${isMarkedAsRead ? 'cell-marked-read' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <div className={`cell-value-left-icon ${!isCellLocked && !isMarkedAsRead && (isIncrease ? 'cell-arrow-increase' : 'cell-arrow-decrease')} ${isMarkedAsRead ? 'cell-read-hidden' : ''}`}>
               {isCellLocked ? (
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
                   <rect x="5" y="11" width="14" height="9" rx="1" fill="#6b7280"/>
@@ -1352,7 +1372,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
           </div>
           {/* Dog ear triangle indicator for cells with notes */}
           {/* finalHasNoteForRender already checks savedImpactedCells, so no need for redundant checks */}
-          {finalHasNoteForRender && (
+          {finalHasNoteForRender && !isMarkedAsRead && (
             <div className="cell-note-indicator"></div>
           )}
         </>
@@ -1367,8 +1387,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
       
       return (
         <>
-          <div className="cell-value-wrapper-impacted-container">
-            <div className="cell-value-left-icon">
+          <div className={`cell-value-wrapper-impacted-container ${isMarkedAsRead ? 'cell-marked-read' : ''}`}>
+            <div className={`cell-value-left-icon ${isMarkedAsRead ? 'cell-read-hidden' : ''}`}>
               {isCellLocked ? (
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
                   <rect x="5" y="11" width="14" height="9" rx="1" fill="#6b7280"/>
@@ -1398,7 +1418,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
           </div>
           {/* Dog ear triangle indicator for cells with notes */}
           {/* finalHasNoteForRender already checks savedImpactedCells, so no need for redundant checks */}
-          {finalHasNoteForRender && (
+          {finalHasNoteForRender && !isMarkedAsRead && (
             <div className="cell-note-indicator"></div>
           )}
         </>
@@ -1452,7 +1472,9 @@ const GridRowComponent: React.FC<GridRowProps> = ({
           if (isInSavedImpacted) {
             return null;
           }
-          return finalHasNoteForRender ? <div className="cell-note-indicator"></div> : null;
+          // Also check if cell is marked as read
+          const isMarkedAsReadInIIFE = readCellsSet.size > 0 && (readCellsSet.has(cellKeyForCheck) || readCellsSet.has(cellKey));
+          return finalHasNoteForRender && !isMarkedAsReadInIIFE ? <div className="cell-note-indicator"></div> : null;
         })()}
       </>
     );
@@ -1843,7 +1865,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
           
           // Apply striped texture to dimension cells under readonly measures or adjustment group
           const shouldShowTexture = isDimensionUnderReadonlyMeasure || isAdjustmentGroupCell;
-          const isEditable = row.type !== 'measure' && onCellChange && !isCellLocked && !isReadonlyMeasureCell && !isAdjustmentGroupCell;
+          const isEditable = onCellChange && !isCellLocked && !isReadonlyMeasureCell && !isAdjustmentGroupCell;
           
           // Check if this cell has a note
           // For impacted cells: only show note indicator if there's an unsaved note (new note added after impact)
@@ -1887,6 +1909,10 @@ const GridRowComponent: React.FC<GridRowProps> = ({
           // Triple-check savedImpactedCells directly to be absolutely sure
           const finalHasNote = isSavedImpacted ? false : hasNote;
           
+          // Check if cell is marked as read
+          const cellKeyAltForRead = `${row.id}-${key}`;
+          const isMarkedAsReadForCell = readCellsSet.size > 0 && (readCellsSet.has(cellKey) || readCellsSet.has(cellKeyAltForRead));
+          
           return (
             <td
               key={cellKey}
@@ -1897,7 +1923,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                   cellRefs.current.set(cellKey, el);
                 }
               }}
-              className={`grid-cell cell-value-cell ${isFocused ? 'cell-focused' : ''} ${shouldShowTexture ? 'cell-readonly-texture' : ''} ${finalHasNote && !isSavedImpacted ? 'cell-has-note' : ''} ${selectedCells.has(cellKey) ? 'cell-selected' : ''} ${(() => {
+              data-cell-read={isMarkedAsReadForCell ? 'true' : 'false'}
+              className={`grid-cell cell-value-cell ${isFocused ? 'cell-focused' : ''} ${shouldShowTexture ? 'cell-readonly-texture' : ''} ${finalHasNote && !isSavedImpacted ? 'cell-has-note' : ''} ${selectedCells.has(cellKey) ? 'cell-selected' : ''} ${isMarkedAsReadForCell ? 'cell-marked-read' : ''} ${(() => {
                 const cellKeyForCheck = `${row.id}-${key}`;
                 const editedOriginalValue = editedCells?.get(cellKeyForCheck);
                 const impactedOriginalValue = impactedCells?.get(cellKeyForCheck);
@@ -1932,12 +1959,12 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               onMouseEnter={(e) => {
                 // Set hover state for pencil icon - always set if editable, regardless of other conditions
                 if (isEditable) {
-                  console.log('[GridRow] Setting hoveredCell to:', key, 'isEditable:', isEditable);
                   setHoveredCell(key);
                 }
                 // Show popover on hover for cells with indicators
                 if (onCellFocusWithHistory && (isEditable || isCellLocked) && !editingCell) {
                   const focusCellKey = `${row.id}-${key}`;
+                  const isMarkedAsReadCell = readCellsSet.size > 0 && (readCellsSet.has(focusCellKey) || readCellsSet.has(cellKey));
                   const isDirty = editedCells?.has(focusCellKey) && !savedEditedCells?.has(focusCellKey);
                   const isImpactedCell = impactedCells?.has(focusCellKey);
                   const wasImpactedAndSaved = savedImpactedCells.has(focusCellKey);
@@ -1947,8 +1974,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                     entry.cellKey === focusCellKey || (entry.rowId === row.id && entry.timeKey === key)
                   );
                   
-                  // Only show popover if cell has edit history AND is not impacted/saved impacted
-                  if (hasEditHistory && (!isDirty || isCellLocked) && !isImpactedCell && !wasImpactedAndSaved) {
+                  // Only show popover if cell has edit history AND is not impacted/saved impacted AND is not marked as read
+                  if (hasEditHistory && (!isDirty || isCellLocked) && !isImpactedCell && !wasImpactedAndSaved && !isMarkedAsReadCell) {
                     const cellElement = e.currentTarget;
                     const cellRect = cellElement.getBoundingClientRect();
                     const cellValue = row.values[key];
@@ -2074,6 +2101,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 // Show popover on focus for cells with indicators
                 if (onCellFocusWithHistory && (isEditable || isCellLocked) && !editingCell && !shiftKeyPressedRef.current) {
                   const focusCellKey = `${row.id}-${key}`;
+                  const isMarkedAsReadCell = readCellsSet.size > 0 && (readCellsSet.has(focusCellKey) || readCellsSet.has(cellKey));
                   const isDirty = editedCells?.has(focusCellKey) && !savedEditedCells?.has(focusCellKey);
                   // Check if this cell is impacted
                   const isImpactedCell = impactedCells?.has(focusCellKey);
@@ -2082,7 +2110,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                   // Don't show popover for dirty/unsaved cells (unless locked)
                   // Also don't show popover for impacted cells (they show their own state)
                   // Also don't show popover for saved impacted cells (they were impacted but are now saved)
-                  if ((!isDirty || isCellLocked) && !isImpactedCell && !wasImpactedAndSaved) {
+                  // Also don't show popover for cells marked as read
+                  if ((!isDirty || isCellLocked) && !isImpactedCell && !wasImpactedAndSaved && !isMarkedAsReadCell) {
                     const cellElement = e.currentTarget;
                     const cellRect = cellElement.getBoundingClientRect();
                     const cellValue = row.values[key];
@@ -2170,9 +2199,12 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 editHistory={editHistory}
                 onCellFocusWithHistory={onCellFocusWithHistory}
                 lockedCells={lockedCells}
+                readCells={readCells}
                 onCellContextMenu={onCellContextMenu}
                 selectedCells={selectedCells}
                 onCellSelect={onCellSelect}
+                onCellMouseDown={onCellMouseDown}
+                onCellMouseMove={onCellMouseMove}
                 lastSelectedCell={lastSelectedCell}
                 onFillHandleDragStart={onFillHandleDragStart}
                 onFillHandleDragMove={onFillHandleDragMove}

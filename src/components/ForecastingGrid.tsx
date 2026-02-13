@@ -621,7 +621,7 @@ const ForecastingGrid: React.FC = () => {
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      // Don't clear if clicking on a cell, dropdown, panel, or toolbar buttons
+      // Don't clear if clicking on a cell, dropdown, panel, toolbar buttons, or context menu
       if (
         target.closest('.grid-cell') ||
         target.closest('.cell-details-history-panel') ||
@@ -630,7 +630,8 @@ const ForecastingGrid: React.FC = () => {
         target.closest('.cell-details-history-dropdown-list') ||
         target.closest('.multi-cell-dropdown-list') ||
         target.closest('.grid-button-group') ||
-        target.closest('.grid-button-group-item')
+        target.closest('.grid-button-group-item') ||
+        target.closest('.cell-context-menu')
       ) {
         return;
       }
@@ -1732,6 +1733,14 @@ const ForecastingGrid: React.FC = () => {
   // State for locked cells - locked cells cannot be edited or impacted by propagation
   const [lockedCells, setLockedCells] = useState<Set<string>>(new Set());
   
+  // State for read cells - cells marked as read will not show note indicators
+  // Use array instead of Set so React can detect changes more reliably
+  const [readCells, setReadCells] = useState<string[]>([]);
+  const readCellsRef = useRef<string[]>([]);
+  useEffect(() => {
+    readCellsRef.current = readCells;
+  }, [readCells]);
+  
   // State for undo/redo
   const undoHandlerRef = useRef<(() => void) | null>(null);
   const redoHandlerRef = useRef<(() => void) | null>(null);
@@ -2058,6 +2067,12 @@ const ForecastingGrid: React.FC = () => {
       return;
     }
     
+    // Don't show popover for cells marked as read (use ref for synchronous access)
+    if (readCellsRef.current.includes(cellKey)) {
+      setEditInfoPopover(null);
+      return;
+    }
+    
     // Check if this cell was impacted but is now saved (shouldn't show popover)
     // These cells were impacted in a previous session but are now saved, so they shouldn't show old popovers
     // Use ref for synchronous access to latest value
@@ -2134,7 +2149,7 @@ const ForecastingGrid: React.FC = () => {
         left: leftPos
       }
     });
-  }, [editHistory, draftEditHistory, data]); // Note: savedImpactedCellsRef and contextMenuRef are refs, so they don't need to be in deps
+  }, [editHistory, draftEditHistory, data]); // Note: readCellsRef, savedImpactedCellsRef and contextMenuRef are refs
 
   // Close edit info popover
   const handleCloseEditInfoPopover = useCallback(() => {
@@ -2514,6 +2529,44 @@ const ForecastingGrid: React.FC = () => {
     setIsSettingsOpen(false);
     setIsFiltersOpen(false);
   }, []);
+
+  const handleContextMarkAsRead = useCallback(() => {
+    // Capture cell keys to mark - use ref for bulk selection (avoids stale closure if click-outside cleared selection)
+    const cellsToMark = new Set<string>();
+    
+    // Include all selected cells (use ref - has latest value even if state was cleared by click-outside)
+    const currentSelection = selectedCellsRef.current;
+    if (currentSelection && currentSelection.size > 0) {
+      currentSelection.forEach(cellKey => cellsToMark.add(cellKey));
+    }
+    
+    // Fallback to state if ref is empty (e.g. single cell selection)
+    if (cellsToMark.size === 0 && selectedCells.size > 0) {
+      selectedCells.forEach(cellKey => cellsToMark.add(cellKey));
+    }
+    
+    // Also include the context menu cell if it exists (in case it's not in selectedCells)
+    if (contextMenu && contextMenu.cellKey) {
+      cellsToMark.add(contextMenu.cellKey);
+    }
+    
+    if (cellsToMark.size === 0) return;
+    
+    // Close hover popover if it's showing for any of the cells being marked as read
+    setEditInfoPopover((prev) => {
+      if (prev && prev.cellKey && cellsToMark.has(prev.cellKey)) return null;
+      return prev;
+    });
+    
+    setReadCells((prev: string[]) => {
+      // Create a completely new array to ensure React detects the change
+      const newSet = new Set(prev);
+      cellsToMark.forEach(cellKey => newSet.add(cellKey));
+      const newArray = Array.from(newSet);
+      // Force a new array reference
+      return [...newArray];
+    });
+  }, [contextMenu, selectedCells]);
 
   // Handler for single cell update from the panel
   const handleSingleCellUpdate = useCallback((rowId: string, monthKey: string, newValue: number, adjustmentNote?: string) => {
@@ -3028,6 +3081,7 @@ const ForecastingGrid: React.FC = () => {
             cellEditHistory={mergedEditHistory}
             onCellFocusWithHistory={handleCellFocusWithHistory}
             lockedCells={lockedCells}
+            readCells={readCells}
             readonlyMeasureIds={readonlyMeasureIds}
             isAdjustmentGroupSelected={selectedMeasureSubgroup.has('Adjustment Measures Category')}
             onMeasureGroupChange={setSelectedMeasureSubgroup}
@@ -3185,6 +3239,20 @@ const ForecastingGrid: React.FC = () => {
             lockedValue={editInfoPopover.isLocked ? editInfoPopover.cellValue : undefined}
             measureName={editInfoPopover.measureName}
             onViewHistory={() => handleViewEditHistory(editInfoPopover.cellKey)}
+            onMarkAsRead={() => {
+              if (editInfoPopover.cellKey) {
+                setReadCells((prev: string[]) => {
+                  // Create a completely new array to ensure React detects the change
+                  const newSet = new Set(prev);
+                  newSet.add(editInfoPopover.cellKey);
+                  const newArray = Array.from(newSet);
+                  // Force a new array reference
+                  return [...newArray];
+                });
+                // Close the popover after marking as read
+                handleCloseEditInfoPopover();
+              }
+            }}
             onClose={handleCloseEditInfoPopover}
           />
         )}
@@ -3200,6 +3268,7 @@ const ForecastingGrid: React.FC = () => {
             onToggleLock={handleContextToggleLock}
             onMassUpdate={handleContextMassUpdate}
             onViewEditHistory={handleContextViewEditHistory}
+            onMarkAsRead={handleContextMarkAsRead}
             isLocked={contextMenu.isLocked}
             canPaste={clipboardValue !== null}
             isEditable={contextMenu.isEditable}

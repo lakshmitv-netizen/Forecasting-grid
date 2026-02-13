@@ -130,10 +130,25 @@
   margin: 8px 0 6px 0;
 }
 
+/* Actions container */
+.cell-edit-info-actions {
+  display: flex;
+  gap: 0;
+  align-items: center;
+  width: 100%;
+}
+
+/* Separator between action buttons */
+.cell-edit-info-actions-separator {
+  width: 1px;
+  height: 20px;
+  background: #e5e5e5;
+  margin: 0 8px;
+}
+
 /* View history button */
 .cell-edit-info-history-btn {
-  display: block;
-  width: 100%;
+  flex: 1;
   padding: 6px 12px;
   background: none;
   border: 1px solid #0176d3;
@@ -147,5 +162,24 @@
 }
 
 .cell-edit-info-history-btn:hover {
+  background: #f0f7ff;
+}
+
+/* Mark as read button */
+.cell-edit-info-mark-read-btn {
+  flex: 1;
+  padding: 6px 12px;
+  background: none;
+  border: 1px solid #0176d3;
+  border-radius: 4px;
+  color: #0176d3;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s;
+}
+
+.cell-edit-info-mark-read-btn:hover {
   background: #f0f7ff;
 }

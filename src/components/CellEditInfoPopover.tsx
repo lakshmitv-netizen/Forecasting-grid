@@ -9,6 +9,7 @@ interface CellEditInfoPopoverProps {
   lockedValue?: number;
   measureName?: string; // Measure name to determine if $ symbol should be added
   onViewHistory: () => void;
+  onMarkAsRead?: () => void;
   onClose: () => void;
 }
 
@@ -19,6 +20,7 @@ const CellEditInfoPopover: React.FC<CellEditInfoPopoverProps> = ({
   lockedValue,
   measureName,
   onViewHistory,
+  onMarkAsRead,
   onClose
 }) => {
   const formatTimestamp = (date: Date) => {
@@ -128,11 +130,21 @@ const CellEditInfoPopover: React.FC<CellEditInfoPopoverProps> = ({
         </div>
       )}
       
-      {/* View history link */}
+      {/* Mark as read and View history buttons */}
       <div className="cell-edit-info-separator"></div>
-      <button className="cell-edit-info-history-btn" onClick={onViewHistory}>
-        View Edit History
-      </button>
+      <div className="cell-edit-info-actions">
+        {onMarkAsRead && (
+          <>
+            <button className="cell-edit-info-mark-read-btn" onClick={onMarkAsRead}>
+              Mark as read
+            </button>
+            <div className="cell-edit-info-actions-separator"></div>
+          </>
+        )}
+        <button className="cell-edit-info-history-btn" onClick={onViewHistory}>
+          View Edit History
+        </button>
+      </div>
       
       {/* Close button */}
       <button className="cell-edit-info-close" onClick={onClose} title="Close">

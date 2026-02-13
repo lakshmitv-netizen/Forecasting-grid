@@ -140,7 +140,7 @@ const PlanningForecastingPage: React.FC = () => {
                   </div>
                   <div className="planning-info-field">
                     <label className="planning-info-label">Plan Configuration</label>
-                    <div className="planning-info-value">Plan View 1</div>
+                    <div className="planning-info-value">KAMPlanConfig</div>
                   </div>
                   <div className="planning-info-field">
                     <label className="planning-info-label">Root Record</label>
