@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Non-Editable Measure - Impacted State Preview</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 40px;
+      background: #f5f5f5;
+    }
+    h1 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 24px;
+      color: #374151;
+    }
+    .preview-table {
+      border-collapse: collapse;
+      background: white;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .preview-table th,
+    .preview-table td {
+      padding: 12px 16px;
+      border: 1px solid #A0A0A0;
+      vertical-align: middle;
+    }
+    .preview-table th {
+      background: #f3f3f3;
+      font-weight: 600;
+      font-size: 13px;
+      color: #374151;
+    }
+    .preview-table .measure-name-cell {
+      min-width: 280px;
+      font-weight: 700;
+      font-size: 14px;
+      background: white;
+    }
+    .preview-table .dimension-name-cell {
+      min-width: 280px;
+      font-weight: 600;
+      font-size: 13px;
+      background: 
+        repeating-linear-gradient(
+          -45deg,
+          transparent,
+          transparent 6px,
+          #f6f6f6 6px,
+          #f6f6f6 10px
+        ),
+        #ffffff;
+      padding-left: 32px;
+    }
+    /* Non-editable measure row - striped (readonly) */
+    .preview-table .measure-row-striped td {
+      background: 
+        repeating-linear-gradient(
+          -45deg,
+          transparent,
+          transparent 6px,
+          #f0f0f0 6px,
+          #f0f0f0 10px
+        ),
+        #ffffff;
+      font-weight: 700;
+      font-size: 14px;
+    }
+    /* Non-editable dimension row - striped (readonly) */
+    .preview-table .dimension-row-striped td {
+      background: 
+        repeating-linear-gradient(
+          -45deg,
+          transparent,
+          transparent 6px,
+          #f6f6f6 6px,
+          #f6f6f6 10px
+        ),
+        #ffffff;
+      font-weight: 600;
+      font-size: 13px;
+    }
+    /* Impacted cell - yellow background overrides stripe */
+    .preview-table .impacted-cell {
+      background-color: #fef5e7 !important;
+      border: 1px solid #c9c9c9;
+      min-height: 42px;
+      position: relative;
+      padding: 8px 12px;
+    }
+    .cell-value-wrapper-impacted {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0px;
+      position: relative;
+      min-height: 28px;
+    }
+    .cell-delta-badge {
+      font-size: 11px;
+      font-weight: 700;
+      margin-bottom: -2px;
+      line-height: 1;
+    }
+    .cell-value-impacted {
+      font-size: 14px;
+      font-weight: 590;
+      color: #2e2e2e;
+      line-height: 1;
+      margin-top: -2px;
+    }
+    .cell-value-impacted.non-measure {
+      font-size: 13px;
+      font-weight: 400;
+    }
+    .cell-value-impacted.increase {
+      color: #ff5d2d;
+    }
+    .cell-value-impacted.decrease {
+      color: #2E76E1;
+    }
+    .label {
+      font-size: 12px;
+      color: #6b7280;
+      margin-top: 32px;
+      margin-bottom: 8px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Non-Editable Measure – Impacted State Preview</h1>
+  
+  <p class="label">Readonly measure row (e.g. Last Year Order Quantity) with an impacted cell:</p>
+  <table class="preview-table">
+    <thead>
+      <tr>
+        <th>Measure</th>
+        <th>Jan 2026</th>
+        <th>Feb 2026</th>
+        <th>Mar 2026</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="measure-row-striped">
+        <td class="measure-name-cell">Last Year Order Quantity</td>
+        <td class="impacted-cell">
+          <div class="cell-value-wrapper-impacted">
+            <div class="cell-delta-badge" style="color: #ff5d2d;">+5.00%</div>
+            <span class="cell-value-impacted increase">750</span>
+          </div>
+        </td>
+        <td class="impacted-cell">
+          <div class="cell-value-wrapper-impacted">
+            <div class="cell-delta-badge" style="color: #2E76E1;">-2.50%</div>
+            <span class="cell-value-impacted decrease">720</span>
+          </div>
+        </td>
+        <td>750</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p class="label">Impacted cell styling: background #fef5e7, delta badge (+/- %), value colored orange (increase) or blue (decrease)</p>
+
+  <p class="label">Non-measure cell (dimension row) with impacted cell:</p>
+  <table class="preview-table">
+    <thead>
+      <tr>
+        <th>Dimension</th>
+        <th>Jan 2026</th>
+        <th>Feb 2026</th>
+        <th>Mar 2026</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="dimension-row-striped">
+        <td class="dimension-name-cell">MagnaDrive - Michigan Plant</td>
+        <td class="impacted-cell">
+          <div class="cell-value-wrapper-impacted">
+            <div class="cell-delta-badge" style="color: #ff5d2d;">+3.50%</div>
+            <span class="cell-value-impacted increase non-measure">375</span>
+          </div>
+        </td>
+        <td class="impacted-cell">
+          <div class="cell-value-wrapper-impacted">
+            <div class="cell-delta-badge" style="color: #2E76E1;">-1.25%</div>
+            <span class="cell-value-impacted decrease non-measure">360</span>
+          </div>
+        </td>
+        <td>375</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p class="label">Non-measure cells: regular font weight (600), smaller font size (13px), same impacted styling</p>
+</body>
+</html>
