@@ -92,6 +92,15 @@ const GridRowComponent: React.FC<GridRowProps> = ({
   onCollapseMeasure,
   readCells: _readCells = [],
 }) => {
+  // Debug: Log when readCells prop changes
+  useEffect(() => {
+    console.log('[GridRow] readCells prop changed:', {
+      readCells: _readCells,
+      rowId: row.id,
+      readCellsLength: _readCells?.length || 0
+    });
+  }, [_readCells, row.id]);
+  
   const hasChildren = row.children && row.children.length > 0;
   const [editingCell, setEditingCell] = useState<{ monthKey: keyof GridRowType['values'] } | null>(null);
   const [editValue, setEditValue] = useState<string>('');
@@ -1949,6 +1958,17 @@ const GridRowComponent: React.FC<GridRowProps> = ({
           // Force hasNote to false if cell is saved impacted or marked as read (safety check)
           // Triple-check savedImpactedCells directly to be absolutely sure
           const finalHasNote = (isSavedImpacted || isCellRead) ? false : hasNote;
+          
+          // Debug: Log when cell is marked as read
+          if (isCellRead) {
+            console.log('[GridRow cell render] Cell is marked as read, finalHasNote set to false:', {
+              cellKeyForNoteCheck,
+              isCellRead,
+              hasNote,
+              finalHasNote,
+              readCells: _readCells
+            });
+          }
           
           return (
             <td
