@@ -304,11 +304,6 @@ const GridRowComponent: React.FC<GridRowProps> = ({
       return;
     }
     console.log('[GridRow] Cell value clicked (entering edit mode):', { rowId: row.id, rowType: row.type, monthKey });
-    // Measure rows are calculated values and should not be editable
-    if (row.type === 'measure') {
-      console.log('[GridRow] Measure row is not editable, returning');
-      return;
-    }
     if (!onCellChange) {
       console.log('[GridRow] No onCellChange handler, returning');
       return;
@@ -338,11 +333,6 @@ const GridRowComponent: React.FC<GridRowProps> = ({
 
   const handleCellEnterKey = (monthKey: keyof GridRowType['values']) => {
     console.log('[GridRow] Enter key pressed (entering edit mode):', { rowId: row.id, rowType: row.type, monthKey });
-    // Measure rows are calculated values and should not be editable
-    if (row.type === 'measure') {
-      console.log('[GridRow] Measure row is not editable, returning');
-      return;
-    }
     if (!onCellChange) {
       console.log('[GridRow] No onCellChange handler, returning');
       return;
@@ -1201,11 +1191,10 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     // Block editing for cells that belong to Adjustment Measures Category (read-only context)
     const isAdjustmentGroupCell = row.groupContext === 'Adjustment Measures Category';
     
-    // Measure rows are not editable - they are calculated values
-    // Locked cells are also not editable
+    // Locked cells are not editable
     // Readonly measures (Last Year data) are not editable
     // Adjustment Measures Group cells are not editable
-    const isEditable = row.type !== 'measure' && onCellChange && !isCellLocked && !isReadonlyMeasure && !isAdjustmentGroupCell;
+    const isEditable = onCellChange && !isCellLocked && !isReadonlyMeasure && !isAdjustmentGroupCell;
     
     // Calculate delta as percentage
     let deltaPercent: number | null = null;
@@ -1250,7 +1239,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 </div>
               )}
               <span 
-                className={`cell-value cell-value-edited ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
+                className="cell-value cell-value-edited"
                 style={{ cursor: isEditable ? 'pointer' : 'default', color: deltaColor }}
               >
                 {valueMatchesSearch ? (
@@ -1295,7 +1284,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 </div>
               )}
               <span 
-                className={`cell-value cell-value-edited ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
+                className="cell-value cell-value-edited"
                 style={{ cursor: isEditable ? 'pointer' : 'default', color: deltaColor }}
               >
                 {valueMatchesSearch ? (
@@ -1342,7 +1331,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               )}
             </div>
             <span 
-              className={`cell-value cell-value-saved ${!isCellLocked && (isIncrease ? 'cell-value-increase' : 'cell-value-decrease')} ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
+              className={`cell-value cell-value-saved ${!isCellLocked && (isIncrease ? 'cell-value-increase' : 'cell-value-decrease')}`}
               style={{ cursor: isEditable ? 'pointer' : 'default' }}
             >
               {valueMatchesSearch ? (
@@ -1387,7 +1376,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 </div>
               )}
               <span 
-                className={`cell-value cell-value-impacted ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
+                className="cell-value cell-value-impacted"
                 style={{ cursor: isEditable ? 'pointer' : 'default', color: deltaColor }}
               >
                 {valueMatchesSearch ? (
@@ -1424,7 +1413,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
             )}
           </div>
           <span 
-            className={`cell-value ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
+            className="cell-value"
             style={{ cursor: isEditable ? 'pointer' : 'default' }}
           >
             {cellValueMatchesSearch ? (
@@ -1883,7 +1872,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
           
           // Apply striped texture to dimension cells under readonly measures or adjustment group
           const shouldShowTexture = isDimensionUnderReadonlyMeasure || isAdjustmentGroupCell;
-          const isEditable = row.type !== 'measure' && onCellChange && !isCellLocked && !isReadonlyMeasureCell && !isAdjustmentGroupCell;
+          const isEditable = onCellChange && !isCellLocked && !isReadonlyMeasureCell && !isAdjustmentGroupCell;
           
           // Check if this cell has a note
           // For impacted cells: only show note indicator if there's an unsaved note (new note added after impact)
