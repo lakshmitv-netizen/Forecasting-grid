@@ -2559,17 +2559,9 @@ const ForecastingGrid: React.FC = () => {
     });
     
     setReadCells((prev: string[]) => {
-      // Create a completely new array to ensure React detects the change
       const newSet = new Set(prev);
       cellsToMark.forEach(cellKey => newSet.add(cellKey));
-      const newArray = Array.from(newSet);
-      // Force a new array reference
-      console.log('[ForecastingGrid handleContextMarkAsRead] Marking cells as read:', {
-        cellsToMark: Array.from(cellsToMark),
-        prevReadCells: prev,
-        newReadCells: [...newArray]
-      });
-      return [...newArray];
+      return [...Array.from(newSet)];
     });
   }, [contextMenu, selectedCells]);
 
@@ -3247,17 +3239,9 @@ const ForecastingGrid: React.FC = () => {
             onMarkAsRead={() => {
               if (editInfoPopover.cellKey) {
                 setReadCells((prev: string[]) => {
-                  // Create a completely new array to ensure React detects the change
                   const newSet = new Set(prev);
                   newSet.add(editInfoPopover.cellKey);
-                  const newArray = Array.from(newSet);
-                  // Force a new array reference
-                  console.log('[ForecastingGrid onMarkAsRead] Marking cell as read:', {
-                    cellKey: editInfoPopover.cellKey,
-                    prevReadCells: prev,
-                    newReadCells: [...newArray]
-                  });
-                  return [...newArray];
+                  return [...Array.from(newSet)];
                 });
                 // Close the popover after marking as read
                 handleCloseEditInfoPopover();

@@ -92,25 +92,9 @@ const GridRowComponent: React.FC<GridRowProps> = ({
   onCollapseMeasure,
   readCells: _readCells = [],
 }) => {
-  // Debug: Log when readCells prop changes
-  useEffect(() => {
-    console.log('[GridRow] readCells prop changed:', {
-      readCells: _readCells,
-      rowId: row.id,
-      readCellsLength: _readCells?.length || 0
-    });
-  }, [_readCells, row.id]);
-  
-  // Convert readCells array to Set for O(1) lookups and better React change detection
-  // Use JSON.stringify in dependency to ensure React detects array changes
+  // Convert readCells array to Set for O(1) lookups
   const readCellsSet = React.useMemo(() => {
-    const set = new Set(_readCells || []);
-    console.log('[GridRow] Creating readCellsSet:', {
-      readCells: _readCells,
-      setSize: set.size,
-      rowId: row.id
-    });
-    return set;
+    return new Set(_readCells || []);
   }, [_readCells, JSON.stringify(_readCells), row.id]);
   
   const hasChildren = row.children && row.children.length > 0;
@@ -1160,16 +1144,6 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     // Check if cell is marked as read - use Set for O(1) lookup
     const isCellReadInitial = readCellsSet.has(cellKey);
     
-    // Debug: Log when checking readCells
-    if (readCellsSet.size > 0) {
-      console.log('[GridRow renderCellValue] Checking readCells:', {
-        cellKey,
-        readCells: _readCells,
-        readCellsSetSize: readCellsSet.size,
-        isCellReadInitial,
-        cellKeyInReadCells: readCellsSet.has(cellKey)
-      });
-    }
     
     // SCENARIO CHECK: If cell is saved impacted, it means it was impacted (not directly edited) and then saved
     // In this case, suppress ALL notes (even if there was a note in editHistory before it got impacted)
@@ -1248,13 +1222,37 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     const { otherTerms } = separateSearchTerms(searchTerms);
     const valueMatchesSearch = otherTerms.length > 0 && matchesNumber(currentValue, otherTerms);
     
-    // Debug logging to track value rendering
-    if (isDirectlyEdited) {
-      console.log('[GridRow] Rendering directly edited cell:', { rowId: row.id, monthKey, cellKey, originalValue, currentValue, deltaPercent });
-    } else if (isImpacted) {
-      console.log('[GridRow] Rendering impacted cell:', { rowId: row.id, monthKey, cellKey, originalValue, currentValue, deltaPercent });
-    }
     
+    // If cell is marked as read, render as a plain cell - no arrows, no delta badges, no note triangles
+    if (isCellRead) {
+      return (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+            <div className="cell-value-left-icon">
+              {isCellLocked ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
+                  <rect x="5" y="11" width="14" height="9" rx="1" fill="#6b7280"/>
+                  <path d="M9 11V7c0-1.66 1.34-3 3-3s3 1.34 3 3v4" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" fill="none"/>
+                </svg>
+              ) : (
+                <div style={{ width: '18px', height: '18px' }}></div>
+              )}
+            </div>
+            <span 
+              className="cell-value"
+              style={{ cursor: isEditable ? 'pointer' : 'default' }}
+            >
+              {valueMatchesSearch ? (
+                <SearchHighlight text={formatValue(currentValue, row.name?.toLowerCase().includes('quantity'), row.name)} searchTerms={otherTerms} />
+              ) : (
+                formatValue(currentValue, row.name?.toLowerCase().includes('quantity'), row.name)
+              )}
+            </span>
+          </div>
+        </>
+      );
+    }
+
     if (isDirectlyEdited) {
       const isIncrement = deltaPercent !== null && deltaPercent > 0;
       const deltaColor = isIncrement ? '#ff5d2d' : '#2E76E1';
@@ -1932,15 +1930,6 @@ const GridRowComponent: React.FC<GridRowProps> = ({
           // Check if cell is marked as read - use Set for O(1) lookup
           const isCellRead = readCellsSet.has(cellKeyForNoteCheck);
           
-          // Debug logging
-          if (isCellRead) {
-            console.log('[GridRow cell render] Cell marked as read, hiding note indicator:', {
-              cellKeyForNoteCheck,
-              readCells: _readCells,
-              readCellsSetSize: readCellsSet.size,
-              isCellRead
-            });
-          }
           
           if (isSavedImpacted || isCellRead) {
             // Cell is saved impacted or marked as read - don't show any notes, period
@@ -1971,16 +1960,6 @@ const GridRowComponent: React.FC<GridRowProps> = ({
           // Triple-check savedImpactedCells directly to be absolutely sure
           const finalHasNote = (isSavedImpacted || isCellRead) ? false : hasNote;
           
-          // Debug: Log when cell is marked as read
-          if (isCellRead) {
-            console.log('[GridRow cell render] Cell is marked as read, finalHasNote set to false:', {
-              cellKeyForNoteCheck,
-              isCellRead,
-              hasNote,
-              finalHasNote,
-              readCells: _readCells
-            });
-          }
           
           return (
             <td
@@ -1993,7 +1972,9 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                   cellRefs.current.set(cellKey, el);
                 }
               }}
-              className={`grid-cell cell-value-cell ${isFocused ? 'cell-focused' : ''} ${shouldShowTexture ? 'cell-readonly-texture' : ''} ${finalHasNote && !isSavedImpacted ? 'cell-has-note' : ''} ${isCellRead ? 'cell-marked-read' : ''} ${selectedCells.has(cellKey) ? 'cell-selected' : ''} ${(() => {
+              className={`grid-cell cell-value-cell ${isFocused ? 'cell-focused' : ''} ${!isCellRead && shouldShowTexture ? 'cell-readonly-texture' : ''} ${!isCellRead && finalHasNote && !isSavedImpacted ? 'cell-has-note' : ''} ${isCellRead ? 'cell-marked-read' : ''} ${selectedCells.has(cellKey) ? 'cell-selected' : ''} ${(() => {
+                // If cell is marked as read, suppress ALL indicator classes (no colored backgrounds)
+                if (isCellRead) return '';
                 const cellKeyForCheck = `${row.id}-${key}`;
                 const editedOriginalValue = editedCells?.get(cellKeyForCheck);
                 const impactedOriginalValue = impactedCells?.get(cellKeyForCheck);
@@ -2028,11 +2009,10 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               onMouseEnter={(e) => {
                 // Set hover state for pencil icon - always set if editable, regardless of other conditions
                 if (isEditable) {
-                  console.log('[GridRow] Setting hoveredCell to:', key, 'isEditable:', isEditable);
                   setHoveredCell(key);
                 }
-                // Show popover on hover for cells with indicators
-                if (onCellFocusWithHistory && (isEditable || isCellLocked) && !editingCell) {
+                // Show popover on hover for cells with indicators (but NOT for read cells)
+                if (onCellFocusWithHistory && (isEditable || isCellLocked) && !editingCell && !isCellRead) {
                   const focusCellKey = `${row.id}-${key}`;
                   const isDirty = editedCells?.has(focusCellKey) && !savedEditedCells?.has(focusCellKey);
                   const isImpactedCell = impactedCells?.has(focusCellKey);
@@ -2167,8 +2147,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 if (onCellFocus && isEditable) {
                   onCellFocus({ rowId: row.id, monthKey: key });
                 }
-                // Show popover on focus for cells with indicators
-                if (onCellFocusWithHistory && (isEditable || isCellLocked) && !editingCell && !shiftKeyPressedRef.current) {
+                // Show popover on focus for cells with indicators (but NOT for read cells)
+                if (onCellFocusWithHistory && (isEditable || isCellLocked) && !editingCell && !shiftKeyPressedRef.current && !isCellRead) {
                   const focusCellKey = `${row.id}-${key}`;
                   const isDirty = editedCells?.has(focusCellKey) && !savedEditedCells?.has(focusCellKey);
                   // Check if this cell is impacted
@@ -2278,6 +2258,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 measureGroupContext={measureGroupContext}
                 onMeasureGroupContextChange={onMeasureGroupContextChange}
                 sharedMeasureIds={sharedMeasureIds}
+                readCells={_readCells}
               />
             );
           })}
