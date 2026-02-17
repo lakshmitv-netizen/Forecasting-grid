@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { GridRow as GridRowType } from '../types';
 import { extractSearchTerms, separateSearchTerms, matchesNumber } from '../utils/searchUtils';
@@ -30,7 +30,6 @@ interface GridRowProps {
   editHistory?: CellEditHistoryEntry[]; // Edit history to check for notes
   onCellFocusWithHistory?: (cellKey: string, cellRect: DOMRect | null, cellValue?: number, isLocked?: boolean, isImpacted?: boolean) => void; // Callback when a cell is focused
   lockedCells?: Set<string>; // Set of locked cell keys that cannot be edited
-  readCells?: string[]; // Array of cell keys marked as read (will not show note indicators)
   onCellContextMenu?: (e: React.MouseEvent, cellKey: string, cellValue: number, isLocked: boolean, isEditable: boolean) => void; // Callback for right-click context menu
   selectedCells?: Set<string>; // Set of selected cell keys
   onCellSelect?: (cellKey: string, event: React.MouseEvent) => void; // Callback when a cell is clicked for selection
@@ -48,6 +47,7 @@ interface GridRowProps {
   sharedMeasureIds?: string[]; // IDs of measures that exist in multiple groups
   onExpandMeasure?: (measureId: string) => void; // Callback to expand all rows within a measure
   onCollapseMeasure?: (measureId: string) => void; // Callback to collapse all rows within a measure
+  readCells?: string[]; // Array of cell keys marked as read (will not show note indicators)
 }
 
 const GridRowComponent: React.FC<GridRowProps> = ({
@@ -73,7 +73,6 @@ const GridRowComponent: React.FC<GridRowProps> = ({
   editHistory = [],
   onCellFocusWithHistory,
   lockedCells = new Set<string>(),
-  readCells = [],
   onCellContextMenu,
   selectedCells = new Set(),
   onCellSelect,
@@ -91,15 +90,9 @@ const GridRowComponent: React.FC<GridRowProps> = ({
   sharedMeasureIds = [],
   onExpandMeasure,
   onCollapseMeasure,
+  readCells: _readCells = [],
 }) => {
   const hasChildren = row.children && row.children.length > 0;
-  // Force re-render when readCells changes by using it in a useEffect
-  useEffect(() => {
-    // This effect runs when readCells changes, ensuring the component re-renders
-  }, [readCells]);
-
-  // Memoize readCells as Set for O(1) lookup - ensures we catch all cells marked as read
-  const readCellsSet = useMemo(() => new Set(readCells || []), [readCells]);
   const [editingCell, setEditingCell] = useState<{ monthKey: keyof GridRowType['values'] } | null>(null);
   const [editValue, setEditValue] = useState<string>('');
   const [adjustmentNote, setAdjustmentNote] = useState<string>('');
@@ -311,6 +304,11 @@ const GridRowComponent: React.FC<GridRowProps> = ({
       return;
     }
     console.log('[GridRow] Cell value clicked (entering edit mode):', { rowId: row.id, rowType: row.type, monthKey });
+    // Measure rows are calculated values and should not be editable
+    if (row.type === 'measure') {
+      console.log('[GridRow] Measure row is not editable, returning');
+      return;
+    }
     if (!onCellChange) {
       console.log('[GridRow] No onCellChange handler, returning');
       return;
@@ -340,6 +338,11 @@ const GridRowComponent: React.FC<GridRowProps> = ({
 
   const handleCellEnterKey = (monthKey: keyof GridRowType['values']) => {
     console.log('[GridRow] Enter key pressed (entering edit mode):', { rowId: row.id, rowType: row.type, monthKey });
+    // Measure rows are calculated values and should not be editable
+    if (row.type === 'measure') {
+      console.log('[GridRow] Measure row is not editable, returning');
+      return;
+    }
     if (!onCellChange) {
       console.log('[GridRow] No onCellChange handler, returning');
       return;
@@ -1108,10 +1111,6 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     // Check if cell is locked
     const isCellLocked = lockedCells.has(cellKey);
     
-    // Check if cell is marked as read - calculate early so we can use it throughout
-    const cellKeyAlt = `${row.id}-${monthKey}`;
-    const isMarkedAsRead = readCellsSet.size > 0 && (readCellsSet.has(cellKey) || readCellsSet.has(cellKeyAlt));
-    
     const editedOriginalValue = editedCells?.get(cellKey);
     const impactedOriginalValue = impactedCells?.get(cellKey);
     const savedIconColor = savedEditedCells?.get(cellKey);
@@ -1133,6 +1132,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     // This handles the case where a cell had a note, then got impacted, then was saved
     // Check both cellKey formats to ensure we catch it regardless of format differences
     // IMPORTANT: savedImpactedCells is a Set<string>, check it directly and also use the memoized array
+    const cellKeyAlt = `${row.id}-${monthKey}`;
     // Use savedImpactedCellsArray from useMemo (defined at component level) to ensure React detects changes
     // Check if cell is in savedImpactedCells using multiple methods to be absolutely sure
     const wasImpactedAndSaved = savedImpactedCells && (
@@ -1191,9 +1191,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     // CRITICAL: If cell is saved impacted, force hasNote to false regardless of what we calculated above
     // This is the final gate to prevent showing the triangle
     // EXTRA SAFETY: Even if hasNote was set to true above, if cell is saved impacted, suppress it
-    // Also check if cell is marked as read - if so, don't show note indicator OR arrow indicators
-    // Note: isMarkedAsRead is already calculated earlier in the function (line ~1106)
-    const finalHasNoteForRender = (isDefinitelySavedImpacted || isImpacted || isMarkedAsRead) ? false : hasNote;
+    const finalHasNoteForRender = (isDefinitelySavedImpacted || isImpacted) ? false : hasNote;
     
     // Check if this is a readonly measure (Last Year data)
     const isReadonlyMeasure = row.id.includes('measure-ly-order') || 
@@ -1203,10 +1201,11 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     // Block editing for cells that belong to Adjustment Measures Category (read-only context)
     const isAdjustmentGroupCell = row.groupContext === 'Adjustment Measures Category';
     
-    // Locked cells are not editable
+    // Measure rows are not editable - they are calculated values
+    // Locked cells are also not editable
     // Readonly measures (Last Year data) are not editable
     // Adjustment Measures Group cells are not editable
-    const isEditable = onCellChange && !isCellLocked && !isReadonlyMeasure && !isAdjustmentGroupCell;
+    const isEditable = row.type !== 'measure' && onCellChange && !isCellLocked && !isReadonlyMeasure && !isAdjustmentGroupCell;
     
     // Calculate delta as percentage
     let deltaPercent: number | null = null;
@@ -1227,30 +1226,14 @@ const GridRowComponent: React.FC<GridRowProps> = ({
       console.log('[GridRow] Rendering impacted cell:', { rowId: row.id, monthKey, cellKey, originalValue, currentValue, deltaPercent });
     }
     
-    // If cell is marked as read, render as normal cell (no indicators)
-    if (isMarkedAsRead) {
-      return (
-        <span 
-          className={`cell-value ${row.type === 'measure' ? 'cell-value-readonly' : ''}`}
-          style={{ cursor: isEditable ? 'pointer' : 'default' }}
-        >
-          {valueMatchesSearch ? (
-            <SearchHighlight text={formatValue(currentValue, row.name?.toLowerCase().includes('quantity'), row.name)} searchTerms={otherTerms} />
-          ) : (
-            formatValue(currentValue, row.name?.toLowerCase().includes('quantity'), row.name)
-          )}
-        </span>
-      );
-    }
-    
     if (isDirectlyEdited) {
       const isIncrement = deltaPercent !== null && deltaPercent > 0;
       const deltaColor = isIncrement ? '#ff5d2d' : '#2E76E1';
       
       return (
         <>
-          <div className={`cell-value-wrapper-edited-container ${isMarkedAsRead ? 'cell-marked-read' : ''}`}>
-            <div className={`cell-value-left-icon ${isMarkedAsRead ? 'cell-read-hidden' : ''}`}>
+          <div className="cell-value-wrapper-edited-container">
+            <div className="cell-value-left-icon">
               {isCellLocked ? (
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
                   <rect x="5" y="11" width="14" height="9" rx="1" fill="#6b7280"/>
@@ -1280,7 +1263,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
           </div>
           {/* Dog ear triangle indicator for cells with notes */}
           {/* Show note indicator if cell has a note (from editHistory for saved notes, or unsavedNotes for unsaved notes) */}
-          {finalHasNoteForRender && !isMarkedAsRead && (
+          {finalHasNoteForRender && (
             <div className="cell-note-indicator"></div>
           )}
         </>
@@ -1294,8 +1277,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
       
       return (
         <>
-          <div className={`cell-value-wrapper-edited-container ${isMarkedAsRead ? 'cell-marked-read' : ''}`}>
-            <div className={`cell-value-left-icon ${isMarkedAsRead ? 'cell-read-hidden' : ''}`}>
+          <div className="cell-value-wrapper-edited-container">
+            <div className="cell-value-left-icon">
               {isCellLocked ? (
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
                   <rect x="5" y="11" width="14" height="9" rx="1" fill="#6b7280"/>
@@ -1334,16 +1317,15 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     // Even if it has edit history from editHistory prop, impacted cells should not show old indicators
     // Also check if this cell was impacted and saved - if so, don't show old notes
     // CRITICAL: Check isImpacted FIRST - if impacted, never show old indicators
-    // Also check if cell is marked as read - if so, don't show indicators
-    if (isSavedEdited && !isImpacted && !wasImpactedAndSaved && !isMarkedAsRead) {
+    if (isSavedEdited && !isImpacted && !wasImpactedAndSaved) {
       const iconColor = savedIconColor || '#2E76E1'; // Use stored color or default blue
       // Use saved icon color to determine arrow direction (orange = increase, blue = decrease)
       const isIncrease = iconColor === '#ff5d2d' || iconColor === '#FF5D2D';
       
       return (
         <>
-          <div className={`cell-value-wrapper-saved-container ${isMarkedAsRead ? 'cell-marked-read' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <div className={`cell-value-left-icon ${!isCellLocked && !isMarkedAsRead && (isIncrease ? 'cell-arrow-increase' : 'cell-arrow-decrease')} ${isMarkedAsRead ? 'cell-read-hidden' : ''}`}>
+          <div className="cell-value-wrapper-saved-container" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <div className={`cell-value-left-icon ${!isCellLocked && (isIncrease ? 'cell-arrow-increase' : 'cell-arrow-decrease')}`}>
               {isCellLocked ? (
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
                   <rect x="5" y="11" width="14" height="9" rx="1" fill="#6b7280"/>
@@ -1372,7 +1354,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
           </div>
           {/* Dog ear triangle indicator for cells with notes */}
           {/* finalHasNoteForRender already checks savedImpactedCells, so no need for redundant checks */}
-          {finalHasNoteForRender && !isMarkedAsRead && (
+          {finalHasNoteForRender && (
             <div className="cell-note-indicator"></div>
           )}
         </>
@@ -1387,8 +1369,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
       
       return (
         <>
-          <div className={`cell-value-wrapper-impacted-container ${isMarkedAsRead ? 'cell-marked-read' : ''}`}>
-            <div className={`cell-value-left-icon ${isMarkedAsRead ? 'cell-read-hidden' : ''}`}>
+          <div className="cell-value-wrapper-impacted-container">
+            <div className="cell-value-left-icon">
               {isCellLocked ? (
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
                   <rect x="5" y="11" width="14" height="9" rx="1" fill="#6b7280"/>
@@ -1418,7 +1400,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
           </div>
           {/* Dog ear triangle indicator for cells with notes */}
           {/* finalHasNoteForRender already checks savedImpactedCells, so no need for redundant checks */}
-          {finalHasNoteForRender && !isMarkedAsRead && (
+          {finalHasNoteForRender && (
             <div className="cell-note-indicator"></div>
           )}
         </>
@@ -1472,9 +1454,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
           if (isInSavedImpacted) {
             return null;
           }
-          // Also check if cell is marked as read
-          const isMarkedAsReadInIIFE = readCellsSet.size > 0 && (readCellsSet.has(cellKeyForCheck) || readCellsSet.has(cellKey));
-          return finalHasNoteForRender && !isMarkedAsReadInIIFE ? <div className="cell-note-indicator"></div> : null;
+          return finalHasNoteForRender ? <div className="cell-note-indicator"></div> : null;
         })()}
       </>
     );
@@ -1514,6 +1494,44 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               </div>
             )}
             {!hasChildren && <span style={{ width: '16px', display: 'inline-block' }}></span>}
+            {row.type === 'account' && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginLeft: '4px', marginRight: '4px', width: '24px', height: '24px' }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <rect width="24" height="24" rx="12" fill="#5867E8"/>
+                  <path d="M18.6463 12.2486C18.674 11.7779 18.314 11.6394 18.1755 11.6394H13.1909C12.7479 11.6394 12.6925 12.1102 12.6925 12.1379V17.5379H18.6463V12.2486ZM15.2125 16.1256C15.2125 16.3748 15.0186 16.5963 14.7417 16.5963H14.2709C14.0217 16.5963 13.8002 16.3748 13.8002 16.1256V15.6548C13.8002 15.4056 13.994 15.184 14.2709 15.184H14.7417C14.9909 15.184 15.2125 15.4056 15.2125 15.6548V16.1256ZM15.2125 13.7717C15.2125 14.0209 15.0186 14.2425 14.7417 14.2425H14.2709C14.0217 14.2425 13.8002 14.0209 13.8002 13.7717V13.3009C13.8002 13.0517 13.994 12.8302 14.2709 12.8302H14.7417C14.9909 12.8302 15.2125 13.0517 15.2125 13.3009V13.7717ZM17.5109 16.1256C17.5109 16.3748 17.3171 16.5963 17.0402 16.5963H16.5694C16.3202 16.5963 16.0986 16.3748 16.0986 16.1256V15.6548C16.0986 15.4056 16.2925 15.184 16.5694 15.184H17.0402C17.2894 15.184 17.5109 15.4056 17.5109 15.6548V16.1256ZM17.5109 13.7717C17.5109 14.0209 17.3171 14.2425 17.0402 14.2425H16.5694C16.3202 14.2425 16.0986 14.0209 16.0986 13.7717V13.3009C16.0986 13.0517 16.2925 12.8302 16.5694 12.8302H17.0402C17.2894 12.8302 17.5109 13.0517 17.5109 13.3009V13.7717ZM14.0494 9.75632V7.07017C14.0771 6.5994 13.7448 6.46094 13.6063 6.46094H5.85247C5.40939 6.46094 5.354 6.93171 5.354 6.9594V17.5379H11.3079V10.7809C11.3079 10.7809 11.3079 10.2271 11.8063 10.2271H13.6063C13.8832 10.2271 14.0494 9.95017 14.0494 9.75632ZM7.874 15.904C7.874 16.1532 7.68016 16.3748 7.40323 16.3748H6.96016C6.71093 16.3748 6.48939 16.1532 6.48939 15.904V15.4332C6.48939 15.184 6.68323 14.9625 6.96016 14.9625H7.43093C7.68016 14.9625 7.9017 15.184 7.9017 15.4332V15.904H7.874ZM7.874 13.5225C7.874 13.7717 7.68016 13.9932 7.40323 13.9932H6.96016C6.71093 13.9932 6.48939 13.7717 6.48939 13.5225V13.0517C6.48939 12.8025 6.68323 12.5809 6.96016 12.5809H7.43093C7.68016 12.5809 7.9017 12.8025 7.9017 13.0517V13.5225H7.874ZM7.874 11.1686C7.874 11.4179 7.68016 11.6394 7.40323 11.6394H6.96016C6.71093 11.6394 6.48939 11.4179 6.48939 11.1686V10.6979C6.48939 10.4486 6.68323 10.2271 6.96016 10.2271H7.43093C7.68016 10.2271 7.9017 10.4486 7.9017 10.6979V11.1686H7.874ZM7.874 8.81478C7.874 9.06401 7.68016 9.28555 7.40323 9.28555H6.96016C6.71093 9.28555 6.48939 9.06401 6.48939 8.81478V8.34401C6.48939 8.09478 6.68323 7.87325 6.96016 7.87325H7.43093C7.68016 7.87325 7.9017 8.09478 7.9017 8.34401V8.81478H7.874ZM10.394 15.904C10.394 16.1532 10.2002 16.3748 9.92323 16.3748H9.45247C9.20324 16.3748 8.9817 16.1532 8.9817 15.904V15.4332C8.9817 15.184 9.17554 14.9625 9.45247 14.9625H9.92323C10.1725 14.9625 10.394 15.184 10.394 15.4332V15.904ZM10.394 13.5225C10.394 13.7717 10.2002 13.9932 9.92323 13.9932H9.45247C9.20324 13.9932 8.9817 13.7717 8.9817 13.5225V13.0517C8.9817 12.8025 9.17554 12.5809 9.45247 12.5809H9.92323C10.1725 12.5809 10.394 12.8025 10.394 13.0517V13.5225ZM10.394 11.1686C10.394 11.4179 10.2002 11.6394 9.92323 11.6394H9.45247C9.20324 11.6394 8.9817 11.4179 8.9817 11.1686V10.6979C8.9817 10.4486 9.17554 10.2271 9.45247 10.2271H9.92323C10.1725 10.2271 10.394 10.4486 10.394 10.6979V11.1686ZM10.394 8.81478C10.394 9.06401 10.2002 9.28555 9.92323 9.28555H9.45247C9.20324 9.28555 8.9817 9.06401 8.9817 8.81478V8.34401C8.9817 8.09478 9.17554 7.87325 9.45247 7.87325H9.92323C10.1725 7.87325 10.394 8.09478 10.394 8.34401V8.81478ZM12.914 8.81478C12.914 9.06401 12.7202 9.28555 12.4432 9.28555H12.0002C11.7509 9.28555 11.5294 9.06401 11.5294 8.81478V8.34401C11.5294 8.09478 11.7232 7.87325 12.0002 7.87325H12.4709C12.7202 7.87325 12.9417 8.09478 12.9417 8.34401V8.81478H12.914Z" fill="white"/>
+                </svg>
+              </span>
+            )}
+            {row.type === 'product' && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginLeft: '4px', marginRight: '4px', width: '24px', height: '24px' }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <g clipPath="url(#clip0_2078_22246)">
+                    <rect width="24" height="24" rx="4" fill="#9050E9"/>
+                    <path d="M5.2798 15.8408H6.4798C6.7438 15.8408 6.9598 15.6248 6.9598 15.3608V7.92078C6.9598 7.65678 6.7438 7.44078 6.4798 7.44078H5.2798C5.0158 7.44078 4.7998 7.65678 4.7998 7.92078V15.3608C4.7998 15.6248 5.0158 15.8408 5.2798 15.8408ZM18.7198 7.44078H17.5198C17.2558 7.44078 17.0398 7.65678 17.0398 7.92078V15.3608C17.0398 15.6248 17.2558 15.8408 17.5198 15.8408H18.7198C18.9838 15.8408 19.1998 15.6248 19.1998 15.3608V7.92078C19.1998 7.65678 18.9838 7.44078 18.7198 7.44078ZM12.7198 15.8408C12.9838 15.8408 13.1998 15.6248 13.1998 15.3608V7.92078C13.1998 7.65678 12.9838 7.44078 12.7198 7.44078H11.2798C11.0158 7.44078 10.7998 7.65678 10.7998 7.92078V15.3608C10.7998 15.6248 11.0158 15.8408 11.2798 15.8408H12.7198ZM15.5998 15.8408C15.8638 15.8408 16.0798 15.6248 16.0798 15.3608V7.92078C16.0798 7.65678 15.8638 7.44078 15.5998 7.44078H15.1198C14.8558 7.44078 14.6398 7.65678 14.6398 7.92078V15.3608C14.6398 15.6248 14.8558 15.8408 15.1198 15.8408H15.5998ZM9.3598 15.8408C9.6238 15.8408 9.8398 15.6248 9.8398 15.3608V7.92078C9.8398 7.65678 9.6238 7.44078 9.3598 7.44078H8.8798C8.6158 7.44078 8.3998 7.65678 8.3998 7.92078V15.3608C8.3998 15.6248 8.6158 15.8408 8.8798 15.8408H9.3598ZM18.7198 17.2808H5.2798C5.0158 17.2808 4.7998 17.4968 4.7998 17.7608V18.2408C4.7998 18.5048 5.0158 18.7208 5.2798 18.7208H18.7198C18.9838 18.7208 19.1998 18.5048 19.1998 18.2408V17.7608C19.1998 17.4968 18.9838 17.2808 18.7198 17.2808ZM18.7198 4.80078H5.2798C5.0158 4.80078 4.7998 5.01678 4.7998 5.28078V5.76078C4.7998 6.02478 5.0158 6.24078 5.2798 6.24078H18.7198C18.9838 6.24078 19.1998 6.02478 19.1998 5.76078V5.28078C19.1998 5.01678 18.9838 4.80078 18.7198 4.80078Z" fill="white"/>
+                  </g>
+                  <defs>
+                    <clipPath id="clip0_2078_22246">
+                      <rect width="24" height="24" rx="12" fill="white"/>
+                    </clipPath>
+                  </defs>
+                </svg>
+              </span>
+            )}
+            {row.type === 'category' && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginLeft: '4px', marginRight: '4px', width: '24px', height: '24px' }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <g clipPath="url(#clip0_2078_22252)">
+                    <rect width="24" height="24" rx="4" fill="#396547"/>
+                    <path d="M14.8318 7.05678L16.9678 9.19278C17.4478 9.64878 17.4478 10.4168 16.9678 10.8728L11.3998 16.4168V8.78478L13.1278 7.03278C13.2409 6.92186 13.3749 6.83445 13.522 6.77558C13.6691 6.7167 13.8264 6.68754 13.9848 6.68977C14.1432 6.692 14.2996 6.72558 14.445 6.78858C14.5904 6.85157 14.7218 6.94272 14.8318 7.05678ZM8.9998 4.80078H5.9998C5.68154 4.80078 5.37632 4.92721 5.15128 5.15225C4.92623 5.3773 4.7998 5.68252 4.7998 6.00078V16.5128C4.7998 16.8658 4.86933 17.2153 5.00442 17.5414C5.1395 17.8676 5.3375 18.1639 5.5871 18.4135C5.83671 18.6631 6.13303 18.8611 6.45915 18.9962C6.78527 19.1313 7.13481 19.2008 7.4878 19.2008C7.8408 19.2008 8.19033 19.1313 8.51646 18.9962C8.84258 18.8611 9.1389 18.6631 9.38851 18.4135C9.63811 18.1639 9.83611 17.8676 9.97119 17.5414C10.1063 17.2153 10.1758 16.8658 10.1758 16.5128V6.00078C10.1998 5.32878 9.6478 4.80078 8.9998 4.80078ZM7.4878 17.7128C6.8158 17.7128 6.2878 17.1848 6.2878 16.5128C6.2878 15.8408 6.8158 15.3128 7.4878 15.3128C8.1598 15.3128 8.6878 15.8408 8.6878 16.5128C8.6878 17.1848 8.1598 17.7128 7.4878 17.7128ZM17.9998 13.8008H15.8878L14.4478 15.2408H17.7598L17.7358 17.7608H11.9518L10.5118 19.2008H17.9998C18.3181 19.2008 18.6233 19.0744 18.8483 18.8493C19.0734 18.6243 19.1998 18.319 19.1998 18.0008V15.0008C19.1998 14.6825 19.0734 14.3773 18.8483 14.1523C18.6233 13.9272 18.3181 13.8008 17.9998 13.8008Z" fill="white"/>
+                  </g>
+                  <defs>
+                    <clipPath id="clip0_2078_22252">
+                      <rect width="24" height="24" rx="12" fill="white"/>
+                    </clipPath>
+                  </defs>
+                </svg>
+              </span>
+            )}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <span className="cell-name">
                 {searchTerm && searchTerm.trim() ? (
@@ -1865,7 +1883,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
           
           // Apply striped texture to dimension cells under readonly measures or adjustment group
           const shouldShowTexture = isDimensionUnderReadonlyMeasure || isAdjustmentGroupCell;
-          const isEditable = onCellChange && !isCellLocked && !isReadonlyMeasureCell && !isAdjustmentGroupCell;
+          const isEditable = row.type !== 'measure' && onCellChange && !isCellLocked && !isReadonlyMeasureCell && !isAdjustmentGroupCell;
           
           // Check if this cell has a note
           // For impacted cells: only show note indicator if there's an unsaved note (new note added after impact)
@@ -1909,10 +1927,6 @@ const GridRowComponent: React.FC<GridRowProps> = ({
           // Triple-check savedImpactedCells directly to be absolutely sure
           const finalHasNote = isSavedImpacted ? false : hasNote;
           
-          // Check if cell is marked as read
-          const cellKeyAltForRead = `${row.id}-${key}`;
-          const isMarkedAsReadForCell = readCellsSet.size > 0 && (readCellsSet.has(cellKey) || readCellsSet.has(cellKeyAltForRead));
-          
           return (
             <td
               key={cellKey}
@@ -1923,8 +1937,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                   cellRefs.current.set(cellKey, el);
                 }
               }}
-              data-cell-read={isMarkedAsReadForCell ? 'true' : 'false'}
-              className={`grid-cell cell-value-cell ${isFocused ? 'cell-focused' : ''} ${shouldShowTexture ? 'cell-readonly-texture' : ''} ${finalHasNote && !isSavedImpacted ? 'cell-has-note' : ''} ${selectedCells.has(cellKey) ? 'cell-selected' : ''} ${isMarkedAsReadForCell ? 'cell-marked-read' : ''} ${(() => {
+              className={`grid-cell cell-value-cell ${isFocused ? 'cell-focused' : ''} ${shouldShowTexture ? 'cell-readonly-texture' : ''} ${finalHasNote && !isSavedImpacted ? 'cell-has-note' : ''} ${selectedCells.has(cellKey) ? 'cell-selected' : ''} ${(() => {
                 const cellKeyForCheck = `${row.id}-${key}`;
                 const editedOriginalValue = editedCells?.get(cellKeyForCheck);
                 const impactedOriginalValue = impactedCells?.get(cellKeyForCheck);
@@ -1959,12 +1972,12 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               onMouseEnter={(e) => {
                 // Set hover state for pencil icon - always set if editable, regardless of other conditions
                 if (isEditable) {
+                  console.log('[GridRow] Setting hoveredCell to:', key, 'isEditable:', isEditable);
                   setHoveredCell(key);
                 }
                 // Show popover on hover for cells with indicators
                 if (onCellFocusWithHistory && (isEditable || isCellLocked) && !editingCell) {
                   const focusCellKey = `${row.id}-${key}`;
-                  const isMarkedAsReadCell = readCellsSet.size > 0 && (readCellsSet.has(focusCellKey) || readCellsSet.has(cellKey));
                   const isDirty = editedCells?.has(focusCellKey) && !savedEditedCells?.has(focusCellKey);
                   const isImpactedCell = impactedCells?.has(focusCellKey);
                   const wasImpactedAndSaved = savedImpactedCells.has(focusCellKey);
@@ -1974,8 +1987,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                     entry.cellKey === focusCellKey || (entry.rowId === row.id && entry.timeKey === key)
                   );
                   
-                  // Only show popover if cell has edit history AND is not impacted/saved impacted AND is not marked as read
-                  if (hasEditHistory && (!isDirty || isCellLocked) && !isImpactedCell && !wasImpactedAndSaved && !isMarkedAsReadCell) {
+                  // Only show popover if cell has edit history AND is not impacted/saved impacted
+                  if (hasEditHistory && (!isDirty || isCellLocked) && !isImpactedCell && !wasImpactedAndSaved) {
                     const cellElement = e.currentTarget;
                     const cellRect = cellElement.getBoundingClientRect();
                     const cellValue = row.values[key];
@@ -2101,7 +2114,6 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 // Show popover on focus for cells with indicators
                 if (onCellFocusWithHistory && (isEditable || isCellLocked) && !editingCell && !shiftKeyPressedRef.current) {
                   const focusCellKey = `${row.id}-${key}`;
-                  const isMarkedAsReadCell = readCellsSet.size > 0 && (readCellsSet.has(focusCellKey) || readCellsSet.has(cellKey));
                   const isDirty = editedCells?.has(focusCellKey) && !savedEditedCells?.has(focusCellKey);
                   // Check if this cell is impacted
                   const isImpactedCell = impactedCells?.has(focusCellKey);
@@ -2110,8 +2122,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                   // Don't show popover for dirty/unsaved cells (unless locked)
                   // Also don't show popover for impacted cells (they show their own state)
                   // Also don't show popover for saved impacted cells (they were impacted but are now saved)
-                  // Also don't show popover for cells marked as read
-                  if ((!isDirty || isCellLocked) && !isImpactedCell && !wasImpactedAndSaved && !isMarkedAsReadCell) {
+                  if ((!isDirty || isCellLocked) && !isImpactedCell && !wasImpactedAndSaved) {
                     const cellElement = e.currentTarget;
                     const cellRect = cellElement.getBoundingClientRect();
                     const cellValue = row.values[key];
@@ -2199,12 +2210,9 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 editHistory={editHistory}
                 onCellFocusWithHistory={onCellFocusWithHistory}
                 lockedCells={lockedCells}
-                readCells={readCells}
                 onCellContextMenu={onCellContextMenu}
                 selectedCells={selectedCells}
                 onCellSelect={onCellSelect}
-                onCellMouseDown={onCellMouseDown}
-                onCellMouseMove={onCellMouseMove}
                 lastSelectedCell={lastSelectedCell}
                 onFillHandleDragStart={onFillHandleDragStart}
                 onFillHandleDragMove={onFillHandleDragMove}
