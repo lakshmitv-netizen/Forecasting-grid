@@ -101,6 +101,11 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     });
   }, [_readCells, row.id]);
   
+  // Convert readCells array to Set for O(1) lookups and better React change detection
+  const readCellsSet = React.useMemo(() => {
+    return new Set(_readCells || []);
+  }, [_readCells]);
+  
   const hasChildren = row.children && row.children.length > 0;
   const [editingCell, setEditingCell] = useState<{ monthKey: keyof GridRowType['values'] } | null>(null);
   const [editValue, setEditValue] = useState<string>('');
@@ -1145,17 +1150,17 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     // IMPORTANT: If cell is saved impacted OR marked as read, NEVER show note indicator, regardless of other conditions
     let hasNote = false;
     
-    // Check if cell is marked as read - check initial cell key format
-    // Note: cellKeyAlt will be checked later after it's defined
-    const isCellReadInitial = _readCells && _readCells.length > 0 && _readCells.includes(cellKey);
+    // Check if cell is marked as read - use Set for O(1) lookup
+    const isCellReadInitial = readCellsSet.has(cellKey);
     
     // Debug: Log when checking readCells
-    if (_readCells && _readCells.length > 0) {
+    if (readCellsSet.size > 0) {
       console.log('[GridRow renderCellValue] Checking readCells:', {
         cellKey,
         readCells: _readCells,
+        readCellsSetSize: readCellsSet.size,
         isCellReadInitial,
-        cellKeyInReadCells: _readCells.includes(cellKey)
+        cellKeyInReadCells: readCellsSet.has(cellKey)
       });
     }
     
@@ -1202,8 +1207,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
       savedImpactedCellsArray.includes(cellKeyAlt)
     );
     
-    // Check if cell is marked as read - check both cell key formats (cellKeyAlt is now defined)
-    const isCellRead = isCellReadInitial || (_readCells && _readCells.length > 0 && _readCells.includes(cellKeyAlt));
+    // Check if cell is marked as read - use Set for O(1) lookup, check both formats
+    const isCellRead = isCellReadInitial || readCellsSet.has(cellKeyAlt);
     
     // CRITICAL: If cell is saved impacted or marked as read, force hasNote to false regardless of what we calculated above
     // This is the final gate to prevent showing the triangle
@@ -1917,15 +1922,15 @@ const GridRowComponent: React.FC<GridRowProps> = ({
           // IMPORTANT: If cell is saved impacted OR marked as read, NEVER show note indicator, regardless of other conditions
           let hasNote = false;
           
-          // Check if cell is marked as read - check cell key format
-          // Note: cellKeyForNoteCheck is already `${row.id}-${key}`, so we only need one check
-          const isCellRead = _readCells && _readCells.length > 0 && _readCells.includes(cellKeyForNoteCheck);
+          // Check if cell is marked as read - use Set for O(1) lookup
+          const isCellRead = readCellsSet.has(cellKeyForNoteCheck);
           
           // Debug logging
-          if (_readCells && _readCells.length > 0 && _readCells.includes(cellKeyForNoteCheck)) {
+          if (isCellRead) {
             console.log('[GridRow cell render] Cell marked as read, hiding note indicator:', {
               cellKeyForNoteCheck,
               readCells: _readCells,
+              readCellsSetSize: readCellsSet.size,
               isCellRead
             });
           }
