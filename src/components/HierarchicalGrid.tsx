@@ -48,6 +48,7 @@ interface HierarchicalGridProps {
   onAfterSave?: () => void; // Callback called after save completes
   selectedCells?: Set<string>; // Set of selected cell keys
   onCellSelect?: (cellKey: string, event: React.MouseEvent) => void; // Callback when a cell is clicked for selection
+  onKeyboardSelect?: (cellKey: string, isShift: boolean) => void; // Callback for keyboard-driven selection (Shift+Arrow)
   onCellMouseDown?: (cellKey: string, event: React.MouseEvent) => void; // Callback for mouse down (drag selection)
   onCellMouseMove?: (cellKey: string) => void; // Callback for mouse move (drag selection)
   lastSelectedCell?: string | null; // Last selected cell key (for drag handle indicator)
@@ -103,6 +104,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   onAfterSave,
   selectedCells = new Set(),
   onCellSelect,
+  onKeyboardSelect,
   onCellMouseDown,
   onCellMouseMove,
   lastSelectedCell = null,
@@ -2571,31 +2573,43 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
         return; // Don't prevent default for other keys
     }
     
-    // Skip measure rows when navigating
-    while (newRowIndex < visibleRows.length && visibleRows[newRowIndex].type === 'measure') {
-      if (e.key === 'ArrowDown' || (!e.shiftKey && e.key === 'Tab')) {
+    // Skip measure rows when navigating (both up and down)
+    const isArrowKey = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key);
+    if (e.key === 'ArrowDown' || (!e.shiftKey && e.key === 'Tab')) {
+      while (newRowIndex < visibleRows.length && visibleRows[newRowIndex].type === 'measure') {
         newRowIndex++;
-      } else {
-        break;
+      }
+    } else if (e.key === 'ArrowUp') {
+      while (newRowIndex >= 0 && visibleRows[newRowIndex].type === 'measure') {
+        newRowIndex--;
       }
     }
     
     if (newRowIndex >= 0 && newRowIndex < visibleRows.length && 
         newColIndex >= 0 && newColIndex < visibleTimeKeys.length) {
+      const cellKey = `${visibleRows[newRowIndex].id}-${visibleTimeKeys[newColIndex]}`;
+      
+      // Shift+Arrow: extend selection range
+      if (e.shiftKey && isArrowKey && onKeyboardSelect) {
+        onKeyboardSelect(cellKey, true);
+      } else if (isArrowKey && onKeyboardSelect) {
+        // Plain arrow: single-select the target cell
+        onKeyboardSelect(cellKey, false);
+      }
+      
       setFocusedCell({ 
         rowId: visibleRows[newRowIndex].id, 
         monthKey: visibleTimeKeys[newColIndex] 
       });
       
-      // Scroll into view
-      const cellKey = `${visibleRows[newRowIndex].id}-${visibleTimeKeys[newColIndex]}`;
+      // Scroll into view and focus
       const cellElement = cellRefs.current.get(cellKey);
       if (cellElement) {
         cellElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         cellElement.focus();
       }
     }
-  }, [focusedCell, getAllVisibleRows, getVisibleTimeKeys, handleCellChange, editedCells, impactedCells, selectedCells, gridData, findRowById, expandedRows]);
+  }, [focusedCell, getAllVisibleRows, getVisibleTimeKeys, handleCellChange, editedCells, impactedCells, selectedCells, gridData, findRowById, expandedRows, onKeyboardSelect]);
 
   // Expose cell change handler for programmatic updates (mass update)
   // Also expose a function to get current cell value from gridData

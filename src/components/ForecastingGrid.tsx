@@ -484,6 +484,86 @@ const ForecastingGrid: React.FC = () => {
     setSelectedCellsOrder(newOrder);
   }, [lastSelectedCell, editingCellKey, selectedLayoutState, calculateCellRange]);
   
+  // Keyboard-driven cell selection (for Shift+Arrow and plain Arrow navigation)
+  const handleKeyboardSelect = useCallback((cellKey: string, isShift: boolean) => {
+    let newOrder: string[] = [];
+    
+    setSelectedCells(prev => {
+      const newSelection = new Set<string>();
+      newOrder = [];
+      
+      if (isShift) {
+        // Shift+Arrow: range selection from anchor to cellKey
+        let currentAnchor = shiftAnchorCellRef.current;
+        
+        // If no anchor, use the first cell from previous selection
+        if (!currentAnchor && prev.size > 0) {
+          const previousOrder = selectedCellsOrderRef.current;
+          if (previousOrder.length > 0) {
+            currentAnchor = previousOrder.find(key => prev.has(key)) || null;
+          }
+          if (!currentAnchor) {
+            currentAnchor = Array.from(prev)[0] || null;
+          }
+          if (currentAnchor) {
+            shiftAnchorCellRef.current = currentAnchor;
+          }
+        }
+        
+        if (!currentAnchor) {
+          // No anchor at all: set this cell as anchor and select it
+          shiftAnchorCellRef.current = cellKey;
+          newSelection.add(cellKey);
+          newOrder.push(cellKey);
+        } else {
+          // Calculate range from anchor to target
+          const rangeCells = calculateCellRange(currentAnchor, cellKey);
+          rangeCells.forEach(cell => {
+            newSelection.add(cell);
+            newOrder.push(cell);
+          });
+        }
+        
+        lastSelectedCellRef.current = cellKey;
+        setLastSelectedCell(cellKey);
+        if (newSelection.size > 1) {
+          setCurrentFocusedCell(null);
+        }
+      } else {
+        // Plain arrow: single selection, move to this cell
+        shiftAnchorCellRef.current = cellKey;
+        newSelection.add(cellKey);
+        newOrder.push(cellKey);
+        lastSelectedCellRef.current = cellKey;
+        setLastSelectedCell(cellKey);
+        
+        // Update focusedCell for the side panel
+        if (selectedLayoutState === 'Dimensions / Time x Measures' || selectedLayoutState === 'Time / Dimensions x Measures') {
+          const parts = cellKey.split('-');
+          if (parts.length >= 2) {
+            const measureId = parts[parts.length - 1];
+            const dimensionId = parts.slice(0, -1).join('-');
+            setCurrentFocusedCell({ rowId: dimensionId, measureId: measureId });
+          }
+        } else {
+          const parts = cellKey.split('-');
+          if (parts.length >= 2) {
+            const monthKey = parts[parts.length - 1];
+            const rowId = parts.slice(0, -1).join('-');
+            setCurrentFocusedCell({ rowId: rowId, monthKey: monthKey });
+          }
+        }
+      }
+      
+      selectedCellsRef.current = newSelection;
+      selectedCellsOrderRef.current = newOrder;
+      
+      return newSelection;
+    });
+    
+    setSelectedCellsOrder(newOrder);
+  }, [selectedLayoutState, calculateCellRange]);
+
   // Drag selection handlers
   const handleCellMouseDown = useCallback((cellKey: string, event: React.MouseEvent) => {
     // Don't start drag if double-clicking
@@ -3098,6 +3178,7 @@ const ForecastingGrid: React.FC = () => {
             onCellContextMenu={handleContextMenu}
             selectedCells={selectedCells}
             onCellSelect={handleCellSelect}
+            onKeyboardSelect={handleKeyboardSelect}
             onCellMouseDown={handleCellMouseDown}
             onCellMouseMove={handleCellMouseMove}
             lastSelectedCell={lastSelectedCell}
