@@ -1136,12 +1136,13 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     // IMPORTANT: If cell is saved impacted OR marked as read, NEVER show note indicator, regardless of other conditions
     let hasNote = false;
     
-    // Check if cell is marked as read
-    const isCellRead = _readCells && _readCells.length > 0 && _readCells.includes(cellKey);
+    // Check if cell is marked as read - check initial cell key format
+    // Note: cellKeyAlt will be checked later after it's defined
+    const isCellReadInitial = _readCells && _readCells.length > 0 && _readCells.includes(cellKey);
     
     // SCENARIO CHECK: If cell is saved impacted, it means it was impacted (not directly edited) and then saved
     // In this case, suppress ALL notes (even if there was a note in editHistory before it got impacted)
-    if (wasImpactedAndSaved || isCellRead) {
+    if (wasImpactedAndSaved || isCellReadInitial) {
       // Cell is saved impacted or marked as read - don't show any notes (even if there's a note in editHistory)
       // This handles: cell had note -> got impacted -> saved -> triangle should NOT show
       // OR: cell had note -> marked as read -> triangle should NOT show
@@ -1182,9 +1183,13 @@ const GridRowComponent: React.FC<GridRowProps> = ({
       savedImpactedCellsArray.includes(cellKeyAlt)
     );
     
+    // Check if cell is marked as read - check both cell key formats (cellKeyAlt is now defined)
+    const isCellRead = isCellReadInitial || (_readCells && _readCells.length > 0 && _readCells.includes(cellKeyAlt));
+    
     // CRITICAL: If cell is saved impacted or marked as read, force hasNote to false regardless of what we calculated above
     // This is the final gate to prevent showing the triangle
     // EXTRA SAFETY: Even if hasNote was set to true above, if cell is saved impacted or marked as read, suppress it
+    // Note: We already checked isCellReadInitial earlier, but now we check the full isCellRead which includes cellKeyAlt
     const finalHasNoteForRender = (isDefinitelySavedImpacted || isImpacted || isCellRead) ? false : hasNote;
     
     // Check if this is a readonly measure (Last Year data)
@@ -1893,8 +1898,12 @@ const GridRowComponent: React.FC<GridRowProps> = ({
           // IMPORTANT: If cell is saved impacted OR marked as read, NEVER show note indicator, regardless of other conditions
           let hasNote = false;
           
-          // Check if cell is marked as read
-          const isCellRead = _readCells && _readCells.length > 0 && _readCells.includes(cellKeyForNoteCheck);
+          // Check if cell is marked as read - check both cell key formats
+          const cellKeyAltForNote = `${row.id}-${key}`;
+          const isCellRead = _readCells && _readCells.length > 0 && (
+            _readCells.includes(cellKeyForNoteCheck) || 
+            _readCells.includes(cellKeyAltForNote)
+          );
           
           if (isSavedImpacted || isCellRead) {
             // Cell is saved impacted or marked as read - don't show any notes, period
