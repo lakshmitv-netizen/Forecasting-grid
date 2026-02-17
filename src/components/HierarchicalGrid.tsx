@@ -3354,7 +3354,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                 
                 return (
                   <GridRowComponent
-                    key={`${measure.id}-read-${readCells.length > 0 ? [...readCells].sort().join('-') : 'none'}`}
+                    key={`${measure.id}-read-${readCells.length > 0 ? [...readCells].sort().join('-') : 'none'}-${readCells.length}`}
                     row={filteredRow}
                     level={0}
                     isExpanded={expandedRows.has(measure.id)}

@@ -102,9 +102,16 @@ const GridRowComponent: React.FC<GridRowProps> = ({
   }, [_readCells, row.id]);
   
   // Convert readCells array to Set for O(1) lookups and better React change detection
+  // Use JSON.stringify in dependency to ensure React detects array changes
   const readCellsSet = React.useMemo(() => {
-    return new Set(_readCells || []);
-  }, [_readCells]);
+    const set = new Set(_readCells || []);
+    console.log('[GridRow] Creating readCellsSet:', {
+      readCells: _readCells,
+      setSize: set.size,
+      rowId: row.id
+    });
+    return set;
+  }, [_readCells, JSON.stringify(_readCells), row.id]);
   
   const hasChildren = row.children && row.children.length > 0;
   const [editingCell, setEditingCell] = useState<{ monthKey: keyof GridRowType['values'] } | null>(null);
