@@ -1132,15 +1132,19 @@ const GridRowComponent: React.FC<GridRowProps> = ({
       savedImpactedCellsArray.includes(cellKeyAlt)
     );
     
-    // Calculate hasNote - explicitly exclude saved impacted cells
-    // IMPORTANT: If cell is saved impacted, NEVER show note indicator, regardless of other conditions
+    // Calculate hasNote - explicitly exclude saved impacted cells and read cells
+    // IMPORTANT: If cell is saved impacted OR marked as read, NEVER show note indicator, regardless of other conditions
     let hasNote = false;
+    
+    // Check if cell is marked as read
+    const isCellRead = _readCells && _readCells.length > 0 && _readCells.includes(cellKey);
     
     // SCENARIO CHECK: If cell is saved impacted, it means it was impacted (not directly edited) and then saved
     // In this case, suppress ALL notes (even if there was a note in editHistory before it got impacted)
-    if (wasImpactedAndSaved) {
-      // Cell is saved impacted - don't show any notes (even if there's a note in editHistory)
+    if (wasImpactedAndSaved || isCellRead) {
+      // Cell is saved impacted or marked as read - don't show any notes (even if there's a note in editHistory)
       // This handles: cell had note -> got impacted -> saved -> triangle should NOT show
+      // OR: cell had note -> marked as read -> triangle should NOT show
       hasNote = false;
     } else if (isImpacted) {
       // For currently impacted cells (not yet saved): only show note if there's an unsaved note (added after impact)
@@ -1178,10 +1182,10 @@ const GridRowComponent: React.FC<GridRowProps> = ({
       savedImpactedCellsArray.includes(cellKeyAlt)
     );
     
-    // CRITICAL: If cell is saved impacted, force hasNote to false regardless of what we calculated above
+    // CRITICAL: If cell is saved impacted or marked as read, force hasNote to false regardless of what we calculated above
     // This is the final gate to prevent showing the triangle
-    // EXTRA SAFETY: Even if hasNote was set to true above, if cell is saved impacted, suppress it
-    const finalHasNoteForRender = (isDefinitelySavedImpacted || isImpacted) ? false : hasNote;
+    // EXTRA SAFETY: Even if hasNote was set to true above, if cell is saved impacted or marked as read, suppress it
+    const finalHasNoteForRender = (isDefinitelySavedImpacted || isImpacted || isCellRead) ? false : hasNote;
     
     // Check if this is a readonly measure (Last Year data)
     const isReadonlyMeasure = row.id.includes('measure-ly-order') || 
@@ -1885,12 +1889,17 @@ const GridRowComponent: React.FC<GridRowProps> = ({
           // Check if cell is saved impacted - check both cell key formats to be absolutely sure
           const isSavedImpacted = savedImpactedCells.has(cellKeyForNoteCheck) || savedImpactedCells.has(`${row.id}-${key}`);
           
-          // Calculate hasNote - explicitly exclude saved impacted cells
-          // IMPORTANT: If cell is saved impacted, NEVER show note indicator, regardless of other conditions
+          // Calculate hasNote - explicitly exclude saved impacted cells and read cells
+          // IMPORTANT: If cell is saved impacted OR marked as read, NEVER show note indicator, regardless of other conditions
           let hasNote = false;
-          if (isSavedImpacted) {
-            // Cell is saved impacted - don't show any notes, period
+          
+          // Check if cell is marked as read
+          const isCellRead = _readCells && _readCells.length > 0 && _readCells.includes(cellKeyForNoteCheck);
+          
+          if (isSavedImpacted || isCellRead) {
+            // Cell is saved impacted or marked as read - don't show any notes, period
             // This handles: cell had note -> got impacted -> saved -> triangle should NOT show
+            // OR: cell had note -> marked as read -> triangle should NOT show
             hasNote = false;
           } else if (isImpactedForNote) {
             // For impacted cells: only show note if there's an unsaved note (added after impact)
@@ -1912,9 +1921,9 @@ const GridRowComponent: React.FC<GridRowProps> = ({
             }
           }
           
-          // Force hasNote to false if cell is saved impacted (safety check)
+          // Force hasNote to false if cell is saved impacted or marked as read (safety check)
           // Triple-check savedImpactedCells directly to be absolutely sure
-          const finalHasNote = isSavedImpacted ? false : hasNote;
+          const finalHasNote = (isSavedImpacted || isCellRead) ? false : hasNote;
           
           return (
             <td
