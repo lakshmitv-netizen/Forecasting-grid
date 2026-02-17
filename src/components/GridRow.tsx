@@ -1140,6 +1140,16 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     // Note: cellKeyAlt will be checked later after it's defined
     const isCellReadInitial = _readCells && _readCells.length > 0 && _readCells.includes(cellKey);
     
+    // Debug: Log when checking readCells
+    if (_readCells && _readCells.length > 0) {
+      console.log('[GridRow renderCellValue] Checking readCells:', {
+        cellKey,
+        readCells: _readCells,
+        isCellReadInitial,
+        cellKeyInReadCells: _readCells.includes(cellKey)
+      });
+    }
+    
     // SCENARIO CHECK: If cell is saved impacted, it means it was impacted (not directly edited) and then saved
     // In this case, suppress ALL notes (even if there was a note in editHistory before it got impacted)
     if (wasImpactedAndSaved || isCellReadInitial) {
