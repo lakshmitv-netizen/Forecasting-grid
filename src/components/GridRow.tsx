@@ -1908,12 +1908,18 @@ const GridRowComponent: React.FC<GridRowProps> = ({
           // IMPORTANT: If cell is saved impacted OR marked as read, NEVER show note indicator, regardless of other conditions
           let hasNote = false;
           
-          // Check if cell is marked as read - check both cell key formats
-          const cellKeyAltForNote = `${row.id}-${key}`;
-          const isCellRead = _readCells && _readCells.length > 0 && (
-            _readCells.includes(cellKeyForNoteCheck) || 
-            _readCells.includes(cellKeyAltForNote)
-          );
+          // Check if cell is marked as read - check cell key format
+          // Note: cellKeyForNoteCheck is already `${row.id}-${key}`, so we only need one check
+          const isCellRead = _readCells && _readCells.length > 0 && _readCells.includes(cellKeyForNoteCheck);
+          
+          // Debug logging
+          if (_readCells && _readCells.length > 0 && _readCells.includes(cellKeyForNoteCheck)) {
+            console.log('[GridRow cell render] Cell marked as read, hiding note indicator:', {
+              cellKeyForNoteCheck,
+              readCells: _readCells,
+              isCellRead
+            });
+          }
           
           if (isSavedImpacted || isCellRead) {
             // Cell is saved impacted or marked as read - don't show any notes, period
