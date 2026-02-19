@@ -423,9 +423,11 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
     'Copy Formula',
     'Copy Trend',
     'Copy conditional formatting rule',
-    'Copy Adjustment Notes'
+    'Copy Adjustment Notes',
+    'Set Disaggregation Mechanism'
   ];
   const ruleOptions = ['Increase', 'Decrease', 'Set to', 'Multiply by', 'Divide by'];
+  const disaggregationRuleOptions = ['even', 'proportional', 'fixed', 'custom', 'do not cascade'];
   
   // Filter actions based on search term
   const filteredActions = selectActionOptions.filter(action =>
@@ -653,6 +655,14 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                                   setSelectAction(option);
                                   setIsSelectActionDropdownOpen(false);
                                   setActionSearchTerm('');
+                                  // Reset rule when switching actions
+                                  if (option === 'Bulk Edit') {
+                                    setRule('Increase');
+                                  } else if (option === 'Set Disaggregation Mechanism') {
+                                    setRule('');
+                                  } else {
+                                    setRule('');
+                                  }
                                 }}
                               >
                                 {option}
@@ -688,6 +698,42 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                       {isRuleDropdownOpen && (
                         <div className="cell-details-history-dropdown-list">
                           {ruleOptions.map((option, index) => (
+                            <div
+                              key={index}
+                              className={`cell-details-history-dropdown-option ${rule === option ? 'selected' : ''}`}
+                              onClick={() => {
+                                setRule(option);
+                                setIsRuleDropdownOpen(false);
+                              }}
+                            >
+                              {option}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Rule - only show for Set Disaggregation Mechanism */}
+                {selectAction === 'Set Disaggregation Mechanism' && (
+                  <div className="cell-details-history-multi-field">
+                    <label className="cell-details-history-multi-label">Rule</label>
+                    <div className="cell-details-history-dropdown-wrapper" ref={ruleDropdownRef}>
+                      <div 
+                        className={`cell-details-history-dropdown-trigger ${isRuleDropdownOpen ? 'open' : ''}`}
+                        onClick={() => setIsRuleDropdownOpen(!isRuleDropdownOpen)}
+                      >
+                        <span className="cell-details-history-dropdown-value">
+                          {rule || 'Select rule'}
+                        </span>
+                        <svg className="cell-details-history-dropdown-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
+                      {isRuleDropdownOpen && (
+                        <div className="cell-details-history-dropdown-list">
+                          {disaggregationRuleOptions.map((option, index) => (
                             <div
                               key={index}
                               className={`cell-details-history-dropdown-option ${rule === option ? 'selected' : ''}`}
