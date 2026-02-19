@@ -130,6 +130,14 @@ const CellEditInfoPopover: React.FC<CellEditInfoPopoverProps> = ({
         </div>
       )}
       
+      {/* Disaggregation Rule - show if present */}
+      {entry.disaggregationRule && (
+        <div className="cell-edit-info-disaggregation-rule">
+          <span className="cell-edit-info-disaggregation-rule-label">Disaggregation Rule:</span>
+          <span className="cell-edit-info-disaggregation-rule-value">{entry.disaggregationRule}</span>
+        </div>
+      )}
+      
       {/* Mark as read and View history buttons */}
       <div className="cell-edit-info-separator"></div>
       <div className="cell-edit-info-actions">

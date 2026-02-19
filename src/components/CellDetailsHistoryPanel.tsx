@@ -17,7 +17,7 @@ interface CellDetailsHistoryPanelProps {
   onAddNote?: (rowId: string, monthKey: string, note: string) => void;
   selectedCells?: Set<string>; // Set of selected cell keys
   onClearSelection?: () => void; // Callback to clear selection
-  onMassUpdate?: (cellKeys: string[], rule: string, value: string, note?: string) => void; // Callback for mass update
+  onMassUpdate?: (cellKeys: string[], rule: string, value: string, note?: string, disaggregationRule?: string) => void; // Callback for mass update
   selectedCellsOrder?: string[]; // Ordered array of selected cell keys (preserves selection order)
   getSelectedCellsOrder?: () => string[]; // Function to get current order from ref (always current)
   initialTab?: 'single' | 'multi'; // Initial tab to show when panel opens
@@ -815,7 +815,7 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                   <button 
                     className="cell-details-history-multi-update-btn"
                     onClick={() => {
-                      if (selectAction === 'Bulk Edit' && selectedCells.size > 0 && value.trim() && onMassUpdate) {
+                      if (selectedCells.size > 0 && onMassUpdate) {
                         // ROOT CAUSE FIX: Use selectedCellsOrder directly, filtering to only include currently selected cells
                         // This preserves the EXACT order in which cells were selected
                         // ROOT CAUSE FIX: Use getSelectedCellsOrder if available (always current), otherwise use prop
@@ -830,11 +830,19 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                         console.log('[CellDetailsHistoryPanel] Bulk edit - selectedCellsOrder prop:', selectedCellsOrder);
                         console.log('[CellDetailsHistoryPanel] Bulk edit - selectedCells Set:', Array.from(selectedCells));
                         
-                        // Pass orderedKeys directly - it's already in the correct order
-                        onMassUpdate(orderedKeys, rule, value.trim(), bulkNote.trim() || undefined);
+                        if (selectAction === 'Bulk Edit' && value.trim()) {
+                          // Pass orderedKeys directly - it's already in the correct order
+                          onMassUpdate(orderedKeys, rule, value.trim(), bulkNote.trim() || undefined);
+                        } else if (selectAction === 'Set Disaggregation Mechanism' && rule) {
+                          // Pass disaggregation rule when Set Disaggregation Mechanism is selected
+                          onMassUpdate(orderedKeys, '', '', bulkNote.trim() || undefined, rule);
+                        }
                       }
                     }}
-                    disabled={selectAction === 'Bulk Edit' && (selectedCells.size === 0 || !value.trim())}
+                    disabled={
+                      (selectAction === 'Bulk Edit' && (selectedCells.size === 0 || !value.trim())) ||
+                      (selectAction === 'Set Disaggregation Mechanism' && (selectedCells.size === 0 || !rule))
+                    }
                   >
                     Update
                   </button>

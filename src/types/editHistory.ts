@@ -7,6 +7,7 @@ export interface CellEditHistoryEntry {
   oldValue?: number; // Optional - if undefined, this is just a note entry
   newValue?: number; // Optional - if undefined, this is just a note entry
   note?: string; // Optional - adjustment note associated with this edit
+  disaggregationRule?: string; // Optional - disaggregation mechanism rule (even, proportional, fixed, custom, do not cascade)
   timestamp: Date;
   userId: string;
   userName: string;

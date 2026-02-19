@@ -1875,7 +1875,7 @@ const ForecastingGrid: React.FC = () => {
   }, []);
 
   // Mass update handler
-  const handleMassUpdate = useCallback((cellKeys: string[], rule: string, valueStr: string, note?: string) => {
+  const handleMassUpdate = useCallback((cellKeys: string[], rule: string, valueStr: string, note?: string, disaggregationRule?: string) => {
     if (cellKeys.length === 0) return;
     
     // ROOT CAUSE FIX: Remove duplicates while preserving order
@@ -1887,6 +1887,36 @@ const ForecastingGrid: React.FC = () => {
         seen.add(key);
         finalOrderedKeys.push(key);
       }
+    }
+    
+    // Handle disaggregation rule case - create edit history entries without changing values
+    if (disaggregationRule) {
+      finalOrderedKeys.forEach(cellKey => {
+        const parts = cellKey.split('-');
+        if (parts.length < 2) return;
+        const monthKey = parts[parts.length - 1];
+        const rowId = parts.slice(0, -1).join('-');
+        
+        if (!rowId || !monthKey) return;
+        
+        // Get current value
+        const currentValue = getCurrentCellValueRef.current ? getCurrentCellValueRef.current(rowId, monthKey) : 0;
+        
+        // Create edit history entry with disaggregation rule
+        addDraftEditHistory({
+          cellKey,
+          rowId,
+          timeKey: monthKey,
+          oldValue: currentValue,
+          newValue: currentValue, // Same value, just setting disaggregation rule
+          note: note?.trim() || undefined,
+          disaggregationRule: disaggregationRule,
+        });
+      });
+      
+      // Clear selection after update
+      handleClearSelection();
+      return;
     }
     
     // Parse value - support percentage (e.g., "20%") or absolute number
