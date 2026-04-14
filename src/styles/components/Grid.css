@@ -2119,6 +2119,24 @@ button.cell-approval-stamp-btn:focus-visible {
   user-select: none;
 }
 
+/* Fill handle sits past the cell corner; avoid clipping and keep it above the next row’s paint */
+tbody td:has(.fill-handle) {
+  position: relative;
+  z-index: 41;
+  overflow: visible !important;
+}
+
+/* Sticky measure rows use z-index 7–8; bump the row that owns the fill handle above following body rows */
+tbody tr.grid-row.measure-row:has(td:has(.fill-handle)),
+.grid-table.has-sub-columns tbody tr.grid-row.measure-row:has(td:has(.fill-handle)) {
+  z-index: 40 !important;
+}
+
+/* Dimension / time rows: z-index only applies once the row is positioned */
+tbody tr.grid-row:has(td:has(.fill-handle)):not(.measure-row) {
+  position: relative;
+  z-index: 40 !important;
+}
 
 .cell-value-cell:hover {
   background-color: color-mix(in srgb, var(--slds-g-color-neutral-base-10) 2%, transparent);

@@ -5,6 +5,8 @@ import { MeasureData } from '../types';
 import { extractSearchTerms, separateSearchTerms, matchesNumber, matchesTimePeriod } from '../utils/searchUtils';
 import { SearchHighlight } from './SearchHighlight';
 import { CellDeltaSignIcon } from './CellDeltaSignIcon';
+import { LegacySavedLineArrowDownIcon, LegacySavedLineArrowUpIcon } from './gridLegacyValueIcons';
+import { useIsGrid264UpdatedExperience } from '../contexts/IndustryContext';
 import MoreNodeSettingsModal from './MoreNodeSettingsModal';
 import AddRemoveChildNodesModal from './AddRemoveChildNodesModal';
 import '../styles/components/Grid.css';
@@ -62,6 +64,14 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
   onReparentNode,
   data = [],
 }) => {
+  const isGrid264Ux = useIsGrid264UpdatedExperience();
+  const rowA11y = isGrid264Ux ? ({ role: 'row' as const } satisfies React.HTMLAttributes<HTMLTableRowElement>) : {};
+  const rowheaderA11y = isGrid264Ux
+    ? ({ role: 'rowheader' as const } satisfies React.HTMLAttributes<HTMLTableCellElement>)
+    : {};
+  const gridcellA11y = isGrid264Ux
+    ? ({ role: 'gridcell' as const } satisfies React.HTMLAttributes<HTMLTableCellElement>)
+    : {};
   const hasChildren = row.children && row.children.length > 0;
   const [editingCell, setEditingCell] = useState<{ measureId: string } | null>(null);
   const [editValue, setEditValue] = useState<string>('');
@@ -294,7 +304,8 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
     if (isDirectlyEdited) {
       const isIncrement = deltaPercent !== null && deltaPercent > 0;
       const deltaColor = isIncrement ? 'var(--slds-g-color-warning-2)' : 'var(--color-accent-blue)';
-      
+      const deltaColorLegacy = isIncrement ? '#ff5d2d' : '#2E76E1';
+
       return (
         <div 
           className="cell-value-wrapper-edited-container"
@@ -306,14 +317,23 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
           </div>
           <div className="cell-value-left-section" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             {deltaPercent !== null && Math.abs(deltaPercent) > 0.001 && (
-              <div className="cell-delta-badge">
-                <CellDeltaSignIcon deltaPercent={deltaPercent} />
-                {`${deltaPercent > 0 ? '+' : ''}${deltaPercent.toFixed(2)}%`}
+              <div
+                className="cell-delta-badge"
+                style={!isGrid264Ux ? { color: deltaColorLegacy } : undefined}
+              >
+                {isGrid264Ux ? (
+                  <>
+                    <CellDeltaSignIcon deltaPercent={deltaPercent} />
+                    {`${deltaPercent > 0 ? '+' : ''}${deltaPercent.toFixed(2)}%`}
+                  </>
+                ) : (
+                  `${deltaPercent > 0 ? '+' : ''} ${deltaPercent.toFixed(2)}%`
+                )}
               </div>
             )}
             <span 
               className={`cell-value cell-value-edited ${!isEditable ? 'cell-value-readonly' : ''}`}
-              style={{ color: deltaColor }}
+              style={{ color: isGrid264Ux ? deltaColor : deltaColorLegacy }}
             >
               {searchTerm && searchTerm.trim() ? (() => {
                 const searchTerms = extractSearchTerms(searchTerm);
@@ -340,17 +360,31 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
     // Saved edited cell: show only icon, no badge, normal value positioning
     if (isSavedEdited) {
       const iconColor = savedIconColor || 'var(--color-accent-blue)'; // Use stored color or default blue
-      // Use saved icon color to determine arrow direction (orange = increase, blue = decrease)
-      const isIncrease = iconColor === 'var(--slds-g-color-warning-2)' || iconColor === 'var(--slds-g-color-warning-2)';
-      
+      const isIncrease =
+        iconColor === 'var(--slds-g-color-warning-2)' ||
+        iconColor === '#ff5d2d' ||
+        iconColor === '#FF5D2D';
+
       return (
         <div 
           className="cell-value-wrapper-saved-container"
           onDoubleClick={isEditable ? (e) => handleCellValueDoubleClick(measureId, e) : undefined}
           style={{ cursor: isEditable ? 'pointer' : 'default' }}
         >
-          <div className="cell-value-left-icon cell-value-left-icon--compact-disc">
-            <CellDeltaSignIcon variant={isIncrease ? 'increase' : 'decrease'} />
+          <div
+            className={
+              isGrid264Ux
+                ? 'cell-value-left-icon cell-value-left-icon--compact-disc'
+                : `cell-value-left-icon ${isIncrease ? 'cell-arrow-increase' : 'cell-arrow-decrease'}`
+            }
+          >
+            {isGrid264Ux ? (
+              <CellDeltaSignIcon variant={isIncrease ? 'increase' : 'decrease'} />
+            ) : isIncrease ? (
+              <LegacySavedLineArrowUpIcon />
+            ) : (
+              <LegacySavedLineArrowDownIcon />
+            )}
           </div>
           <span 
             className={`cell-value cell-value-saved ${isIncrease ? 'cell-value-increase' : 'cell-value-decrease'} ${!isEditable ? 'cell-value-readonly' : ''}`}
@@ -380,7 +414,8 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
       // Impacted cell: lighter yellow background, delta badge, no icon
       const isIncrement = deltaPercent !== null && deltaPercent > 0;
       const deltaColor = isIncrement ? 'var(--slds-g-color-warning-2)' : 'var(--color-accent-blue)';
-      
+      const deltaColorLegacy = isIncrement ? '#ff5d2d' : '#2E76E1';
+
       return (
         <div 
           className="cell-value-wrapper-impacted-container"
@@ -392,14 +427,23 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
           </div>
           <div className="cell-value-left-section" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             {deltaPercent !== null && Math.abs(deltaPercent) > 0.001 && (
-              <div className="cell-delta-badge">
-                <CellDeltaSignIcon deltaPercent={deltaPercent} />
-                {`${deltaPercent > 0 ? '+' : ''}${deltaPercent.toFixed(2)}%`}
+              <div
+                className="cell-delta-badge"
+                style={!isGrid264Ux ? { color: deltaColorLegacy } : undefined}
+              >
+                {isGrid264Ux ? (
+                  <>
+                    <CellDeltaSignIcon deltaPercent={deltaPercent} />
+                    {`${deltaPercent > 0 ? '+' : ''}${deltaPercent.toFixed(2)}%`}
+                  </>
+                ) : (
+                  `${deltaPercent > 0 ? '+' : ''} ${deltaPercent.toFixed(2)}%`
+                )}
               </div>
             )}
             <span 
               className={`cell-value cell-value-impacted ${!isEditable ? 'cell-value-readonly' : ''}`}
-              style={{ color: deltaColor }}
+              style={{ color: isGrid264Ux ? deltaColor : deltaColorLegacy }}
             >
               {searchTerm && searchTerm.trim() ? (() => {
                 const searchTerms = extractSearchTerms(searchTerm);
@@ -458,8 +502,8 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
 
   return (
     <>
-      <tr role="row" className={rowClassName}>
-        <td role="rowheader" className="grid-cell" style={{ width: '300px', minWidth: '300px' }}>
+      <tr {...rowA11y} className={rowClassName}>
+        <td {...rowheaderA11y} className="grid-cell" style={{ width: '300px', minWidth: '300px' }}>
           <div className="cell-content">
             <span className={`cell-indent level-${row.level}`}></span>
             {hasChildren && (
@@ -789,7 +833,7 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
 
           return (
             <td
-              role="gridcell"
+              {...gridcellA11y}
               key={cellKey}
               style={{ minWidth: `${columnWidth}px`, width: `${columnWidth}px`, position: 'relative' }}
               ref={(el) => {

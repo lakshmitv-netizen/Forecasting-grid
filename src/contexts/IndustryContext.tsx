@@ -66,3 +66,9 @@ export const useIndustry = () => {
   }
   return context;
 };
+
+/** True only on `/home/grid-264`. Manufacturing & consumer goods keep the earlier Heroku grid UX. */
+export function useIsGrid264UpdatedExperience(): boolean {
+  const { industry } = useIndustry();
+  return industry === 'grid-264';
+}

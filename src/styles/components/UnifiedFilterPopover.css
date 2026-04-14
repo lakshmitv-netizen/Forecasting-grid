@@ -131,12 +131,14 @@
   top: calc(100% + 4px);
   left: 0;
   right: 0;
+  max-height: min(360px, 55vh);
+  overflow-x: hidden;
+  overflow-y: auto;
   background: var(--color-surface-white);
   border: 1px solid var(--slds-g-color-neutral-base-90);
   border-radius: 6px;
   box-shadow: 0 4px 12px color-mix(in srgb, var(--slds-g-color-neutral-base-10) 10%, transparent);
   z-index: 2100;
-  overflow: hidden;
 }
 
 .ufp-trigger-label {

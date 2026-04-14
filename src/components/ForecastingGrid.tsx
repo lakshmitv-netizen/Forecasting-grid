@@ -4684,13 +4684,20 @@ const ForecastingGrid: React.FC = () => {
           onStartPeriodChange={setStartPeriod}
           endPeriod={endPeriod}
           onEndPeriodChange={setEndPeriod}
-          onApplyFilters={(filteredData) => {
+          onApplyFilters={(filteredData, opts) => {
             setData(filteredData);
+            const extra = opts?.ensureMeasureIdsVisible ?? [];
+            if (extra.length > 0) {
+              setVisibleMeasureIds(prev => {
+                const next = new Set(prev);
+                extra.forEach(id => next.add(id));
+                return next;
+              });
+            }
           }}
           onActiveFilterCountChange={setActiveFilterCount}
           parentTotalsRollupMode={parentTotalsRollupMode}
           onParentTotalsRollupModeChange={setParentTotalsRollupMode}
-          visibleMeasureIds={visibleMeasureIds}
         />
         <GlobalSortPanel
           isOpen={isSortPanelOpen}

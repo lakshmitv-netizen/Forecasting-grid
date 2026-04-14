@@ -4,6 +4,8 @@ import { GridRow as GridRowType, MeasureData, ParentTotalsRollupMode, RowType } 
 import { extractSearchTerms, separateSearchTerms, matchesNumber } from '../utils/searchUtils';
 import { SearchHighlight } from './SearchHighlight';
 import { CellDeltaSignIcon } from './CellDeltaSignIcon';
+import { LegacySavedLineArrowDownIcon, LegacySavedLineArrowUpIcon } from './gridLegacyValueIcons';
+import { useIsGrid264UpdatedExperience } from '../contexts/IndustryContext';
 import { CellEditHistoryEntry, editHistoryEntryAffectsCell } from '../types/editHistory';
 import FillHandle from './FillHandle';
 import MoreNodeSettingsModal from './MoreNodeSettingsModal';
@@ -1154,6 +1156,10 @@ const GridRowComponent: React.FC<GridRowProps> = ({
   onManagerOverrideForCell,
   flattenedSortShowAncestorPath = false,
 }) => {
+  const isGrid264Ux = useIsGrid264UpdatedExperience();
+  const rowA11y = isGrid264Ux ? { role: 'row' as const } : {};
+  const rowheaderA11y = isGrid264Ux ? { role: 'rowheader' as const } : {};
+  const gridCellA11y = isGrid264Ux ? { role: 'gridcell' as const } : {};
   // Guard: ensure we have valid row structure to prevent crashes when expanding with approval status
   if (!row?.id) {
     return null;
@@ -3206,7 +3212,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     if (isDirectlyEdited) {
       const isIncrement = deltaPercent !== null && deltaPercent > 0;
       const deltaColor = isIncrement ? 'var(--slds-g-color-warning-2)' : 'var(--color-accent-blue)';
-      
+      const deltaColorLegacy = isIncrement ? '#ff5d2d' : '#2E76E1';
+
       return (
         <>
           <div className="cell-value-wrapper-edited-container">
@@ -3215,15 +3222,24 @@ const GridRowComponent: React.FC<GridRowProps> = ({
             </div>
             <div className="cell-value-left-section">
               {deltaPercent !== null && Math.abs(deltaPercent) > 0.001 && (
-                <div className="cell-delta-badge">
-                  <CellDeltaSignIcon deltaPercent={deltaPercent} />
-                  {`${deltaPercent > 0 ? '+' : ''}${deltaPercent.toFixed(2)}%`}
+                <div
+                  className="cell-delta-badge"
+                  style={!isGrid264Ux ? { color: deltaColorLegacy } : undefined}
+                >
+                  {isGrid264Ux ? (
+                    <>
+                      <CellDeltaSignIcon deltaPercent={deltaPercent} />
+                      {`${deltaPercent > 0 ? '+' : ''}${deltaPercent.toFixed(2)}%`}
+                    </>
+                  ) : (
+                    `${deltaPercent > 0 ? '+' : ''} ${deltaPercent.toFixed(2)}%`
+                  )}
                 </div>
               )}
               <span 
                 className="cell-value cell-value-edited"
                 {...valueCellHoverProps}
-                style={{ cursor: valueCellCursor, color: deltaColor }}
+                style={{ cursor: valueCellCursor, color: isGrid264Ux ? deltaColor : deltaColorLegacy }}
               >
                 {valueMatchesSearch ? (
                   <SearchHighlight text={formatValue(currentValue, row.name?.toLowerCase().includes('quantity'), row.name)} searchTerms={otherTerms} />
@@ -3246,7 +3262,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     if (isImpacted) {
       const isIncrement = deltaPercent !== null && deltaPercent > 0;
       const deltaColor = isIncrement ? 'var(--slds-g-color-warning-2)' : 'var(--color-accent-blue)';
-      
+      const deltaColorLegacy = isIncrement ? '#ff5d2d' : '#2E76E1';
+
       return (
         <>
           <div className="cell-value-wrapper-edited-container">
@@ -3255,15 +3272,24 @@ const GridRowComponent: React.FC<GridRowProps> = ({
             </div>
             <div className="cell-value-left-section">
               {deltaPercent !== null && Math.abs(deltaPercent) > 0.001 && (
-                <div className="cell-delta-badge">
-                  <CellDeltaSignIcon deltaPercent={deltaPercent} />
-                  {`${deltaPercent > 0 ? '+' : ''}${deltaPercent.toFixed(2)}%`}
+                <div
+                  className="cell-delta-badge"
+                  style={!isGrid264Ux ? { color: deltaColorLegacy } : undefined}
+                >
+                  {isGrid264Ux ? (
+                    <>
+                      <CellDeltaSignIcon deltaPercent={deltaPercent} />
+                      {`${deltaPercent > 0 ? '+' : ''}${deltaPercent.toFixed(2)}%`}
+                    </>
+                  ) : (
+                    `${deltaPercent > 0 ? '+' : ''} ${deltaPercent.toFixed(2)}%`
+                  )}
                 </div>
               )}
               <span 
                 className="cell-value cell-value-edited"
                 {...valueCellHoverProps}
-                style={{ cursor: valueCellCursor, color: deltaColor }}
+                style={{ cursor: valueCellCursor, color: isGrid264Ux ? deltaColor : deltaColorLegacy }}
               >
                 {valueMatchesSearch ? (
                   <SearchHighlight text={formatValue(currentValue, row.name?.toLowerCase().includes('quantity'), row.name)} searchTerms={otherTerms} />
@@ -3286,9 +3312,11 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     // CRITICAL: Check isImpacted FIRST - if impacted, never show old indicators
     if (isSavedEdited && !isImpacted && !wasImpactedAndSaved) {
       const iconColor = savedIconColor || 'var(--color-accent-blue)'; // Use stored color or default blue
-      // Use saved icon color to determine arrow direction (orange = increase, blue = decrease)
-      const isIncrease = iconColor === 'var(--slds-g-color-warning-2)' || iconColor === 'var(--slds-g-color-warning-2)' || iconColor === 'var(--slds-g-color-warning-2)';
-      
+      const isIncrease =
+        iconColor === 'var(--slds-g-color-warning-2)' ||
+        iconColor === '#ff5d2d' ||
+        iconColor === '#FF5D2D';
+
       return (
         <>
           <div className="cell-value-wrapper-saved-container" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -3296,14 +3324,20 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               className={
                 approvalStampButtonEl || isCellLocked
                   ? 'cell-value-left-icon'
-                  : 'cell-value-left-icon cell-value-left-icon--compact-disc'
+                  : isGrid264Ux
+                    ? 'cell-value-left-icon cell-value-left-icon--compact-disc'
+                    : `cell-value-left-icon ${!isCellLocked ? (isIncrease ? 'cell-arrow-increase' : 'cell-arrow-decrease') : ''}`
               }
             >
               {approvalStampButtonEl ??
                 (isCellLocked ? (
                   lockIconSvg
-                ) : (
+                ) : isGrid264Ux ? (
                   <CellDeltaSignIcon variant={isIncrease ? 'increase' : 'decrease'} />
+                ) : isIncrease ? (
+                  <LegacySavedLineArrowUpIcon />
+                ) : (
+                  <LegacySavedLineArrowDownIcon />
                 ))}
             </div>
             <span 
@@ -3317,47 +3351,6 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 formatValue(currentValue)
               )}
             </span>
-          </div>
-          {/* Dog ear triangle indicator for cells with notes */}
-          {/* finalHasNoteForRender already checks savedImpactedCells, so no need for redundant checks */}
-          {finalHasNoteForRender && (
-            <div className="cell-note-indicator"></div>
-          )}
-        </>
-      );
-    }
-    
-    if (isImpacted) {
-      // Impacted cell: lighter yellow background, delta badge, no icon
-      // Only show note indicator if there's an unsaved note (added after impact)
-      const isIncrement = deltaPercent !== null && deltaPercent > 0;
-      const deltaColor = isIncrement ? 'var(--slds-g-color-warning-2)' : 'var(--color-accent-blue)';
-      
-      return (
-        <>
-          <div className="cell-value-wrapper-impacted-container">
-            <div className="cell-value-left-icon">
-              {renderStandardValueLeftIcon(isCellLocked)}
-            </div>
-            <div className="cell-value-left-section">
-              {deltaPercent !== null && Math.abs(deltaPercent) > 0.001 && (
-                <div className="cell-delta-badge">
-                  <CellDeltaSignIcon deltaPercent={deltaPercent} />
-                  {`${deltaPercent > 0 ? '+' : ''}${deltaPercent.toFixed(2)}%`}
-                </div>
-              )}
-              <span 
-                className="cell-value cell-value-impacted"
-                {...valueCellHoverProps}
-                style={{ cursor: valueCellCursor, color: deltaColor }}
-              >
-                {valueMatchesSearch ? (
-                  <SearchHighlight text={formatValue(currentValue)} searchTerms={otherTerms} />
-                ) : (
-                  formatValue(currentValue)
-                )}
-              </span>
-            </div>
           </div>
           {/* Dog ear triangle indicator for cells with notes */}
           {/* finalHasNoteForRender already checks savedImpactedCells, so no need for redundant checks */}
@@ -3476,9 +3469,9 @@ const GridRowComponent: React.FC<GridRowProps> = ({
 
   return (
     <>
-      <tr role="row" className={`grid-row ${row.type === 'measure' ? 'measure-row' : ''} ${isFilteredOutMutedRow ? 'grid-row-filtered-out-dimension' : ''} ${isActualMeasureRow ? 'readonly-measure-row-actual' : ''} ${isDimensionUnderReadonlyMeasure ? 'readonly-dimension-row' : ''} ${isNewlyAdded ? 'newly-added-measure' : ''}`}>
+      <tr {...rowA11y} className={`grid-row ${row.type === 'measure' ? 'measure-row' : ''} ${isFilteredOutMutedRow ? 'grid-row-filtered-out-dimension' : ''} ${isActualMeasureRow ? 'readonly-measure-row-actual' : ''} ${isDimensionUnderReadonlyMeasure ? 'readonly-dimension-row' : ''} ${isNewlyAdded ? 'newly-added-measure' : ''}`}>
         <td
-          role="rowheader"
+          {...rowheaderA11y}
           className={`grid-cell frozen-column-cell ${frozenColumns.length > 0 && row.type !== 'measure' ? 'divided-frozen-cell' : ''}`}
           style={frozenColumns.length > 0 && row.type !== 'measure' ? {
             width: `${frozenColWidth ?? (300 + frozenColumns.length * 140)}px`,
@@ -4474,7 +4467,6 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                   {lastSelectedCell === cellKey && selectedCells.has(cellKey) && (!planReviewGridLock || hasApproverOverrideThisCellTd) && !pendingApprovalLocksCellTd && (
                     <FillHandle
                       cellKey={cellKey}
-                      cellElement={cellRefs?.current?.get(cellKey) || null}
                       onDragStart={onFillHandleDragStart}
                       onDragMove={onFillHandleDragMove}
                       onDragEnd={onFillHandleDragEnd}
@@ -4555,7 +4547,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                     if (planReviewGridLock && isMeasureRow) {
                       return (
                         <td
-                          role="gridcell"
+                          {...gridCellA11y}
                           key={`${cellKey}-${sc.id}`}
                           className={`grid-cell cell-value-cell sub-col-value-td approval-status-cell ${isLastSubCol ? 'sub-col-last-in-group' : ''} ${isLastColumnGroup && isLastSubCol ? 'sub-col-last-column-group' : ''}${planReviewStripeTexture ? ' cell-plan-review-requester-texture' : ''}`}
                           style={{
@@ -4651,7 +4643,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                       
                       return (
                         <td
-                          role="gridcell"
+                          {...gridCellA11y}
                           key={`${cellKey}-${sc.id}`}
                           className={`grid-cell cell-value-cell sub-col-value-td approval-status-cell ${isLastSubCol ? 'sub-col-last-in-group' : ''} ${isLastColumnGroup && isLastSubCol ? 'sub-col-last-column-group' : ''}${planReviewStripeTexture ? ' cell-plan-review-requester-texture' : ''}`}
                           style={{
@@ -4848,7 +4840,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                     const shouldShowApprovalTriangle = hasApprovalNote && !isApprovalCellRead;                    
                     return (
                       <td
-                        role="gridcell"
+                        {...gridCellA11y}
                         key={`${cellKey}-${sc.id}`}
                         ref={(el: HTMLTableCellElement | null) => {
                           if (el && cellRefs) {
@@ -4909,7 +4901,6 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                         {lastSelectedCell === approvalSelectionKey && isApprovalCellSelected && !planReviewGridLock && (
                           <FillHandle
                             cellKey={approvalSelectionKey}
-                            cellElement={cellRefs?.current?.get(approvalSelectionKey) || null}
                             onDragStart={onFillHandleDragStart}
                             onDragMove={onFillHandleDragMove}
                             onDragEnd={onFillHandleDragEnd}
@@ -4957,7 +4948,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
 
                     return (
                       <td
-                        role="gridcell"
+                        {...gridCellA11y}
                         key={`${cellKey}-${sc.id}`}
                         className={`grid-cell cell-value-cell sub-col-value-td cf-indicator-sub-col ${isLastSubCol ? 'sub-col-last-in-group' : ''} ${isLastColumnGroup && isLastSubCol ? 'sub-col-last-column-group' : ''}${planReviewStripeTexture ? ' cell-plan-review-requester-texture' : ''}`}
                         style={{
@@ -5069,7 +5060,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                         : '';
                   return (
                     <td
-                      role="gridcell"
+                      {...gridCellA11y}
                       key={`${cellKey}-${sc.id}`}
                       className={`grid-cell cell-value-cell sub-col-value-td ${isLastSubCol ? 'sub-col-last-in-group' : ''} ${isLastColumnGroup && isLastSubCol ? 'sub-col-last-column-group' : ''} ${subColTextureClass} ${targetAchievementTone}`}
                       style={{
@@ -5126,7 +5117,6 @@ const GridRowComponent: React.FC<GridRowProps> = ({
               {lastSelectedCell === cellKey && selectedCells.has(cellKey) && (!planReviewGridLock || hasApproverOverrideThisCellTd) && !pendingApprovalLocksCellTd && (
                 <FillHandle
                   cellKey={cellKey}
-                  cellElement={cellRefs?.current?.get(cellKey) || null}
                   onDragStart={onFillHandleDragStart}
                   onDragMove={onFillHandleDragMove}
                   onDragEnd={onFillHandleDragEnd}

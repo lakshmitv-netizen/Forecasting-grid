@@ -10,6 +10,7 @@ import {
   getMatchingTimePeriodKeys,
 } from '../utils/searchUtils';
 import { SearchHighlight } from './SearchHighlight';
+import { useIsGrid264UpdatedExperience } from '../contexts/IndustryContext';
 import '../styles/components/Grid.css';
 
 interface TimeDimensionsGridProps {
@@ -59,6 +60,7 @@ const TimeDimensionsGrid: React.FC<TimeDimensionsGridProps> = ({
   onCellMouseDown,
   onCellMouseMove,
 }) => {
+  const isGrid264Ux = useIsGrid264UpdatedExperience();
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [focusedCell, setFocusedCell] = useState<{ rowId: string; measureId: string } | null>(initialFocusedCell || null);
   const cellRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
@@ -1029,8 +1031,9 @@ const TimeDimensionsGrid: React.FC<TimeDimensionsGridProps> = ({
       <div className="grid-container">
         <div className="grid-wrapper" ref={tableWrapperRef}>
         <table
-          role="grid"
-          aria-label="Time, dimensions, and measures"
+          {...(isGrid264Ux
+            ? { role: 'grid' as const, 'aria-label': 'Time, dimensions, and measures' }
+            : {})}
           className={`grid-table dimensions-time-table time-dimensions-table ${isFiltering ? 'filtered' : ''}`}
         >
           <thead className="grid-header dimensions-time-layout">

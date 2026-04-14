@@ -1,9 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useIsGrid264UpdatedExperience } from '../contexts/IndustryContext';
 import '../styles/components/FillHandle.css';
 
 interface FillHandleProps {
   cellKey: string;
-  cellElement: HTMLElement | null;
   onDragStart?: (cellKey: string) => void;
   onDragMove?: (cellKey: string) => void;
   onDragEnd?: () => void;
@@ -11,13 +11,12 @@ interface FillHandleProps {
 
 const FillHandle: React.FC<FillHandleProps> = ({
   cellKey,
-  cellElement,
   onDragStart,
   onDragMove,
   onDragEnd,
 }) => {
+  const isGrid264Ux = useIsGrid264UpdatedExperience();
   const [isDragging, setIsDragging] = useState(false);
-  const handleRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!isDragging) return;
@@ -59,25 +58,21 @@ const FillHandle: React.FC<FillHandleProps> = ({
     }
   };
 
-  if (!cellElement) return null;
+  if (isGrid264Ux) {
+    return (
+      <button
+        type="button"
+        className="fill-handle"
+        aria-label="Fill down drag handle"
+        onMouseDown={handleMouseDown}
+      />
+    );
+  }
 
   return (
-    <button
-      type="button"
-      ref={handleRef}
+    <div
       className="fill-handle"
-      aria-label="Fill down drag handle"
       onMouseDown={handleMouseDown}
-      style={{
-        position: 'absolute',
-        bottom: '0',
-        right: '0',
-        transform: 'translate(50%, 50%)',
-        width: '8px',
-        height: '8px',
-        cursor: 'crosshair',
-        zIndex: 2000,
-      }}
     />
   );
 };

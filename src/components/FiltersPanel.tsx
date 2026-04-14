@@ -290,12 +290,13 @@ interface FiltersPanelProps {
   endPeriod?: string;
   onStartPeriodChange?: (period: string) => void;
   onEndPeriodChange?: (period: string) => void;
-  onApplyFilters?: (filteredData: MeasureData[]) => void;
+  onApplyFilters?: (
+    filteredData: MeasureData[],
+    options?: { ensureMeasureIdsVisible: string[] },
+  ) => void;
   onActiveFilterCountChange?: (count: number) => void;
   parentTotalsRollupMode?: ParentTotalsRollupMode;
   onParentTotalsRollupModeChange?: (mode: ParentTotalsRollupMode) => void;
-  /** When non-empty, Basic Filters measure list only includes these measure ids (Reorder measures visibility). */
-  visibleMeasureIds?: Set<string>;
 }
 
 const FiltersPanel: React.FC<FiltersPanelProps> = ({ 
@@ -316,7 +317,6 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
   onActiveFilterCountChange,
   parentTotalsRollupMode: parentTotalsRollupModeProp = 'fullHierarchy',
   onParentTotalsRollupModeChange,
-  visibleMeasureIds,
 }) => {
   // Track original values for Cancel functionality (only for filter cards)
   const [originalFilters, setOriginalFilters] = useState<Filter[]>([
@@ -445,14 +445,9 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
             !m.groupContext || subgroup.has(m.groupContext)
         : () => true;
 
-    const filterByVisibility =
-      visibleMeasureIds != null && visibleMeasureIds.size > 0
-        ? (m: MeasureData) => visibleMeasureIds.has(m.id)
-        : () => true;
-
     data.forEach(m => {
       const label = m.name?.trim() || m.id;
-      if (label && filterByCategory(m) && filterByVisibility(m)) measureNames.add(label);
+      if (label && filterByCategory(m)) measureNames.add(label);
       walk(m.children || []);
     });
     return {
@@ -461,7 +456,7 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
       allCategories: Array.from(cats).sort(),
       allProducts: Array.from(prods).sort(),
     };
-  }, [data, selectedMeasureSubgroup, visibleMeasureIds]);
+  }, [data, selectedMeasureSubgroup]);
 
   // Basic filter: get selected values for a given type from filters state
   const getBasicSelected = (type: Filter['type']): Set<string> => {
@@ -687,6 +682,37 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
       return { mName: parts[0], op: parts[1], rawVal: parts[2] };
     }
     return null;
+  };
+
+  /** Top-level measure ids referenced by Basic or Advanced measure filters (so the grid can show those columns). */
+  const collectMeasureIdsReferencedInFilters = (
+    filtersList: Filter[],
+    measureData: MeasureData[],
+  ): string[] => {
+    const nameToId = new Map<string, string>();
+    measureData.forEach(m => {
+      const n = (m.name ?? '').trim();
+      if (n) nameToId.set(n, m.id);
+      nameToId.set(m.id.trim(), m.id);
+    });
+    const out: string[] = [];
+    const pushToken = (raw: string) => {
+      const key = raw.trim();
+      if (!key || key === 'All' || key === 'Equals All') return;
+      const id = nameToId.get(key);
+      if (id) out.push(id);
+    };
+    for (const f of filtersList) {
+      if (f.type !== 'measures' || !f.value) continue;
+      if (f.value === 'Equals All' || f.value === 'All') continue;
+      if (f.value.includes('|')) {
+        const parsed = parseMeasureNumericFilter(f.value);
+        if (parsed?.mName) pushToken(parsed.mName);
+      } else {
+        f.value.split(',').forEach(part => pushToken(part));
+      }
+    }
+    return [...new Set(out)];
   };
 
   const getFilterDisplayValue = (filter: Filter): string => {
@@ -1004,7 +1030,10 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
                     applyClickedRef.current = true;
                     if (onStartPeriodChange && localStartPeriod !== originalStartPeriod) onStartPeriodChange(localStartPeriod);
                     if (onEndPeriodChange && localEndPeriod !== originalEndPeriod) onEndPeriodChange(localEndPeriod);
-                    if (onApplyFilters && data.length > 0) onApplyFilters(applyFilters(data));
+                    if (onApplyFilters && data.length > 0) {
+                      const ensureMeasureIdsVisible = collectMeasureIdsReferencedInFilters(filters, data);
+                      onApplyFilters(applyFilters(data), { ensureMeasureIdsVisible });
+                    }
                     onParentTotalsRollupModeChange?.(localParentTotalsRollupMode);
                     setOriginalParentTotalsRollupMode(localParentTotalsRollupMode);
                     setOriginalFilters([...filters]);

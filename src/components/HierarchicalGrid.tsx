@@ -305,6 +305,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
 }) => {
   const readonlyMeasureIds = readonlyMeasureIdsProp;
   const { industry } = useIndustry();
+  const isGrid264Ux = industry === 'grid-264';
   
   // Store onEditHistory in a ref so it's always available in callbacks
   const onEditHistoryRef = useRef(onEditHistory);
@@ -4178,13 +4179,20 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
 
   return (
     <div className="grid-container-wrapper" ref={wrapperRef} style={{ position: 'relative' }}>
-      <div className={`grid-container ${isFooterVisible ? 'has-footer' : ''} ${subColumns.length > 0 ? 'has-sub-columns' : ''}`}>
+      <div
+        className={`grid-container ${isFooterVisible ? 'has-footer' : ''} ${subColumns.length > 0 ? 'has-sub-columns' : ''}`}
+        {...(!isGrid264Ux ? { onKeyDown: handleKeyDown, tabIndex: 0 as const } : {})}
+      >
         <table
-          role="grid"
+          {...(isGrid264Ux
+            ? {
+                role: 'grid' as const,
+                tabIndex: 0 as const,
+                onKeyDown: handleKeyDown,
+                'aria-label': 'Planning grid',
+              }
+            : {})}
           className={`grid-table ${isFiltering ? 'filtered' : ''} ${subColumns.length > 0 ? 'has-sub-columns' : ''} ${frozenColumns.length > 0 ? 'has-frozen-cols' : ''}`}
-          tabIndex={0}
-          onKeyDown={handleKeyDown}
-          aria-label="Planning grid"
           style={{
             ...(frozenColumns.length > 0 ? { '--first-col-width': `${totalFrozenWidth}px` } : {}),
             '--header-row-height': `${headerRowHeight}px`,
@@ -4587,52 +4595,96 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
             )}
           </tbody>
       </table>
-      {frozenColumns.length > 0 && (
-        <button
-          type="button"
-          className="frozen-col-resize-handle-vertical"
-          aria-label="Resize frozen columns"
-          style={{
-            position: 'absolute',
-            left: `${totalFrozenWidth}px`,
-            top: 0,
-            bottom: 0,
-            width: '16px',
-            transform: 'translateX(-50%)',
-            cursor: 'col-resize',
-            zIndex: 100,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            pointerEvents: 'auto',
-          }}
-          onMouseDown={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            const startX = e.clientX;
-            const startWidth = frozenColWidth;
-            frozenColResizingRef.current = true;
-            document.body.style.cursor = 'col-resize';
-            document.body.style.userSelect = 'none';
-            const onMove = (mv: MouseEvent) => {
-              if (!frozenColResizingRef.current) return;
-              const delta = mv.clientX - startX;
-              setFrozenColWidth(Math.max(0, startWidth + delta));
-            };
-            const onUp = () => {
-              frozenColResizingRef.current = false;
-              document.body.style.cursor = '';
-              document.body.style.userSelect = '';
-              window.removeEventListener('mousemove', onMove);
-              window.removeEventListener('mouseup', onUp);
-            };
-            window.addEventListener('mousemove', onMove);
-            window.addEventListener('mouseup', onUp);
-          }}
-        >
-          <div className="frozen-col-resize-handle-pill" aria-hidden />
-        </button>
-      )}
+      {frozenColumns.length > 0 &&
+        (isGrid264Ux ? (
+          <button
+            type="button"
+            className="frozen-col-resize-handle-vertical"
+            aria-label="Resize frozen columns"
+            style={{
+              position: 'absolute',
+              left: `${totalFrozenWidth}px`,
+              top: 0,
+              bottom: 0,
+              width: '16px',
+              transform: 'translateX(-50%)',
+              cursor: 'col-resize',
+              zIndex: 100,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              pointerEvents: 'auto',
+            }}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const startX = e.clientX;
+              const startWidth = frozenColWidth;
+              frozenColResizingRef.current = true;
+              document.body.style.cursor = 'col-resize';
+              document.body.style.userSelect = 'none';
+              const onMove = (mv: MouseEvent) => {
+                if (!frozenColResizingRef.current) return;
+                const delta = mv.clientX - startX;
+                setFrozenColWidth(Math.max(0, startWidth + delta));
+              };
+              const onUp = () => {
+                frozenColResizingRef.current = false;
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+                window.removeEventListener('mousemove', onMove);
+                window.removeEventListener('mouseup', onUp);
+              };
+              window.addEventListener('mousemove', onMove);
+              window.addEventListener('mouseup', onUp);
+            }}
+          >
+            <div className="frozen-col-resize-handle-pill" aria-hidden />
+          </button>
+        ) : (
+          <div
+            className="frozen-col-resize-handle-vertical"
+            style={{
+              position: 'absolute',
+              left: `${totalFrozenWidth}px`,
+              top: 0,
+              bottom: 0,
+              width: '16px',
+              transform: 'translateX(-50%)',
+              cursor: 'col-resize',
+              zIndex: 100,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              pointerEvents: 'auto',
+            }}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const startX = e.clientX;
+              const startWidth = frozenColWidth;
+              frozenColResizingRef.current = true;
+              document.body.style.cursor = 'col-resize';
+              document.body.style.userSelect = 'none';
+              const onMove = (mv: MouseEvent) => {
+                if (!frozenColResizingRef.current) return;
+                const delta = mv.clientX - startX;
+                setFrozenColWidth(Math.max(0, startWidth + delta));
+              };
+              const onUp = () => {
+                frozenColResizingRef.current = false;
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+                window.removeEventListener('mousemove', onMove);
+                window.removeEventListener('mouseup', onUp);
+              };
+              window.addEventListener('mousemove', onMove);
+              window.addEventListener('mouseup', onUp);
+            }}
+          >
+            <div className="frozen-col-resize-handle-pill" aria-hidden />
+          </div>
+        ))}
         <GridFooter
           isVisible={isFooterVisible}
           onUndo={handleUndo}
