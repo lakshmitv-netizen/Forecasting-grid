@@ -13,10 +13,10 @@
   position: fixed;
   width: 320px;
   max-width: 320px;
-  background-color: #ffffff;
-  border: 1px solid #c9c9c9;
+  background-color: var(--slds-g-color-surface-1);
+  border: 1px solid var(--slds-g-color-border-base-4);
   border-radius: 0.25rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--slds-g-color-neutral-base-10) 12%, transparent);
   z-index: 10001;
   padding: 12px;
   display: flex;
@@ -33,7 +33,7 @@
   height: 0;
   border-left: 8px solid transparent;
   border-right: 8px solid transparent;
-  border-bottom: 8px solid #ffffff;
+  border-bottom: 8px solid var(--slds-g-color-surface-1);
 }
 
 .time-filter-popover-nubbin::before {
@@ -45,7 +45,7 @@
   height: 0;
   border-left: 9px solid transparent;
   border-right: 9px solid transparent;
-  border-bottom: 9px solid #c9c9c9;
+  border-bottom: 9px solid var(--slds-g-color-neutral-base-80);
   z-index: -1;
 }
 
@@ -59,9 +59,9 @@
 .time-filter-label {
   font-family: 'SF Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   font-size: 13px;
-  font-weight: 590;
+  font-weight: 600;
   line-height: 18px;
-  color: #2e2e2e;
+  color: var(--slds-g-color-neutral-base-20);
   margin: 0;
 }
 
@@ -75,9 +75,9 @@
   width: 100%;
   min-height: 36px;
   padding: 8px 32px 8px 12px;
-  border: 1px solid #c9c9c9;
+  border: 1px solid var(--slds-g-color-border-base-4);
   border-radius: 4px;
-  background-color: #ffffff;
+  background-color: var(--slds-g-color-surface-1);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -93,7 +93,7 @@
 }
 
 .time-filter-dropdown-value {
-  color: #2e2e2e;
+  color: var(--slds-g-color-neutral-base-20);
   flex: 1;
 }
 
@@ -102,7 +102,7 @@
   right: 12px;
   width: 16px;
   height: 16px;
-  color: #747474;
+  color: var(--slds-g-color-border-base-4);
   flex-shrink: 0;
   pointer-events: none;
 }
@@ -112,10 +112,10 @@
   top: calc(100% + 2px);
   left: 0;
   right: 0;
-  background-color: #ffffff;
-  border: 1px solid #c9c9c9;
+  background-color: var(--slds-g-color-surface-1);
+  border: 1px solid var(--slds-g-color-border-base-4);
   border-radius: 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--slds-g-color-neutral-base-10) 12%, transparent);
   z-index: 10002;
   overflow: hidden;
   max-height: 200px;
@@ -125,29 +125,31 @@
 .time-filter-dropdown-option {
   padding: 8px 12px;
   cursor: pointer;
-  background-color: #ffffff;
+  background-color: var(--slds-g-color-surface-1);
   font-family: 'SF Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   font-size: 12px;
-  color: #2e2e2e;
+  color: var(--slds-g-color-neutral-base-20);
   transition: background-color 0.15s;
+  display: flex;
+  align-items: center;
 }
 
 .time-filter-dropdown-option:hover {
-  background-color: #f3f2f2;
+  background-color: var(--slds-g-color-surface-container-1);
 }
 
 .time-filter-dropdown-option.selected {
-  background-color: #f3f2f2;
-  font-weight: 590;
+  background-color: var(--slds-g-color-surface-container-1);
+  font-weight: 600;
 }
 
 /* Collapsed State - Display Box */
 .time-filter-display-box {
   padding: 8px 12px;
   min-height: 36px;
-  border: 1px solid #c9c9c9;
+  border: 1px solid var(--slds-g-color-border-base-4);
   border-radius: 4px;
-  background-color: #ffffff;
+  background-color: var(--slds-g-color-surface-1);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -156,18 +158,18 @@
 }
 
 .time-filter-display-text-selected {
-  color: #2e2e2e;
+  color: var(--slds-g-color-neutral-base-20);
 }
 
 .time-filter-display-text-empty {
-  color: #706e6b;
+  color: var(--slds-g-color-neutral-base-40);
 }
 
 /* Expanded State Container */
 .time-filter-expanded-container {
-  border: 1px solid #c9c9c9;
+  border: 1px solid var(--slds-g-color-border-base-4);
   border-radius: 4px;
-  background-color: #ffffff;
+  background-color: var(--slds-g-color-surface-1);
   max-height: 300px;
   display: flex;
   flex-direction: column;
@@ -177,16 +179,16 @@
 /* Search Input Section */
 .time-filter-search-section {
   padding: 8px 12px;
-  border-bottom: 1px solid #dddbda;
+  border-bottom: 1px solid var(--slds-g-color-neutral-base-80);
   flex-shrink: 0;
-  background-color: #ffffff;
+  background-color: var(--slds-g-color-surface-1);
 }
 
 .time-filter-search-input {
   width: 100%;
   padding: 6px 8px;
   font-size: 12px;
-  border: 1px solid #c9c9c9;
+  border: 1px solid var(--slds-g-color-border-base-4);
   border-radius: 4px;
   outline: none;
   font-family: 'SF Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
@@ -211,7 +213,7 @@
 .time-filter-empty-state {
   padding: 20px;
   text-align: center;
-  color: #706e6b;
+  color: var(--slds-g-color-neutral-base-40);
   font-size: 12px;
   font-family: 'SF Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
 }
@@ -220,7 +222,7 @@
 .time-filter-checkbox-item {
   padding: 6px 12px;
   font-size: 12px;
-  color: #080707;
+  color: var(--slds-g-color-neutral-base-10);
   font-family: 'SF Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   cursor: pointer;
   user-select: none;
@@ -231,11 +233,11 @@
 }
 
 .time-filter-checkbox-item:hover {
-  background-color: #f3f2f2;
+  background-color: var(--slds-g-color-surface-container-1);
 }
 
 .time-filter-checkbox-all {
-  border-bottom: 1px solid #dddbda;
+  border-bottom: 1px solid var(--slds-g-color-neutral-base-80);
   flex-shrink: 0;
   font-weight: 600;
 }
@@ -265,7 +267,7 @@
   padding: 6px 16px;
   font-family: 'SF Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   font-size: 13px;
-  font-weight: 590;
+  font-weight: 600;
   line-height: 18px;
   cursor: pointer;
   transition: all 0.2s;
@@ -274,7 +276,7 @@
 }
 
 .time-filter-button-cancel {
-  background-color: #ffffff;
+  background-color: var(--slds-g-color-surface-1);
   border-color: var(--color-accent-blue);
   color: var(--color-accent-blue);
   border-radius: 4px;

@@ -1,10 +1,308 @@
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
+import SalesforcePath from '../components/SalesforcePath';
+import { APPROVER_ROSTER } from '../types/approvalRequest';
+import {
+  usePlanWorkflow,
+  type PlanWorkflowStatus,
+} from '../contexts/PlanWorkflowContext';
+import { useCurrentUser } from '../contexts/UserContext';
+import { useNotifications } from '../contexts/NotificationsContext';
+import { useIndustry, getGridPathForIndustry } from '../contexts/IndustryContext';
+import ScopedNotification from '../components/ScopedNotification';
+import ExportCsvModal from '../components/ExportCsvModal';
 import '../styles/pages/PlanningForecastingPage.css';
 
+const PLAN_STATUS_TO_PATH_ID: Record<PlanWorkflowStatus, string> = {
+  Draft: 'draft',
+  Submitted: 'submitted',
+  'Approved / Rejected': 'approved_rejected',
+  'Active / Expired': 'active_expired',
+};
+
+const PATH_ID_TO_PLAN_STATUS: Record<string, PlanWorkflowStatus> = {
+  draft: 'Draft',
+  submitted: 'Submitted',
+  approved_rejected: 'Approved / Rejected',
+  active_expired: 'Active / Expired',
+};
+
+const PLAN_STATUS_ORDER: PlanWorkflowStatus[] = [
+  'Draft',
+  'Submitted',
+  'Approved / Rejected',
+  'Active / Expired',
+];
+
+const APPROVER_DISPLAY_ORDER = ['Finance', 'Supply Chain', 'Sales Ops', 'Product Management'] as const;
+
+/** List `mockRecords` id for FY26 — used when opening Clone from this record page. */
+const RECORD_PAGE_CLONE_SOURCE_ID = 'fy26';
+
+/** Mock rows for the Approvals related list (status overridden when plan approval is withdrawn). */
+const RELATED_APPROVAL_LIST_ROWS: Array<{
+  request: string;
+  role: string;
+  assignee: string;
+  status: string;
+  updated: string;
+}> = [
+  { request: 'Forecast Consensus - Feb 2026', role: 'Finance', assignee: 'Alice Brennan', status: 'Pending', updated: '2h ago' },
+  { request: 'Forecast Consensus - Feb 2026', role: 'Supply Chain', assignee: 'Bob Okoro', status: 'Pending', updated: '2h ago' },
+  { request: 'Forecast Consensus - Feb 2026', role: 'Sales Ops', assignee: 'Carol Singh', status: 'Approved', updated: '5m ago' },
+  { request: 'Forecast Consensus - Feb 2026', role: 'Product Management', assignee: 'David Lee', status: 'Pending', updated: '2h ago' },
+];
+
+function getNextPlanStatus(current: PlanWorkflowStatus): PlanWorkflowStatus | null {
+  const i = PLAN_STATUS_ORDER.indexOf(current);
+  if (i < 0 || i >= PLAN_STATUS_ORDER.length - 1) return null;
+  return PLAN_STATUS_ORDER[i + 1];
+}
+
+type ApproverPlanDecisionOutcome = 'approved' | 'approvedWithCondition' | 'rejected';
+
+function approverPlanDecisionLabel(outcome: ApproverPlanDecisionOutcome): string {
+  switch (outcome) {
+    case 'approved':
+      return 'Approved';
+    case 'approvedWithCondition':
+      return 'Approved with condition';
+    case 'rejected':
+      return 'Rejected';
+    default:
+      return outcome;
+  }
+}
+
 const PlanningForecastingPage: React.FC = () => {
-  const [leftTab, setLeftTab] = useState<'details' | 'grid-config'>('details');
+  const navigate = useNavigate();
+  const { industry } = useIndustry();
+  const gridHomePath = getGridPathForIndustry(industry);
+  const { currentUser } = useCurrentUser();
+  const {
+    publishPlanApprovalRequested,
+    publishPlanApproverDecisionForRequester,
+    withdrawPlanApprovalNotifications,
+  } = useNotifications();
+  const { planStatus, setPlanStatus, setPlanSubmittedByUserId, planSubmittedByUserId } = usePlanWorkflow();
+  const pathCurrentId = PLAN_STATUS_TO_PATH_ID[planStatus];
+  const [submitApprovalModalOpen, setSubmitApprovalModalOpen] = useState(false);
+  const [submitForApprovalNotes, setSubmitForApprovalNotes] = useState('');
+  const [selectedPathStepId, setSelectedPathStepId] = useState<string | null>(null);
+  const [withdrawToDraftModalOpen, setWithdrawToDraftModalOpen] = useState(false);
+  const [withdrawalReasonNote, setWithdrawalReasonNote] = useState('');
+  /** After Submitted → Draft withdrawal, related list rows show Withdrawn until next submit. */
+  const [relatedApprovalsWithdrawn, setRelatedApprovalsWithdrawn] = useState(false);
+  const [planSubmittedForReviewToastVisible, setPlanSubmittedForReviewToastVisible] = useState(false);
+  const [approverDecisionModalOpen, setApproverDecisionModalOpen] = useState(false);
+  const [approverPlanDecision, setApproverPlanDecision] = useState<ApproverPlanDecisionOutcome>('approved');
+  const [approverPlanNotes, setApproverPlanNotes] = useState('');
+  const [lastRecordedPlanDecision, setLastRecordedPlanDecision] = useState<{
+    outcome: ApproverPlanDecisionOutcome;
+    notes: string;
+    deciderName: string;
+  } | null>(null);
+
+  const [recordHeaderMenuOpen, setRecordHeaderMenuOpen] = useState(false);
+  const [recordHeaderMenuPosition, setRecordHeaderMenuPosition] = useState<{ top: number; left: number } | null>(
+    null,
+  );
+  const recordHeaderMenuRef = useRef<HTMLDivElement>(null);
+  const [exportCsvModalOpen, setExportCsvModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (!recordHeaderMenuOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (recordHeaderMenuRef.current?.contains(t)) return;
+      const el = t as Element;
+      if (typeof el.closest === 'function' && el.closest('.planning-header-btn-group__chevron')) return;
+      setRecordHeaderMenuOpen(false);
+      setRecordHeaderMenuPosition(null);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [recordHeaderMenuOpen]);
+
+  useEffect(() => {
+    setSelectedPathStepId(null);
+  }, [planStatus]);
+
+  const handlePathStepClick = useCallback((stepId: string) => {
+    setSelectedPathStepId(stepId);
+  }, []);
+
+  const openApproverDecisionModal = useCallback(() => {
+    setApproverPlanDecision('approved');
+    setApproverPlanNotes('');
+    setApproverDecisionModalOpen(true);
+  }, []);
+
+  const handleMarkPathAdvance = useCallback(() => {
+    if (planStatus === 'Active / Expired') return;
+
+    if (selectedPathStepId) {
+      const targetStatus = PATH_ID_TO_PLAN_STATUS[selectedPathStepId];
+      if (!targetStatus) return;
+      const currentPathId = PLAN_STATUS_TO_PATH_ID[planStatus];
+      if (selectedPathStepId === currentPathId) {
+        setSelectedPathStepId(null);
+        return;
+      }
+      if (planStatus === 'Submitted' && targetStatus === 'Draft') {
+        setWithdrawalReasonNote('');
+        setWithdrawToDraftModalOpen(true);
+        return;
+      }
+      if (planStatus === 'Submitted' && targetStatus === 'Approved / Rejected') {
+        openApproverDecisionModal();
+        return;
+      }
+      if (planStatus === 'Draft' && targetStatus === 'Submitted') {
+        setSubmitApprovalModalOpen(true);
+        return;
+      }
+      setPlanStatus(targetStatus);
+      setSelectedPathStepId(null);
+      return;
+    }
+
+    if (planStatus === 'Draft') {
+      setSubmitApprovalModalOpen(true);
+      return;
+    }
+    if (planStatus === 'Submitted') {
+      const next = getNextPlanStatus(planStatus);
+      if (next === 'Approved / Rejected') {
+        openApproverDecisionModal();
+        return;
+      }
+    }
+    const next = getNextPlanStatus(planStatus);
+    if (next) setPlanStatus(next);
+  }, [planStatus, setPlanStatus, selectedPathStepId, openApproverDecisionModal]);
+
+  const handleConfirmDraftToInReview = useCallback(() => {
+    publishPlanApprovalRequested({
+      requesterName: currentUser.name,
+      notes: submitForApprovalNotes.trim() || undefined,
+    });
+    setPlanSubmittedByUserId(currentUser.id);
+    setPlanStatus('Submitted');
+    setSubmitApprovalModalOpen(false);
+    setSubmitForApprovalNotes('');
+    setSelectedPathStepId(null);
+    setRelatedApprovalsWithdrawn(false);
+    setLastRecordedPlanDecision(null);
+    setPlanSubmittedForReviewToastVisible(true);
+  }, [
+    setPlanStatus,
+    setPlanSubmittedByUserId,
+    currentUser.id,
+    currentUser.name,
+    publishPlanApprovalRequested,
+    submitForApprovalNotes,
+  ]);
+
+  useEffect(() => {
+    if (!planSubmittedForReviewToastVisible) return;
+    const timer = window.setTimeout(() => setPlanSubmittedForReviewToastVisible(false), 5000);
+    return () => window.clearTimeout(timer);
+  }, [planSubmittedForReviewToastVisible]);
+
+  const handleCloseSubmitApprovalModal = useCallback(() => {
+    setSubmitApprovalModalOpen(false);
+    setSubmitForApprovalNotes('');
+  }, []);
+
+  const handleCloseWithdrawToDraftModal = useCallback(() => {
+    setWithdrawToDraftModalOpen(false);
+    setWithdrawalReasonNote('');
+  }, []);
+
+  const handleConfirmWithdrawToDraft = useCallback(() => {
+    const note = withdrawalReasonNote.trim();
+    if (!note) return;
+    withdrawPlanApprovalNotifications();
+    setPlanStatus('Draft');
+    setRelatedApprovalsWithdrawn(true);
+    setWithdrawToDraftModalOpen(false);
+    setWithdrawalReasonNote('');
+    setSelectedPathStepId(null);
+    setLastRecordedPlanDecision(null);
+  }, [setPlanStatus, withdrawalReasonNote, withdrawPlanApprovalNotifications]);
+
+  const handleCloseApproverDecisionModal = useCallback(() => {
+    setApproverDecisionModalOpen(false);
+    setApproverPlanNotes('');
+    setApproverPlanDecision('approved');
+  }, []);
+
+  const handleConfirmApproverPlanDecision = useCallback(() => {
+    const requesterId = planSubmittedByUserId;
+    setLastRecordedPlanDecision({
+      outcome: approverPlanDecision,
+      notes: approverPlanNotes.trim(),
+      deciderName: currentUser.name,
+    });
+    setPlanStatus('Approved / Rejected');
+    setApproverDecisionModalOpen(false);
+    setApproverPlanNotes('');
+    setApproverPlanDecision('approved');
+    setSelectedPathStepId(null);
+    if (requesterId) {
+      publishPlanApproverDecisionForRequester({
+        requesterUserId: requesterId,
+        approverName: currentUser.name,
+        outcome: approverPlanDecision,
+        notes: approverPlanNotes.trim() || undefined,
+      });
+    }
+  }, [
+    approverPlanDecision,
+    approverPlanNotes,
+    currentUser.name,
+    planSubmittedByUserId,
+    publishPlanApproverDecisionForRequester,
+    setPlanStatus,
+  ]);
+
+  useEffect(() => {
+    if (!approverDecisionModalOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') handleCloseApproverDecisionModal();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [approverDecisionModalOpen, handleCloseApproverDecisionModal]);
+
+  useEffect(() => {
+    if (submitApprovalModalOpen) {
+      setSubmitForApprovalNotes('');
+    }
+  }, [submitApprovalModalOpen]);
+
+  useEffect(() => {
+    if (!submitApprovalModalOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') handleCloseSubmitApprovalModal();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [submitApprovalModalOpen, handleCloseSubmitApprovalModal]);
+
+  useEffect(() => {
+    if (!withdrawToDraftModalOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') handleCloseWithdrawToDraftModal();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [withdrawToDraftModalOpen, handleCloseWithdrawToDraftModal]);
+
+  const [leftTab, setLeftTab] = useState<'details' | 'related' | 'grid-config'>('details');
   const [rightTab, setRightTab] = useState<'activity' | 'chatter'>('activity');
   const [gridConfigTab] = useState<'mvp' | 'post-mvp'>('mvp');
   const [criteriaRowCount, setCriteriaRowCount] = useState<number>(2);
@@ -104,14 +402,61 @@ const PlanningForecastingPage: React.FC = () => {
             </div>
           </div>
           <div className="planning-page-header-right">
-            <Link to="/home/manufacturing" className="planning-view-grid-button">
-              View Grid
-            </Link>
+            <div className="planning-header-btn-group">
+              <Link to={gridHomePath} className="planning-header-btn-group__primary">
+                View Grid
+              </Link>
+              <button
+                type="button"
+                className="planning-header-btn-group__chevron"
+                aria-expanded={recordHeaderMenuOpen}
+                aria-haspopup="menu"
+                aria-label="More actions"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  if (recordHeaderMenuOpen) {
+                    setRecordHeaderMenuOpen(false);
+                    setRecordHeaderMenuPosition(null);
+                  } else {
+                    setRecordHeaderMenuOpen(true);
+                    setRecordHeaderMenuPosition({
+                      top: rect.bottom + 4,
+                      left: Math.max(8, rect.right - 180),
+                    });
+                  }
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 12 12" fill="none" aria-hidden>
+                  <path
+                    d="M3 4.5L6 7.5L9 4.5"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Main Content - Two Panels */}
-        <div className="planning-content-panels">
+        <div className="planning-page-main">
+          <div className="planning-page-path-section">
+            <SalesforcePath
+              currentStepId={pathCurrentId}
+              selectedStepId={selectedPathStepId}
+              onStepClick={handlePathStepClick}
+              showMarkComplete={planStatus !== 'Active / Expired'}
+              onMarkComplete={handleMarkPathAdvance}
+              markCompleteLabel={
+                selectedPathStepId ? 'Mark As Current Status' : 'Mark as Complete'
+              }
+            />
+          </div>
+
+          {/* Main Content - Two Panels */}
+          <div className="planning-content-panels">
           {/* Left Panel */}
           <div className="planning-left-panel">
             <div className="planning-panel-tabs">
@@ -120,6 +465,12 @@ const PlanningForecastingPage: React.FC = () => {
                 onClick={() => setLeftTab('details')}
               >
                 Details
+              </button>
+              <button
+                className={`planning-tab ${leftTab === 'related' ? 'active' : ''}`}
+                onClick={() => setLeftTab('related')}
+              >
+                Related
               </button>
             </div>
             <div className="planning-panel-content">
@@ -132,8 +483,29 @@ const PlanningForecastingPage: React.FC = () => {
                   </div>
                   <div className="planning-info-field">
                     <label className="planning-info-label">Plan Status</label>
-                    <div className="planning-info-value">Draft</div>
+                    <div className="planning-info-value">{planStatus}</div>
                   </div>
+                  {lastRecordedPlanDecision &&
+                    (planStatus === 'Approved / Rejected' || planStatus === 'Active / Expired') && (
+                      <>
+                        <div className="planning-info-field">
+                          <label className="planning-info-label">Approver decision</label>
+                          <div className="planning-info-value">
+                            {approverPlanDecisionLabel(lastRecordedPlanDecision.outcome)}
+                          </div>
+                        </div>
+                        <div className="planning-info-field">
+                          <label className="planning-info-label">Decision notes</label>
+                          <div className="planning-info-value">
+                            {lastRecordedPlanDecision.notes || '—'}
+                          </div>
+                        </div>
+                        <div className="planning-info-field">
+                          <label className="planning-info-label">Recorded by</label>
+                          <div className="planning-info-value">{lastRecordedPlanDecision.deciderName}</div>
+                        </div>
+                      </>
+                    )}
                   <div className="planning-info-field">
                     <label className="planning-info-label">Fiscal Year</label>
                     <div className="planning-info-value">2026</div>
@@ -145,6 +517,37 @@ const PlanningForecastingPage: React.FC = () => {
                   <div className="planning-info-field">
                     <label className="planning-info-label">Root Record</label>
                     <div className="planning-info-value">Acme</div>
+                  </div>
+                </div>
+              )}
+              {leftTab === 'related' && (
+                <div className="planning-related-section">
+                  <div className="planning-related-section-header">
+                    <h3 className="planning-section-title">Approvals</h3>
+                  </div>
+                  <div className="planning-related-list">
+                    <div className="planning-related-list-header">
+                      <span>Request</span>
+                      <span>Role</span>
+                      <span>Assignee</span>
+                      <span>Status</span>
+                      <span>Updated</span>
+                    </div>
+                    {RELATED_APPROVAL_LIST_ROWS.map((item, idx) => (
+                      <div key={`${item.role}-${idx}`} className="planning-related-list-row">
+                        <span>{item.request}</span>
+                        <span>{item.role}</span>
+                        <span>{item.assignee}</span>
+                        <span
+                          className={
+                            relatedApprovalsWithdrawn ? 'planning-related-list-status--withdrawn' : undefined
+                          }
+                        >
+                          {relatedApprovalsWithdrawn ? 'Withdrawn' : item.status}
+                        </span>
+                        <span>{relatedApprovalsWithdrawn ? 'Just now' : item.updated}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
@@ -533,6 +936,358 @@ const PlanningForecastingPage: React.FC = () => {
             </div>
           </div>
         </div>
+        </div>
+
+        {recordHeaderMenuOpen && recordHeaderMenuPosition &&
+          createPortal(
+            <div
+              ref={recordHeaderMenuRef}
+              className="planning-record-header-menu"
+              role="menu"
+              style={{
+                position: 'fixed',
+                top: recordHeaderMenuPosition.top,
+                left: recordHeaderMenuPosition.left,
+                zIndex: 99998,
+              }}
+            >
+              <button
+                type="button"
+                className="planning-record-header-menu-item"
+                role="menuitem"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setRecordHeaderMenuOpen(false);
+                  setRecordHeaderMenuPosition(null);
+                  navigate('/planning-forecasting-list', { state: { cloneRecordId: RECORD_PAGE_CLONE_SOURCE_ID } });
+                }}
+              >
+                Clone
+              </button>
+              <button
+                type="button"
+                className="planning-record-header-menu-item"
+                role="menuitem"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setRecordHeaderMenuOpen(false);
+                  setRecordHeaderMenuPosition(null);
+                  setExportCsvModalOpen(true);
+                }}
+              >
+                Export Grid
+              </button>
+            </div>,
+            document.body,
+          )}
+
+        <ExportCsvModal isOpen={exportCsvModalOpen} onClose={() => setExportCsvModalOpen(false)} />
+
+        {submitApprovalModalOpen &&
+          createPortal(
+            <div
+              className="planning-approval-modal-overlay"
+              role="presentation"
+              onClick={handleCloseSubmitApprovalModal}
+            >
+              <div
+                className="planning-approval-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="planning-approval-modal-title"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="planning-approval-modal-header">
+                  <h2 id="planning-approval-modal-title" className="planning-approval-modal-title">
+                    Submit Plan for Review
+                  </h2>
+                  <button
+                    type="button"
+                    className="planning-approval-modal-close"
+                    onClick={handleCloseSubmitApprovalModal}
+                    aria-label="Close"
+                  >
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="planning-approval-modal-body">
+                  <p className="planning-approval-modal-warning">
+                    After you submit, you will not be able to edit the planning grid until all required
+                    approvals are completed. You can still view the grid and track approval status from this
+                    record.
+                  </p>
+                  <div>
+                    <p className="planning-approval-modal-approvers-heading">
+                      Approval requests will be submitted to:
+                    </p>
+                    <ul className="planning-approval-modal-approvers-list">
+                      {APPROVER_DISPLAY_ORDER.map((role) => {
+                        const entry = APPROVER_ROSTER[role];
+                        if (!entry) return null;
+                        return (
+                          <li key={role} className="planning-approval-modal-approver-item">
+                            <div
+                              className="planning-approval-modal-approver-avatar"
+                              aria-hidden={true}
+                              title={entry.name}
+                            >
+                              {entry.initials}
+                            </div>
+                            <div className="planning-approval-modal-approver-lines">
+                              <span className="planning-approval-modal-approver-role">{role}</span>
+                              <span className="planning-approval-modal-approver-name">{entry.name}</span>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                  <label className="planning-submit-approval-notes-label" htmlFor="planning-submit-approval-notes">
+                    Notes <span className="planning-submit-approval-notes-optional">(optional)</span>
+                  </label>
+                  <textarea
+                    id="planning-submit-approval-notes"
+                    className="planning-approval-modal-textarea"
+                    rows={3}
+                    value={submitForApprovalNotes}
+                    onChange={(e) => setSubmitForApprovalNotes(e.target.value)}
+                    placeholder="Add any context or instructions for approvers…"
+                  />
+                </div>
+                <div className="planning-approval-modal-footer">
+                  <button
+                    type="button"
+                    className="planning-approval-modal-btn planning-approval-modal-btn-cancel"
+                    onClick={handleCloseSubmitApprovalModal}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="planning-approval-modal-btn planning-approval-modal-btn-confirm"
+                    onClick={handleConfirmDraftToInReview}
+                  >
+                    Confirm and submit
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )}
+
+        {approverDecisionModalOpen &&
+          createPortal(
+            <div
+              className="planning-approval-modal-overlay"
+              role="presentation"
+              onClick={handleCloseApproverDecisionModal}
+            >
+              <div
+                className="planning-approval-modal planning-approval-modal--approver-decision"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="planning-approver-decision-modal-title"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="planning-approval-modal-header">
+                  <h2 id="planning-approver-decision-modal-title" className="planning-approval-modal-title">
+                    Complete review
+                  </h2>
+                  <button
+                    type="button"
+                    className="planning-approval-modal-close"
+                    onClick={handleCloseApproverDecisionModal}
+                    aria-label="Close"
+                  >
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="planning-approval-modal-body">
+                  <p className="planning-approval-modal-warning planning-approver-decision-intro">
+                    Record your decision for the <strong>Submitted</strong> stage. The plan will move to{' '}
+                    <strong>Approved / Rejected</strong>.
+                  </p>
+                  <div className="planning-approver-decision-select-wrap">
+                    <div className="planning-approver-decision-select-label" id="planning-approver-decision-label">
+                      Your decision
+                    </div>
+                    <div
+                      className="planning-approver-decision-btn-group"
+                      role="group"
+                      aria-labelledby="planning-approver-decision-label"
+                    >
+                      <button
+                        type="button"
+                        className={`planning-approver-decision-btn planning-approver-decision-btn--approve${
+                          approverPlanDecision === 'approved' ? ' planning-approver-decision-btn--selected' : ''
+                        }`}
+                        aria-pressed={approverPlanDecision === 'approved'}
+                        onClick={() => setApproverPlanDecision('approved')}
+                      >
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        className={`planning-approver-decision-btn planning-approver-decision-btn--conditional${
+                          approverPlanDecision === 'approvedWithCondition'
+                            ? ' planning-approver-decision-btn--selected'
+                            : ''
+                        }`}
+                        aria-pressed={approverPlanDecision === 'approvedWithCondition'}
+                        onClick={() => setApproverPlanDecision('approvedWithCondition')}
+                      >
+                        Conditionally Approve
+                      </button>
+                      <button
+                        type="button"
+                        className={`planning-approver-decision-btn planning-approver-decision-btn--reject${
+                          approverPlanDecision === 'rejected' ? ' planning-approver-decision-btn--selected' : ''
+                        }`}
+                        aria-pressed={approverPlanDecision === 'rejected'}
+                        onClick={() => setApproverPlanDecision('rejected')}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                  <label
+                    className="planning-submit-approval-notes-label"
+                    htmlFor="planning-approver-decision-notes"
+                  >
+                    Notes <span className="planning-submit-approval-notes-optional">(optional)</span>
+                  </label>
+                  <textarea
+                    id="planning-approver-decision-notes"
+                    className="planning-approval-modal-textarea"
+                    rows={4}
+                    value={approverPlanNotes}
+                    onChange={(e) => setApproverPlanNotes(e.target.value)}
+                    placeholder="Add context for your decision (conditions, follow-ups, rejection reasons)…"
+                  />
+                </div>
+                <div className="planning-approval-modal-footer">
+                  <button
+                    type="button"
+                    className="planning-approval-modal-btn planning-approval-modal-btn-cancel"
+                    onClick={handleCloseApproverDecisionModal}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="planning-approval-modal-btn planning-approval-modal-btn-confirm"
+                    onClick={handleConfirmApproverPlanDecision}
+                  >
+                    Submit
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )}
+
+        {withdrawToDraftModalOpen &&
+          createPortal(
+            <div
+              className="planning-approval-modal-overlay"
+              role="presentation"
+              onClick={handleCloseWithdrawToDraftModal}
+            >
+              <div
+                className="planning-approval-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="planning-withdraw-draft-modal-title"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="planning-approval-modal-header">
+                  <h2 id="planning-withdraw-draft-modal-title" className="planning-approval-modal-title">
+                    Return plan to Draft?
+                  </h2>
+                  <button
+                    type="button"
+                    className="planning-approval-modal-close"
+                    onClick={handleCloseWithdrawToDraftModal}
+                    aria-label="Close"
+                  >
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="planning-approval-modal-body">
+                  <p className="planning-approval-modal-warning">
+                    Moving this plan back to Draft will withdraw all in-flight approval requests. Approvers
+                    will be notified that their pending reviews are no longer required.
+                  </p>
+                  <label className="planning-withdraw-modal-label" htmlFor="planning-withdraw-reason">
+                    Reason for withdrawal
+                  </label>
+                  <textarea
+                    id="planning-withdraw-reason"
+                    className="planning-approval-modal-textarea"
+                    rows={4}
+                    value={withdrawalReasonNote}
+                    onChange={(e) => setWithdrawalReasonNote(e.target.value)}
+                    placeholder="Enter a note explaining why you are withdrawing the approval requests…"
+                    aria-required
+                  />
+                </div>
+                <div className="planning-approval-modal-footer">
+                  <button
+                    type="button"
+                    className="planning-approval-modal-btn planning-approval-modal-btn-cancel"
+                    onClick={handleCloseWithdrawToDraftModal}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="planning-approval-modal-btn planning-approval-modal-btn-confirm"
+                    onClick={handleConfirmWithdrawToDraft}
+                    disabled={!withdrawalReasonNote.trim()}
+                  >
+                    Withdraw and set to Draft
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )}
+
+        {planSubmittedForReviewToastVisible && (
+          <ScopedNotification
+            className="scoped-notification--approval-success scoped-notification--multiline"
+            icon={
+              <svg
+                className="scoped-notification-icon"
+                width="20"
+                height="20"
+                viewBox="0 0 20 20"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden
+              >
+                <circle cx="10" cy="10" r="9" fill="currentColor" />
+                <path
+                  d="M6 10.2l2.5 2.5L14 7.2"
+                  stroke="var(--color-surface-white)"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            }
+            message={
+              'Plan successfully submitted for review.\n\nYou will be notified when there are any updates.'
+            }
+            onClose={() => setPlanSubmittedForReviewToastVisible(false)}
+          />
+        )}
 
       </div>
     </div>

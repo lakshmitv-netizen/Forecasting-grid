@@ -16,6 +16,8 @@ const IndustryUrlSync: React.FC = () => {
       setIndustry('consumer-goods');
     } else if (path === '/home/manufacturing') {
       setIndustry('manufacturing');
+    } else if (path === '/home/grid-264') {
+      setIndustry('grid-264');
     } else if (path === '/home') {
       // Reset to null when on selection page so user can choose
       // Note: We can't directly set null, so we'll leave it as is

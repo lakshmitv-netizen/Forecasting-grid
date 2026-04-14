@@ -1,12 +1,28 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { MeasureData } from '../types';
-import { CellEditHistoryEntry } from '../types/editHistory';
+import { MeasureData, ApprovalRequest, GridRow, ParentTotalsRollupMode } from '../types';
+import { ApproverState, APPROVER_ROSTER, deriveAggregateStatus } from '../types/approvalRequest';
+import { ConditionalFormattingRule } from '../types/conditionalFormatting';
+import {
+  CellEditHistoryEntry,
+  PLAN_WIDE_APPROVAL_BATCH_CELL_KEY,
+  editHistoryEntryAffectsCell,
+} from '../types/editHistory';
 import { AdjustmentNote } from '../types/adjustmentNote';
 import { getMockData } from '../data/mockData';
 import { useIndustry } from '../contexts/IndustryContext';
+import {
+  cloneMeasureData,
+  reviveEditHistory,
+  usePlanningGridSession,
+  type PlanningGridCellMapsSnapshot,
+} from '../contexts/PlanningGridSessionContext';
+import { usePlanWorkflow } from '../contexts/PlanWorkflowContext';
+import { useCurrentUser, APPROVER_USER_IDS } from '../contexts/UserContext';
 import { adjustmentMeasuresData } from '../data/adjustmentMeasuresData';
 import { findRowById, getChildren, propagateUpward } from '../utils/valuePropagation';
+import { getPlanWideValueCellKeys } from '../utils/planWideCellKeys';
+import { hasFilteredOutSummaryRows, injectFilterSummaryRows, stripFilterSummaryRows } from '../utils/filterSummaryRows';
 import HierarchicalGrid from './HierarchicalGrid';
 import DimensionsTimeGrid from './DimensionsTimeGrid';
 import TimeDimensionsGrid from './TimeDimensionsGrid';
@@ -16,7 +32,80 @@ import FiltersPanel from './FiltersPanel';
 import CellDetailsHistoryPanel from './CellDetailsHistoryPanel';
 import CellEditInfoPopover from './CellEditInfoPopover';
 import CellContextMenu from './CellContextMenu';
+import ConditionalFormattingRuleModal from './ConditionalFormattingRuleModal';
+import CellExplainabilityModal, { SourceRecord } from './CellExplainabilityModal';
+import EditFrozenColumnsModal, { FrozenColumn } from './EditFrozenColumnsModal';
+import EditSubColumnsModal, { SubColumn } from './EditSubColumnsModal';
+import GlobalSortPanel, { GlobalSortConfig } from './GlobalSortPanel';
+import AlertsPanel, { FocusGridParams } from './AlertsPanel';
+import ScopedNotification from './ScopedNotification';
 import { getMeasureName } from '../utils/cellInfoUtils';
+
+const AVAILABLE_SUB_COLUMNS: SubColumn[] = [
+  { id: 'yoy', name: 'YoY' },
+  { id: 'mom', name: 'MoM' },
+  { id: 'target', name: 'Target' },
+  { id: 'targetAchievement', name: 'Target Achievement' },
+  { id: 'planned', name: 'Planned' },
+  { id: 'achieved', name: 'Achieved' },
+  { id: 'approvalStatus', name: 'Approval Status' },
+];
+
+const FIXED_SUB_COLUMNS: SubColumn[] = [
+  // No fixed columns - Approval Status is available but not selected by default
+];
+
+// Default selected sub-columns: keep empty on initial load
+const DEFAULT_SELECTED_SUB_COLUMNS: SubColumn[] = [];
+
+const MEASURES_DIMS_X_TIME_LAYOUT = 'Measures / Dimensions x Time';
+
+const MONTH_SORT_COLUMN_OPTIONS: { key: string; label: string }[] = [
+  { key: 'jan2026', label: 'Jan' }, { key: 'feb2026', label: 'Feb' },
+  { key: 'mar2026', label: 'Mar' }, { key: 'apr2026', label: 'Apr' },
+  { key: 'may2026', label: 'May' }, { key: 'jun2026', label: 'Jun' },
+  { key: 'jul2026', label: 'Jul' }, { key: 'aug2026', label: 'Aug' },
+  { key: 'sep2026', label: 'Sep' }, { key: 'oct2026', label: 'Oct' },
+  { key: 'nov2026', label: 'Nov' }, { key: 'dec2026', label: 'Dec' },
+];
+
+const ensureFixedSubColumns = (columns: SubColumn[]): SubColumn[] => {
+  const seen = new Set<string>();
+  const merged = [...FIXED_SUB_COLUMNS, ...columns].filter(col => {
+    if (seen.has(col.id)) return false;
+    seen.add(col.id);
+    return true;
+  });
+  return merged;
+};
+
+const AVAILABLE_FROZEN_COLUMNS: FrozenColumn[] = [
+  { id: 'annotatedLevel', name: 'Annotated Level' },
+  { id: 'users', name: 'Users' },
+  { id: 'region', name: 'Region' },
+  { id: 'team', name: 'Team' },
+  { id: 'status', name: 'Status' },
+  { id: 'condition', name: 'Condition' },
+  { id: 'trend', name: 'Trend' },
+];
+
+// Default visible measures: Sales Agreement Quantity, Sales Agreement Revenue, Opportunity Quantity, Opportunity Revenue, Order Quantity, Order Revenue
+const DEFAULT_VISIBLE_MEASURE_IDS = new Set(['measure-sa-qty', 'measure-sa-rev', 'measure-opp-qty', 'measure-opp-rev', 'measure-order-qty', 'measure-order-rev']);
+
+/** Count dimension nodes under a measure (for detecting panel-applied tree narrowing). */
+function countHierarchyNodes(children: GridRow[] | undefined): number {
+  if (!children?.length) return 0;
+  let total = 0;
+  const walk = (rows: GridRow[]) => {
+    for (const r of rows) {
+      total += 1;
+      if (r.children?.length) walk(r.children);
+    }
+  };
+  walk(children);
+  return total;
+}
+
 import '../styles/components/Grid.css';
 
 // Cell focus types for different layouts
@@ -26,17 +115,240 @@ type TimeDimensionsGridFocus = { rowId: string; measureId: string } | null;
 
 const ForecastingGrid: React.FC = () => {
   const { industry } = useIndustry();
+  const { session, saveSession } = usePlanningGridSession();
+  const { currentUser } = useCurrentUser();
+  const { planStatus, planSubmittedByUserId } = usePlanWorkflow();
+  const planReviewGridLock = planStatus === 'Submitted';
+  const planReviewRequesterStripes =
+    planStatus === 'Submitted' &&
+    planSubmittedByUserId != null &&
+    planSubmittedByUserId === currentUser.id;
   const [selectedMeasureSubgroup, setSelectedMeasureSubgroup] = useState<Set<string>>(new Set(['Revenue & Quantity Category']));
   const [selectedLayoutState, setSelectedLayoutState] = useState<string>('Measures / Dimensions x Time');
   
   // Get data based on current industry, default to manufacturing if not set
   const currentIndustry = industry || 'manufacturing';
   const industryData = getMockData(currentIndustry);
-  
-  const [data, setData] = useState<MeasureData[]>(industryData);
+  const sessionMatchesIndustry =
+    session != null && session.industryKey === currentIndustry;
+
+  const [data, setData] = useState<MeasureData[]>(() =>
+    sessionMatchesIndustry ? cloneMeasureData(session.data) : industryData
+  );
   // Store original/unfiltered data separately so filters always work on base data
-  const [originalData, setOriginalData] = useState<MeasureData[]>(industryData);
-  const [visibleMeasureIds, setVisibleMeasureIds] = useState<Set<string>>(new Set());
+  const [originalData, setOriginalData] = useState<MeasureData[]>(() =>
+    sessionMatchesIndustry ? cloneMeasureData(session.originalData) : industryData
+  );
+  const [visibleMeasureIds, setVisibleMeasureIds] = useState<Set<string>>(new Set(DEFAULT_VISIBLE_MEASURE_IDS));
+  
+  // Approval state management
+  /** Fresh load: no approval rows until the user requests / edits status in Cell Actions or bulk flows. */
+  const seedApprovalData = useCallback((_measures: MeasureData[]): Map<string, ApprovalRequest> => {
+    return new Map();
+  }, []);
+  
+  const [approvalRequests, setApprovalRequests] = useState<Map<string, ApprovalRequest>>(new Map());
+  /** Set inside handleApprovalAction updater; read after setApprovalRequests to show toast + close panel */
+  const pendingApprovalSubmittedToastRef = useRef(false);
+  /** History row to append once after approval action — must not live inside setApprovalRequests updater (React Strict Mode runs that twice in dev). */
+  const pendingApprovalHistoryEntryRef = useRef<CellEditHistoryEntry | null>(null);
+  /** Bulk approval mass-update history rows; assigned inside setApprovalRequests then flushed once. */
+  const massApprovalHistoryFlushRef = useRef<CellEditHistoryEntry[] | null>(null);
+
+  // Initialize approval data when data changes
+  useEffect(() => {
+    const seededApprovals = seedApprovalData(data);
+    setApprovalRequests(prev => {
+      if (prev.size === 0) return seededApprovals;
+      const merged = new Map(seededApprovals);
+
+      // Preserve user-submitted pending approvals and captured focus context
+      // so Alerts cards continue to reflect real manual selections.
+      prev.forEach((existingReq, cellKey) => {
+        if (!merged.has(cellKey)) {
+          merged.set(cellKey, existingReq);
+          return;
+        }
+        const seededReq = merged.get(cellKey)!;
+        const hasSelectionContext = Boolean(existingReq.focusContext?.selectedCellKeys?.length);
+        const preserveRuntimeReq =
+          existingReq.status === 'pending' ||
+          hasSelectionContext ||
+          existingReq.requesterId === currentUser.id;
+        if (preserveRuntimeReq) {
+          merged.set(cellKey, {
+            ...seededReq,
+            ...existingReq,
+          });
+        }
+      });
+      return merged;
+    });
+  }, [data, seedApprovalData, currentUser.id]);
+  
+  // Handle approval actions - wrapper to match HierarchicalGrid signature
+  // approverRole is set when acting as a specific approver in the multi-approver flow
+  const handleApprovalAction = useCallback((approvalId: string, action: 'submitForApproval' | 'approved' | 'approvedWithCondition' | 'rejected', comment: string, approverRole?: string) => {
+    pendingApprovalSubmittedToastRef.current = false;
+    setApprovalRequests(prev => {
+      pendingApprovalHistoryEntryRef.current = null;
+      const updated = new Map(prev);
+      const cellKey = approvalId.replace(/^approval-/, '');
+      const approval = updated.get(cellKey);
+      if (approval) {
+        const oldStatus = approval.status;
+        const statusLabels: Record<ApprovalRequest['status'], string> = {
+          notSubmitted: 'Not Submitted', pending: 'Pending', approved: 'Approved', approvedWithCondition: 'Approved with Condition', rejected: 'Rejected',
+        };
+
+        let updatedApproval: ApprovalRequest;
+        const isWithdrawAction = action === 'submitForApproval' && comment.startsWith('__withdraw__');
+        const withdrawReason = isWithdrawAction
+          ? (comment.includes('::') ? comment.split('::').slice(1).join('::').trim() : '')
+          : '';
+        const selectedApproverNames = action === 'submitForApproval' && approverRole?.startsWith('__selected_names__:')
+          ? approverRole.replace('__selected_names__:', '').split('|').map(v => v.trim()).filter(Boolean)
+          : [];
+
+        const isDecisionAction =
+          action === 'approved' || action === 'rejected' || action === 'approvedWithCondition';
+
+        let effectiveApproverRole =
+          approverRole && !approverRole.startsWith('__selected_names__:') ? approverRole : undefined;
+        if (isDecisionAction && approval.approvers && approval.approvers.length > 0 && !effectiveApproverRole) {
+          const mine = currentUser.name.trim().toLowerCase();
+          effectiveApproverRole = approval.approvers.find((a) => a.name.trim().toLowerCase() === mine)?.role;
+        }
+
+        const useMultiApproverDecisionPath =
+          Boolean(
+            effectiveApproverRole &&
+              approval.approvers &&
+              approval.approvers.length > 0 &&
+              isDecisionAction
+          );
+
+        if (isDecisionAction && approval.approvers && approval.approvers.length > 0 && !effectiveApproverRole) {
+          // GridRow / popover did not pass a role and current user is not in the approver list — do not
+          // run legacy path (it would set aggregate status to Approved while others are still pending).
+          return prev;
+        }
+
+        if (useMultiApproverDecisionPath) {
+          // Per-approver update: update just this approver's entry and recompute aggregate (stays Pending until all finish)
+          const updatedApprovers: ApproverState[] = approval.approvers!.map((a) =>
+            a.role === effectiveApproverRole
+              ? { ...a, status: action as ApproverState['status'], comment: comment || undefined, resolvedAt: new Date() }
+              : a
+          );
+          const newAggregate = deriveAggregateStatus(updatedApprovers);
+          updatedApproval = {
+            ...approval,
+            userInitiated: true,
+            approvers: updatedApprovers,
+            status: newAggregate,
+            resolvedAt: newAggregate !== 'pending' ? new Date() : approval.resolvedAt,
+          };
+        } else {
+          // Legacy / single-approver path, submit, withdraw
+          const newStatus: ApprovalRequest['status'] = isWithdrawAction
+            ? 'notSubmitted'
+            : (action === 'submitForApproval' ? 'pending' : action);
+          updatedApproval = {
+            ...approval,
+            userInitiated: true,
+            status: newStatus,
+            approverComment: action === 'submitForApproval' ? undefined : (comment || undefined),
+            requesterNote: isWithdrawAction ? '' : (action === 'submitForApproval' && comment ? comment : approval.requesterNote),
+            requesterId: action === 'submitForApproval' ? currentUser.id : approval.requesterId,
+            requesterName: action === 'submitForApproval' ? currentUser.name : approval.requesterName,
+            approvers: isWithdrawAction
+              ? undefined
+              : (action === 'submitForApproval' && selectedApproverNames.length > 0
+              ? selectedApproverNames.map((name) => ({
+                  role: name,
+                  name,
+                  initials: name.split(' ').map(part => part[0]).join('').slice(0, 2).toUpperCase(),
+                  status: 'pending' as const,
+                }))
+              : approval.approvers),
+            resolvedAt: action === 'submitForApproval' ? undefined : new Date(),
+          };
+        }
+
+        updated.set(cellKey, updatedApproval);
+
+        const newStatus = updatedApproval.status;
+        const roleKeyForActor = effectiveApproverRole ?? (approverRole && !approverRole.startsWith('__selected_names__:') ? approverRole : undefined);
+        const actorName = roleKeyForActor
+          ? (APPROVER_ROSTER[roleKeyForActor]?.name ?? approval.approvers?.find((a) => a.role === roleKeyForActor)?.name ?? roleKeyForActor)
+          : currentUser.name;
+
+        let note: string;
+        if (action === 'submitForApproval') {
+          note = isWithdrawAction
+            ? `Approval request withdrawn${withdrawReason ? `: ${withdrawReason}` : ''}`
+            : `Submitted for ${statusLabels['pending']} approval${comment ? `: ${comment}` : ''}`;
+        } else if (useMultiApproverDecisionPath && updatedApproval.approvers && updatedApproval.approvers.length > 0) {
+          const list = updatedApproval.approvers;
+          const denom = list.length;
+          const numer = list.filter(
+            (a) => a.status === 'approved' || a.status === 'approvedWithCondition'
+          ).length;
+          note = `${actorName}: ${statusLabels[action]} (${numer}/${denom} approved; overall ${statusLabels[newStatus]})${comment ? ` — ${comment}` : ''}`;
+        } else if (roleKeyForActor) {
+          note = `${actorName}: ${statusLabels[oldStatus]} → ${statusLabels[newStatus]}${comment ? `: ${comment}` : ''}`;
+        } else {
+          note = `${statusLabels[oldStatus]} → ${statusLabels[newStatus]}${comment ? `: ${comment}` : ''}`;
+        }
+
+        const parts = cellKey.split('-');
+        const timeKey = parts[parts.length - 1];
+        const rowId = parts.slice(0, -1).join('-');
+
+        pendingApprovalHistoryEntryRef.current = {
+          id: `approval-${cellKey}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+          cellKey: cellKey,
+          rowId: rowId,
+          timeKey: timeKey,
+          oldValue: 0,
+          newValue: 0,
+          note: note,
+          timestamp: new Date(),
+          userId: roleKeyForActor ?? currentUser.id,
+          userName: actorName,
+        };
+
+        if (action === 'submitForApproval' && !isWithdrawAction) {
+          pendingApprovalSubmittedToastRef.current = true;
+        }
+      }
+      return updated;
+    });
+    const pendingHist = pendingApprovalHistoryEntryRef.current;
+    pendingApprovalHistoryEntryRef.current = null;
+    if (pendingHist) {
+      setEditHistory((prevHistory) => [pendingHist, ...prevHistory]);
+    }
+    if (pendingApprovalSubmittedToastRef.current) {
+      pendingApprovalSubmittedToastRef.current = false;
+      setApprovalSubmittedNotification({ isVisible: true, count: 1 });
+      setIsCellDetailsHistoryOpen(false);
+    }
+  }, [currentUser]);
+  
+  // Update approval state directly (e.g. from HierarchicalGrid onApprovalUpdate callbacks)
+  const handleApprovalUpdate = useCallback((cellKey: string, approval: ApprovalRequest | null) => {
+    setApprovalRequests(prev => {
+      const updated = new Map(prev);
+      if (approval) {
+        updated.set(cellKey, { ...approval, userInitiated: true });
+      } else {
+        updated.delete(cellKey);
+      }
+      return updated;
+    });
+  }, []);
   
   // Store focused cell for each layout
   const hierarchicalGridFocusRef = useRef<HierarchicalGridFocus>(null);
@@ -61,6 +373,10 @@ const ForecastingGrid: React.FC = () => {
   // Refs to get visible rows and time keys from HierarchicalGrid for range selection
   const getVisibleRowsRef = useRef<(() => Array<{ id: string; [key: string]: any }>) | null>(null);
   const getVisibleTimeKeysRef = useRef<(() => string[]) | null>(null);
+  // Ref to scroll to a specific measure in HierarchicalGrid
+  const scrollToMeasureRef = useRef<((measureId: string) => void) | null>(null);
+  const scrollToMeasureDimensionsTimeRef = useRef<((measureId: string) => void) | null>(null);
+  const scrollToMeasureTimeDimensionsRef = useRef<((measureId: string) => void) | null>(null);
   
   // Drag selection state
   const isDraggingRef = useRef(false);
@@ -100,25 +416,46 @@ const ForecastingGrid: React.FC = () => {
     lastSelectedCellRef.current = lastSelectedCell;
   }, [lastSelectedCell]);
   
-  // Update data and edit history when industry changes
+  // Update data and edit history when industry changes (or re-apply persisted planning session for this industry)
   useEffect(() => {
-    const currentIndustry = industry || 'manufacturing';
-    const newData = getMockData(currentIndustry);
+    const ind = industry || 'manufacturing';
+    if (session?.industryKey === ind) {
+      setData(cloneMeasureData(session.data));
+      setOriginalData(cloneMeasureData(session.originalData));
+      setEditHistory(reviveEditHistory(session.editHistory));
+      setDraftEditHistory(
+        new Map(
+          session.draftEditHistory.map(([k, e]) => [
+            k,
+            {
+              ...e,
+              timestamp:
+                e.timestamp instanceof Date ? e.timestamp : new Date(String(e.timestamp)),
+            },
+          ])
+        )
+      );
+      setVisibleMeasureIds(new Set(DEFAULT_VISIBLE_MEASURE_IDS));
+      setPlanWideApprovalSubmitted(false);
+      return;
+    }
+    const newData = getMockData(ind);
     setData(newData);
     setOriginalData(newData);
-    // Reset visible measures when industry changes
-    setVisibleMeasureIds(new Set());
-    // Update edit history with industry-specific entries
+    setVisibleMeasureIds(new Set(DEFAULT_VISIBLE_MEASURE_IDS));
     const now = new Date();
     const yesterday = new Date(now);
     yesterday.setDate(yesterday.getDate() - 1);
     const twoDaysAgo = new Date(now);
     twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
-    const newEditHistory = currentIndustry === 'consumer-goods' 
-      ? createConsumerGoodsEditHistory(now, yesterday, twoDaysAgo)
-      : createInitialEditHistory();
+    const newEditHistory =
+      ind === 'consumer-goods'
+        ? createConsumerGoodsEditHistory(now, yesterday, twoDaysAgo)
+        : createInitialEditHistory();
     setEditHistory(newEditHistory);
-  }, [industry]);
+    setDraftEditHistory(new Map());
+    setPlanWideApprovalSubmitted(false);
+  }, [industry, session]);
   
   // Helper function to calculate all cells in a range between two cell keys
   const calculateCellRange = useCallback((startCellKey: string, endCellKey: string): string[] => {
@@ -140,8 +477,13 @@ const ForecastingGrid: React.FC = () => {
     }
     
     // Parse cell keys to get rowId and monthKey
+    // Handle approval cells (format: `${rowId}-${monthKey}-approval`) and regular cells (format: `${rowId}-${monthKey}`)
     const parseCellKey = (key: string): { rowId: string; monthKey: string } | null => {
-      const parts = key.split('-');
+      // Check if this is an approval cell key (ends with '-approval')
+      const isApprovalCell = key.endsWith('-approval');
+      const keyToParse = isApprovalCell ? key.replace(/-approval$/, '') : key;
+      
+      const parts = keyToParse.split('-');
       if (parts.length < 2) return null;
       const monthKey = parts[parts.length - 1];
       const rowId = parts.slice(0, -1).join('-');
@@ -154,6 +496,12 @@ const ForecastingGrid: React.FC = () => {
     if (!start || !end) {
       return [startCellKey, endCellKey];
     }
+    
+    // Check if start/end are approval cells to preserve the suffix
+    const isStartApproval = startCellKey.endsWith('-approval');
+    const isEndApproval = endCellKey.endsWith('-approval');
+    // If either is an approval cell, all cells in the range should be approval cells
+    const isApprovalRange = isStartApproval || isEndApproval;
     
     // Find indices
     const startRowIndex = visibleRows.findIndex((r: any) => r.id === start.rowId);
@@ -179,7 +527,9 @@ const ForecastingGrid: React.FC = () => {
           const row = visibleRows[rowIdx] as any;
           const monthKey = String(visibleTimeKeys[colIdx]);
           if (row && row.id && monthKey) {
-            rangeCells.push(`${row.id}-${monthKey}`);
+            const cellKey = `${row.id}-${monthKey}`;
+            // Preserve approval suffix if this is an approval range
+            rangeCells.push(isApprovalRange ? `${cellKey}-approval` : cellKey);
           }
         }
       }
@@ -482,6 +832,25 @@ const ForecastingGrid: React.FC = () => {
     // ROOT CAUSE FIX: Update state AFTER setSelectedCells completes
     // This ensures both are updated atomically with the correct order
     setSelectedCellsOrder(newOrder);
+
+    // Auto-open the Cell History panel (single-cell view) when clicking an approval cell directly
+    if (!isCtrlOrCmd && !isShift && cellKey.endsWith('-approval')) {
+      const baseCellKey = cellKey.replace(/-approval$/, '');
+      const parts = baseCellKey.split('-');
+      const monthKey = parts[parts.length - 1];
+      const rowId = parts.slice(0, -1).join('-');
+      setCurrentFocusedCell({ rowId, monthKey });
+      setCellDetailsInitialTab('single');
+      setPanelKey(prev => prev + 1);
+      setIsCellHistoryApprovalView(true);
+      setIsCellDetailsHistoryOpen(true);
+      setIsSettingsOpen(false);
+      setIsFiltersOpen(false);
+      setIsAlertsOpen(false);
+    } else if (!isCtrlOrCmd && !isShift) {
+      // Clicking a regular (numerical) cell — reset to edit history view
+      setIsCellHistoryApprovalView(false);
+    }
   }, [lastSelectedCell, editingCellKey, selectedLayoutState, calculateCellRange]);
   
   // Keyboard-driven cell selection (for Shift+Arrow and plain Arrow navigation)
@@ -707,6 +1076,7 @@ const ForecastingGrid: React.FC = () => {
         target.closest('.cell-details-history-panel') ||
         target.closest('.settings-panel') ||
         target.closest('.filters-panel') ||
+        target.closest('.sort-panel') ||
         target.closest('.cell-details-history-dropdown-list') ||
         target.closest('.multi-cell-dropdown-list') ||
         target.closest('.grid-button-group') ||
@@ -1805,11 +2175,45 @@ const ForecastingGrid: React.FC = () => {
   };
 
   // State to track edit history for all cells (includes both edits and notes) - SAVED edits only
-  const [editHistory, setEditHistory] = useState<CellEditHistoryEntry[]>(createInitialEditHistory());
-  
+  const [editHistory, setEditHistory] = useState<CellEditHistoryEntry[]>(() =>
+    sessionMatchesIndustry ? reviveEditHistory(session.editHistory) : createInitialEditHistory()
+  );
+
   // State to track DRAFT edit history (unsaved edits) - Map keyed by cellKey for quick lookup/update
-  const [draftEditHistory, setDraftEditHistory] = useState<Map<string, CellEditHistoryEntry>>(new Map());
-  
+  const [draftEditHistory, setDraftEditHistory] = useState<Map<string, CellEditHistoryEntry>>(() => {
+    if (!sessionMatchesIndustry) return new Map();
+    return new Map(
+      session.draftEditHistory.map(([k, e]) => [
+        k,
+        {
+          ...e,
+          timestamp:
+            e.timestamp instanceof Date ? e.timestamp : new Date(String(e.timestamp)),
+        },
+      ])
+    );
+  });
+
+  const cellMapsSnapshotRef = useRef<PlanningGridCellMapsSnapshot | null>(null);
+  const handleCellMapsSnapshotChange = useCallback((snap: PlanningGridCellMapsSnapshot) => {
+    cellMapsSnapshotRef.current = snap;
+  }, []);
+
+  const sessionPersistRef = useRef({
+    industryKey: currentIndustry,
+    data,
+    originalData,
+    editHistory,
+    draftEditHistory,
+  });
+  sessionPersistRef.current = {
+    industryKey: currentIndustry,
+    data,
+    originalData,
+    editHistory,
+    draftEditHistory,
+  };
+
   // State for locked cells - locked cells cannot be edited or impacted by propagation
   const [lockedCells, setLockedCells] = useState<Set<string>>(new Set());
   
@@ -1820,6 +2224,9 @@ const ForecastingGrid: React.FC = () => {
   useEffect(() => {
     readCellsRef.current = readCells;
   }, [readCells]);
+
+  /** True after user submits full-grid Request Approval (Bulk Action). */
+  const [planWideApprovalSubmitted, setPlanWideApprovalSubmitted] = useState(false);
   
   // State for undo/redo
   const undoHandlerRef = useRef<(() => void) | null>(null);
@@ -1875,7 +2282,7 @@ const ForecastingGrid: React.FC = () => {
   }, []);
 
   // Mass update handler
-  const handleMassUpdate = useCallback((cellKeys: string[], rule: string, valueStr: string, note?: string, disaggregationRule?: string) => {
+  const handleMassUpdate = useCallback((cellKeys: string[], rule: string, valueStr: string, note?: string, disaggregationRule?: string, submitToApprovers?: string[]) => {
     if (cellKeys.length === 0) return;
     
     // ROOT CAUSE FIX: Remove duplicates while preserving order
@@ -1887,6 +2294,228 @@ const ForecastingGrid: React.FC = () => {
         seen.add(key);
         finalOrderedKeys.push(key);
       }
+    }
+    
+    const approvalStatuses = ['approved', 'approvedWithCondition', 'pending', 'rejected', 'notSubmitted'];
+    const isApprovalStatus = approvalStatuses.includes(valueStr.trim());
+    
+    // Handle approval status update: keys may be value keys (`rowId-timeKey` / `dimension-measure`)
+    // or bulk "Edit Approval Status" keys ending in `-approval`.
+    if (rule === 'Set to' && isApprovalStatus) {
+      const approvalCellKeys = finalOrderedKeys.map((k) => (k.endsWith('-approval') ? k : `${k}-approval`));
+      const normalizedValue = valueStr.trim();
+      // Only allow valid statuses
+      if (!['approved', 'approvedWithCondition', 'pending', 'rejected', 'notSubmitted'].includes(normalizedValue)) {
+        console.log('[MassUpdate] Invalid approval status:', normalizedValue);
+        return;
+      }
+      const newStatus = normalizedValue as ApprovalRequest['status'];
+      const monthOrder = ['jan2026','feb2026','mar2026','apr2026','may2026','jun2026','jul2026','aug2026','sep2026','oct2026','nov2026','dec2026'];
+      const monthIndex = (k: string) => {
+        const i = monthOrder.indexOf(k.toLowerCase());
+        return i >= 0 ? i : Number.MAX_SAFE_INTEGER;
+      };
+
+      const buildFocusContext = (keys: string[]) => {
+        const baseKeys = keys.map(k => k.replace(/-approval$/, ''));
+        const rowIds = new Set<string>();
+        const timeKeys = new Set<string>();
+        const measureNames = new Set<string>();
+        const dimensionNames = new Set<string>();
+
+        baseKeys.forEach(cellKey => {
+          const parts = cellKey.split('-');
+          if (parts.length < 2) return;
+          const timeKey = parts[parts.length - 1];
+          const rowId = parts.slice(0, -1).join('-');
+          rowIds.add(rowId);
+          timeKeys.add(timeKey);
+        });
+
+        rowIds.forEach(rowId => {
+          for (const measure of data) {
+            if (measure.id === rowId) {
+              measureNames.add(measure.name);
+              break;
+            }
+            const found = findRowById(rowId, measure.children ?? []);
+            if (found) {
+              measureNames.add(measure.name);
+              dimensionNames.add(found.name);
+              break;
+            }
+          }
+        });
+
+        const sortedTimes = Array.from(timeKeys).sort((a, b) => monthIndex(a) - monthIndex(b));
+        const startPeriod = sortedTimes[0];
+        const endPeriod = sortedTimes[sortedTimes.length - 1];
+
+        const measureSummary = Array.from(measureNames).slice(0, 2).join(', ');
+        const dimensionSummary = Array.from(dimensionNames).slice(0, 2).join(', ');
+        const searchTerm = [measureSummary, dimensionSummary].filter(Boolean).join(' ');
+
+        return {
+          searchTerm: searchTerm || undefined,
+          startPeriod,
+          endPeriod,
+          measureSummary: measureSummary || undefined,
+          dimensionSummary: dimensionSummary || undefined,
+          selectedCellKeys: baseKeys,
+        };
+      };
+      const focusContext = buildFocusContext(approvalCellKeys);
+
+      const baseValueKeys = approvalCellKeys.map((k) => k.replace(/-approval$/, ''));
+      const baseKeySet = new Set(baseValueKeys);
+      const planWideKeySet = new Set(getPlanWideValueCellKeys(data));
+      const isPlanWideBulkPending =
+        newStatus === 'pending' &&
+        planWideKeySet.size > 0 &&
+        planWideKeySet.size === baseKeySet.size &&
+        [...planWideKeySet].every((k) => baseKeySet.has(k));
+
+      // Build approvers list when submitting for approval
+      const buildApprovers = (): ApproverState[] | undefined => {
+        if (newStatus !== 'pending' || !submitToApprovers || submitToApprovers.length === 0) return undefined;
+        return submitToApprovers.map(role => ({
+          role,
+          name: APPROVER_ROSTER[role]?.name ?? role,
+          initials: APPROVER_ROSTER[role]?.initials ?? role.slice(0, 2).toUpperCase(),
+          status: 'pending' as const,
+        }));
+      };
+
+      setApprovalRequests((prev) => {
+        massApprovalHistoryFlushRef.current = null;
+        const updated = new Map(prev);
+        const perCellPieces: CellEditHistoryEntry[] = [];
+
+        approvalCellKeys.forEach((approvalCellKey) => {
+          const cellKey = approvalCellKey.replace(/-approval$/, '');
+          const approval = updated.get(cellKey);
+
+          if (approval) {
+            const normalizedOldStatus = (approval.status === 'approved' || approval.status === 'approvedWithCondition' || approval.status === 'pending' || approval.status === 'rejected' || approval.status === 'notSubmitted')
+              ? approval.status
+              : 'notSubmitted';
+            const newApprovers = buildApprovers();
+            const trimmedNote = note?.trim() || '';
+            updated.set(cellKey, {
+              ...approval,
+              userInitiated: true,
+              status: newStatus,
+              approvers: newApprovers ?? approval.approvers,
+              requesterNote: newStatus === 'pending' ? trimmedNote : approval.requesterNote,
+              approverComment: newStatus === 'pending' ? undefined : (trimmedNote || approval.approverComment || ''),
+              focusContext: newStatus === 'pending' ? focusContext : approval.focusContext,
+              createdAt: newStatus === 'pending' ? new Date() : approval.createdAt,
+              resolvedAt: newStatus === 'pending' || newStatus === 'notSubmitted' ? undefined : new Date(),
+            });
+
+            const normalizedNewStatusForHistory = (newStatus === 'approved' || newStatus === 'pending' || newStatus === 'rejected' || newStatus === 'notSubmitted')
+              ? newStatus
+              : 'notSubmitted';
+            if (!isPlanWideBulkPending) {
+              perCellPieces.push(
+                createBulkHistoryEntry(
+                  cellKey,
+                  normalizedOldStatus as ApprovalRequest['status'] | 'needsMoreInfo' | 'modificationSuggested' | 'inDiscussion',
+                  normalizedNewStatusForHistory as ApprovalRequest['status'] | 'needsMoreInfo' | 'modificationSuggested' | 'inDiscussion',
+                  note?.trim() || '',
+                  currentUser.id,
+                  currentUser.name
+                )
+              );
+            }
+          } else {
+            const parts = cellKey.split('-');
+            if (parts.length >= 2) {
+              const monthKey = parts[parts.length - 1];
+              const rowId = parts.slice(0, -1).join('-');
+              const measureId = rowId.split('-').find((part) => part.startsWith('measure-')) || '';
+
+              const newApprovers = buildApprovers();
+              updated.set(cellKey, {
+                id: `approval-${cellKey}-${Date.now()}`,
+                cellKey: cellKey,
+                measureId: measureId,
+                rowId: rowId,
+                timeKey: monthKey,
+                oldValue: 0,
+                newValue: 0,
+                variancePct: 0,
+                requesterNote: newStatus === 'pending' ? (note?.trim() || '') : '',
+                requesterId: currentUser.id,
+                requesterName: currentUser.name,
+                approverId: '',
+                approverName: '',
+                status: newStatus,
+                approvers: newApprovers,
+                approverComment: newStatus === 'pending' ? undefined : (note?.trim() || ''),
+                focusContext: newStatus === 'pending' ? focusContext : undefined,
+                userInitiated: true,
+                createdAt: new Date(),
+                resolvedAt: newStatus !== 'pending' && newStatus !== 'notSubmitted' ? new Date() : undefined,
+              });
+            }
+          }
+        });
+
+        if (isPlanWideBulkPending) {
+          const trimmedNote = note?.trim() || '';
+          massApprovalHistoryFlushRef.current = [
+            {
+              id: `approval-batch-plan-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+              cellKey: PLAN_WIDE_APPROVAL_BATCH_CELL_KEY,
+              rowId: '__plan-wide__',
+              timeKey:
+                focusContext.startPeriod && focusContext.endPeriod
+                  ? `${focusContext.startPeriod}–${focusContext.endPeriod}`
+                  : undefined,
+              oldValue: 0,
+              newValue: 0,
+              note: `Submitted for Pending approval (plan-wide, ${baseKeySet.size} cells)${trimmedNote ? `: ${trimmedNote}` : ''}`,
+              timestamp: new Date(),
+              userId: currentUser.id,
+              userName: currentUser.name,
+              bulkAffectedCellKeys: [...baseKeySet],
+            },
+          ];
+        } else if (perCellPieces.length > 0) {
+          massApprovalHistoryFlushRef.current = perCellPieces;
+        }
+
+        return updated;
+      });
+
+      const massHist = massApprovalHistoryFlushRef.current;
+      massApprovalHistoryFlushRef.current = null;
+      if (massHist && massHist.length > 0) {
+        setEditHistory((prev) => [...massHist, ...prev]);
+      }
+      if (newStatus === 'pending') {
+        setApprovalSubmittedNotification({
+          isVisible: true,
+          count: approvalCellKeys.length,
+        });
+        setIsCellDetailsHistoryOpen(false);
+        const planWideKeys = getPlanWideValueCellKeys(data);
+        const baseKeys = approvalCellKeys.map((k) => k.replace(/-approval$/, ''));
+        const baseSet = new Set(baseKeys);
+        const pwSet = new Set(planWideKeys);
+        if (
+          planWideKeys.length > 0 &&
+          baseSet.size === pwSet.size &&
+          [...pwSet].every((k) => baseSet.has(k))
+        ) {
+          setPlanWideApprovalSubmitted(true);
+        }
+      }
+      
+      // Clear selection after update
+      handleClearSelection();
+      return;
     }
     
     // Handle disaggregation rule case - create edit history entries without changing values
@@ -2079,7 +2708,7 @@ const ForecastingGrid: React.FC = () => {
     
     // Clear selection after update
     handleClearSelection();
-  }, [data, addDraftEditHistory, handleClearSelection, selectedLayoutState]);
+  }, [data, addDraftEditHistory, handleClearSelection, selectedLayoutState, currentUser]);
 
   // Function to commit drafts to saved edit history (called on Save)
   // CRITICAL: Use functional updates to avoid stale closures and ensure correct order
@@ -2192,18 +2821,34 @@ const ForecastingGrid: React.FC = () => {
       return;
     }
     
-    // If cell is impacted, don't show old edit history popover - impacted cells show their own state
-    // IMPORTANT: If a cell has edit history but becomes impacted, hide the old indicators
-    if (isImpacted) {
+    const approvalForCell = approvalRequests.get(cellKey);
+    const approvalHasNote = Boolean(
+      approvalForCell?.requesterNote?.trim() ||
+      approvalForCell?.approverComment?.trim()
+    );
+    const shouldShowApprovalPopover = Boolean(approvalForCell) && approvalForCell.status !== 'pending' && (
+      approvalForCell.status === 'rejected' ||
+      approvalForCell.status === 'approvedWithCondition' ||
+      approvalHasNote
+    );
+
+    // If cell is impacted, don't show old edit history popover - unless resolved approval / notes warrant it (not plan-wide pending).
+    // Plan review (record Submitted): approvers need arrows + edit history / notes while cells are read-only.
+    if (isImpacted && !shouldShowApprovalPopover && !planReviewGridLock) {
       console.log('[handleCellFocusWithHistory] Cell is impacted, closing popover:', cellKey);
       setEditInfoPopover(null);
       return;
     }
     
+    const lastDashIndex = cellKey.lastIndexOf('-');
+    const parsedRowId = lastDashIndex > 0 ? cellKey.slice(0, lastDashIndex) : cellKey;
+    const parsedTimeKey = lastDashIndex > 0 ? cellKey.slice(lastDashIndex + 1) : undefined;
+
     // Check draft first (most recent), then saved history
-    // Check all draft entries (they use unique IDs as keys)
     const draftEntries = Array.from(draftEditHistory.values()).filter(entry => entry.cellKey === cellKey);
-    const savedEntry = editHistory.find(entry => entry.cellKey === cellKey);
+    const savedEntry = editHistory.find((entry) =>
+      editHistoryEntryAffectsCell(entry, cellKey, parsedRowId, parsedTimeKey)
+    );
     const latestEntry = draftEntries.length > 0 ? draftEntries[0] : savedEntry;
     
     // IMPORTANT: If cell is impacted, don't show popover even if it has edit history
@@ -2211,22 +2856,23 @@ const ForecastingGrid: React.FC = () => {
     
     // Show popover if there's edit history OR if cell is locked
     // But don't show if cell was impacted and saved (no direct change in current session)
-    if (!latestEntry && !isLocked) {
+    if (!latestEntry && !isLocked && !shouldShowApprovalPopover) {
       setEditInfoPopover(null);
       return;
     }
     
     // For locked cells without edit history, create a minimal entry
-    const entryToShow = latestEntry || (isLocked ? {
-      id: `locked-${cellKey}`,
+    const entryToShow = latestEntry || ((isLocked || shouldShowApprovalPopover) ? {
+      id: `${isLocked ? 'locked' : 'approval'}-${cellKey}`,
       cellKey,
-      rowId: cellKey.split('-')[0] || '',
+      rowId: parsedRowId,
+      timeKey: parsedTimeKey,
       timestamp: new Date(),
       userId: 'current-user',
       userName: 'John Carter',
       oldValue: undefined,
       newValue: cellValue,
-      note: undefined
+      note: approvalForCell?.requesterNote || approvalForCell?.approverComment || undefined,
     } as CellEditHistoryEntry : null);
     
     if (!entryToShow) {
@@ -2259,7 +2905,7 @@ const ForecastingGrid: React.FC = () => {
         left: leftPos
       }
     });
-  }, [editHistory, draftEditHistory, data]); // Note: readCellsRef, savedImpactedCellsRef and contextMenuRef are refs
+  }, [editHistory, draftEditHistory, data, approvalRequests, planReviewGridLock]); // Note: readCellsRef, savedImpactedCellsRef and contextMenuRef are refs
 
   // Close edit info popover
   const handleCloseEditInfoPopover = useCallback(() => {
@@ -2411,6 +3057,11 @@ const ForecastingGrid: React.FC = () => {
   
   // IDs of measures that exist in both groups (constant)
   const sharedMeasureIds = useMemo(() => [], []);
+  
+  // Track previous measure IDs to detect newly added measures
+  const prevMeasureIdsRef = useRef<Set<string>>(new Set());
+  // Store newly added measure IDs for scrolling and animation
+  const [newlyAddedMeasureIds, setNewlyAddedMeasureIds] = useState<string[]>([]);
 
   // Update data when measure subgroup changes or measure group context changes
   useEffect(() => {
@@ -2489,10 +3140,42 @@ const ForecastingGrid: React.FC = () => {
       finalMeasureIds.push(...currentData.map((m: MeasureData) => m.id));
     }
 
+    // Detect newly added measures
+    const currentMeasureIds = new Set(finalMeasureIds);
+    const prevMeasureIds = prevMeasureIdsRef.current;
+    const newlyAdded = finalMeasureIds.filter(id => !prevMeasureIds.has(id));
+    
     setOriginalData(combinedData);
     setData(combinedData);
-    // Initialize all measures as visible
-    setVisibleMeasureIds(new Set(finalMeasureIds));
+    // Initialize visible measures to default (only those that exist in current measures)
+    const defaultVisibleForCurrentMeasures = new Set(
+      Array.from(DEFAULT_VISIBLE_MEASURE_IDS).filter(id => finalMeasureIds.includes(id))
+    );
+    setVisibleMeasureIds(defaultVisibleForCurrentMeasures.size > 0 ? defaultVisibleForCurrentMeasures : new Set(finalMeasureIds));
+    
+    // Update previous measure IDs
+    prevMeasureIdsRef.current = currentMeasureIds;
+    
+    // Set newly added measures for animation
+    if (newlyAdded.length > 0) {
+      setNewlyAddedMeasureIds(newlyAdded);
+      // Clear the animation class after animation completes (1.5s)
+      setTimeout(() => {
+        setNewlyAddedMeasureIds([]);
+      }, 1500);
+      
+      // Scroll to first newly added measure after a short delay to ensure DOM is updated
+      setTimeout(() => {
+        // Use the appropriate scroll ref based on the selected layout
+        if (selectedLayoutState === 'Dimensions / Time x Measures') {
+          scrollToMeasureDimensionsTimeRef.current?.(newlyAdded[0]);
+        } else if (selectedLayoutState === 'Time / Dimensions x Measures') {
+          scrollToMeasureTimeDimensionsRef.current?.(newlyAdded[0]);
+        } else {
+          scrollToMeasureRef.current?.(newlyAdded[0]);
+        }
+      }, 100);
+    }
   }, [selectedMeasureSubgroup, applyInitialEditHistoryToData, industry, measureGroupContext, sharedMeasureIds]);
 
   // Handle measure reordering
@@ -2509,6 +3192,11 @@ const ForecastingGrid: React.FC = () => {
     }
     return data.filter(measure => visibleMeasureIds.has(measure.id));
   }, [data, visibleMeasureIds]);
+
+  const unfilteredForSummary = useMemo(() => {
+    if (visibleMeasureIds.size === 0) return originalData;
+    return originalData.filter(m => visibleMeasureIds.has(m.id));
+  }, [originalData, visibleMeasureIds]);
 
   // Determine which measures are read-only based on selected measure groups and per-measure context
   const readonlyMeasureIds = useMemo(() => {
@@ -2531,11 +3219,160 @@ const ForecastingGrid: React.FC = () => {
     return readonlyIds;
   }, [selectedMeasureSubgroup, data]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isEditFrozenColumnsModalOpen, setIsEditFrozenColumnsModalOpen] = useState(false);
+  const [selectedFrozenColumns, setSelectedFrozenColumns] = useState<FrozenColumn[]>([
+    { id: 'users', name: 'Users' },
+    { id: 'condition', name: 'Condition' },
+    { id: 'status', name: 'Status' },
+  ]);
+  const [showAdditionalFrozenColumns, setShowAdditionalFrozenColumns] = useState(false);
+  const [selectedSubColumns, setSelectedSubColumns] = useState<SubColumn[]>(DEFAULT_SELECTED_SUB_COLUMNS);
+  const [customSubColumns, setCustomSubColumns] = useState<SubColumn[]>([]);
+  const [isEditSubColumnsModalOpen, setIsEditSubColumnsModalOpen] = useState(false);
+  const [showSubColumns, setShowSubColumns] = useState(false);
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
+  const [isSortPanelOpen, setIsSortPanelOpen] = useState(false);
+  const [globalSortConfig, setGlobalSortConfig] = useState<GlobalSortConfig>({ criteria: [], preserveHierarchy: true, sortMeasures: false });
   const [isCellDetailsHistoryOpen, setIsCellDetailsHistoryOpen] = useState(false);
-  const [cellDetailsInitialTab, setCellDetailsInitialTab] = useState<'single' | 'multi'>('single');
+  const [cellDetailsInitialTab, setCellDetailsInitialTab] = useState<'single' | 'multi' | 'details'>('multi');
+  const [cellDetailsFocusSection, setCellDetailsFocusSection] = useState<'approval' | 'explainability' | null>(null);
+  const [isAlertsOpen, setIsAlertsOpen] = useState(false);
   const [activeFilterCount, setActiveFilterCount] = useState(0);
+  const [parentTotalsRollupMode, setParentTotalsRollupMode] = useState<ParentTotalsRollupMode>('fullHierarchy');
   const [panelKey, setPanelKey] = useState(0); // Key to force panel remount when switching tabs
+  const [isCellHistoryApprovalView, setIsCellHistoryApprovalView] = useState(false);
+  const [bulkActionPreselect, setBulkActionPreselect] = useState<string | null>(null);
+  const [bulkActionPreselectSignal, setBulkActionPreselectSignal] = useState(0);
+  const [conditionalFormattingRules, setConditionalFormattingRules] = useState<ConditionalFormattingRule[]>([]);
+  const [applyCfRulesAsColorScale, setApplyCfRulesAsColorScale] = useState(false);
+  const [previewConditionalFormattingRule, setPreviewConditionalFormattingRule] = useState<ConditionalFormattingRule | null>(null);
+  const [isDesignSystemRulesEnabled, setIsDesignSystemRulesEnabled] = useState(true);
+  // Always force the preview rule to isActive:true so it shows on the grid
+  // regardless of whether the rule is currently toggled off.
+  const activePreviewRule = previewConditionalFormattingRule
+    ? { ...previewConditionalFormattingRule, isActive: true }
+    : null;
+  const effectiveConditionalFormattingRules = useMemo(() => {
+    let base: ConditionalFormattingRule[];
+    if (activePreviewRule) {
+        const exists = conditionalFormattingRules.some(r => r.id === activePreviewRule.id);
+      base = exists
+        ? conditionalFormattingRules.map(r => (r.id === activePreviewRule.id ? activePreviewRule : r))
+          : [...conditionalFormattingRules, activePreviewRule];
+    } else {
+      base = conditionalFormattingRules;
+    }
+    // Design-system edited/impacted styling vs user CF (modifyCells) are mutually exclusive.
+    if (isDesignSystemRulesEnabled) {
+      return base.map(r => (r.mode === 'modifyCells' ? { ...r, isActive: false } : r));
+    }
+    return base;
+  }, [conditionalFormattingRules, activePreviewRule, isDesignSystemRulesEnabled]);
+
+  const handleDesignSystemRulesChange = useCallback((enabled: boolean) => {
+    setIsDesignSystemRulesEnabled(enabled);
+    if (enabled) {
+      setConditionalFormattingRules(prev =>
+        prev.map(r => (r.mode === 'modifyCells' ? { ...r, isActive: false } : r))
+      );
+    }
+  }, []);
+
+  const handleConditionalFormattingRulesChange = useCallback((rules: ConditionalFormattingRule[]) => {
+    setConditionalFormattingRules(rules);
+    if (rules.some(r => r.mode === 'modifyCells' && r.isActive)) {
+      setIsDesignSystemRulesEnabled(false);
+    }
+  }, []);
+
+  // If design-system rules are on, user-defined modifyCells rules must be inactive (sync corrupt / external state).
+  useEffect(() => {
+    if (!isDesignSystemRulesEnabled) return;
+    if (!conditionalFormattingRules.some(r => r.mode === 'modifyCells' && r.isActive)) return;
+    setConditionalFormattingRules(prev =>
+      prev.map(r => (r.mode === 'modifyCells' ? { ...r, isActive: false } : r))
+    );
+  }, [isDesignSystemRulesEnabled, conditionalFormattingRules]);
+
+  /** Every built-in + custom + CF “create column” field — sort panel always lists these (independent of sub-columns toggle). */
+  const allCalculatedFieldsForSort = useMemo((): SubColumn[] => {
+    const out: SubColumn[] = [];
+    const seen = new Set<string>();
+    const push = (c: SubColumn) => {
+      if (seen.has(c.id)) return;
+      seen.add(c.id);
+      out.push(c);
+    };
+    for (const c of AVAILABLE_SUB_COLUMNS) push(c);
+    for (const c of customSubColumns) push(c);
+    for (const r of effectiveConditionalFormattingRules) {
+      if (r.mode === 'createColumns' && r.isActive) push({ id: r.id, name: r.name });
+    }
+    return out;
+  }, [customSubColumns, effectiveConditionalFormattingRules]);
+
+  const isHierarchicalLayout = selectedLayoutState === MEASURES_DIMS_X_TIME_LAYOUT;
+  const useCalculatedFieldSortUi = isHierarchicalLayout;
+
+  const globalSortAvailableColumns = useMemo(() => {
+    if (isHierarchicalLayout) {
+      return allCalculatedFieldsForSort.map(sc => ({ key: sc.id, label: sc.name }));
+    }
+    return MONTH_SORT_COLUMN_OPTIONS;
+  }, [isHierarchicalLayout, allCalculatedFieldsForSort]);
+
+  // Inject summary rows whenever the grid tree is narrower than original (after Save on Filters),
+  // not only when the filter panel's badge count is > 0 (time range / sync edge cases).
+  const hierarchyNarrowedFromOriginal = useMemo(() => {
+    for (const m of filteredData) {
+      const orig = originalData.find(o => o.id === m.id);
+      if (!orig) continue;
+      if (countHierarchyNodes(orig.children) > countHierarchyNodes(m.children)) {
+        return true;
+      }
+    }
+    return false;
+  }, [filteredData, originalData]);
+
+  const hierarchicalGridData = useMemo(() => {
+    if (!hierarchyNarrowedFromOriginal) return filteredData;
+    if (
+      parentTotalsRollupMode === 'fullHierarchy' &&
+      hasFilteredOutSummaryRows(filteredData)
+    ) {
+      return filteredData;
+    }
+    return injectFilterSummaryRows(stripFilterSummaryRows(filteredData), unfilteredForSummary);
+  }, [hierarchyNarrowedFromOriginal, filteredData, unfilteredForSummary, parentTotalsRollupMode]);
+
+  const handleHierarchicalGridDataChange = useCallback((newData: MeasureData[]) => {
+    if (parentTotalsRollupMode === 'fullHierarchy') {
+      setData(newData);
+    } else {
+      setData(stripFilterSummaryRows(newData));
+    }
+  }, [parentTotalsRollupMode]);
+
+  useEffect(() => {
+    if (parentTotalsRollupMode !== 'visibleOnly') return;
+    setData(prev => stripFilterSummaryRows(prev));
+  }, [parentTotalsRollupMode]);
+
+  const [approvalSubmittedNotification, setApprovalSubmittedNotification] = useState<{ isVisible: boolean; count: number }>({
+    isVisible: false,
+    count: 0,
+  });
+
+  useEffect(() => {
+    if (!approvalSubmittedNotification.isVisible) return;
+    const timer = window.setTimeout(() => {
+      setApprovalSubmittedNotification(prev => ({ ...prev, isVisible: false }));
+    }, 5000);
+    return () => window.clearTimeout(timer);
+  }, [approvalSubmittedNotification.isVisible]);
+  const [cfFromSelectionOpen, setCfFromSelectionOpen] = useState(false);
+  const [cfFromSelectionCellKeys, setCfFromSelectionCellKeys] = useState<string[]>([]);
+  const [cfLaunchFromSelectionSignal, setCfLaunchFromSelectionSignal] = useState(0);
   
   // State for cell edit info popover
   const [editInfoPopover, setEditInfoPopover] = useState<{
@@ -2546,6 +3383,23 @@ const ForecastingGrid: React.FC = () => {
     measureName?: string;
     position: { top: number; left: number };
   } | null>(null);
+
+  const isCurrentUserApprover = APPROVER_USER_IDS.has(currentUser.id);
+  const [approverOverrideCellKeys, setApproverOverrideCellKeys] = useState<Set<string>>(() => new Set());
+  const [pendingApproverEdit, setPendingApproverEdit] = useState<{
+    rowId: string;
+    monthKey: string;
+  } | null>(null);
+  const handlePendingApproverEditConsumed = useCallback(() => setPendingApproverEdit(null), []);
+  const handleApproverOverrideForCell = useCallback((cellKey: string) => {
+    const lastDash = cellKey.lastIndexOf('-');
+    if (lastDash <= 0) return;
+    const rowId = cellKey.slice(0, lastDash);
+    const monthKey = cellKey.slice(lastDash + 1);
+    setApproverOverrideCellKeys((prev) => new Set(prev).add(cellKey));
+    setEditInfoPopover(null);
+    setPendingApproverEdit({ rowId, monthKey });
+  }, []);
   
   // Also check and close popover if currently open cell becomes saved impacted
   useEffect(() => {
@@ -2573,6 +3427,13 @@ const ForecastingGrid: React.FC = () => {
   // Clipboard state for context menu
   const [clipboardValue, setClipboardValue] = useState<number | null>(null);
 
+  // State for explainability modal
+  const [explainabilityModal, setExplainabilityModal] = useState<{
+    isOpen: boolean;
+    cellKey: string;
+    cellValue: number;
+  } | null>(null);
+
   // Merge draft and saved edit history for display in grid (so notes show up immediately)
   const mergedEditHistory = useMemo(() => {
     const drafts = Array.from(draftEditHistory.values());
@@ -2580,6 +3441,31 @@ const ForecastingGrid: React.FC = () => {
     // Sort by timestamp descending (most recent first)
     return merged.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
   }, [draftEditHistory, editHistory]);
+
+  const initialHierarchicalCellMaps = useMemo((): PlanningGridCellMapsSnapshot | null => {
+    if (!session || session.industryKey !== currentIndustry) return null;
+    return session.cellMaps;
+  }, [session, currentIndustry]);
+
+  useEffect(() => {
+    return () => {
+      const s = sessionPersistRef.current;
+      saveSession({
+        industryKey: s.industryKey,
+        data: cloneMeasureData(s.data),
+        originalData: cloneMeasureData(s.originalData),
+        editHistory: s.editHistory.map((e) => ({ ...e })),
+        draftEditHistory: Array.from(s.draftEditHistory.entries()),
+        cellMaps: cellMapsSnapshotRef.current ?? {
+          editedCells: [],
+          savedEditedCells: [],
+          impactedCells: [],
+          unsavedNotes: [],
+          savedImpactedCells: [],
+        },
+      });
+    };
+  }, [saveSession]);
 
   // Context menu handlers
   const handleContextMenu = useCallback((e: React.MouseEvent, cellKey: string, cellValue: number, isLocked: boolean, isEditable: boolean) => {
@@ -2635,10 +3521,62 @@ const ForecastingGrid: React.FC = () => {
     setContextMenu(null);
     // Open the panel with multi-cell tab active immediately
     setCellDetailsInitialTab('multi');
+    setIsCellHistoryApprovalView(false);
     setIsCellDetailsHistoryOpen(true);
     setIsSettingsOpen(false);
     setIsFiltersOpen(false);
+    setBulkActionPreselect(null);
+    setBulkActionPreselectSignal(prev => prev + 1);
   }, []);
+
+  const handleContextRequestApproval = useCallback(() => {
+    const keys = Array.from(selectedCellsRef.current ?? selectedCells);
+    if (keys.length === 0 && contextMenu?.cellKey) {
+      const single = new Set<string>([contextMenu.cellKey]);
+      setSelectedCells(single);
+      selectedCellsRef.current = single;
+      setSelectedCellsOrder([contextMenu.cellKey]);
+      selectedCellsOrderRef.current = [contextMenu.cellKey];
+      setLastSelectedCell(contextMenu.cellKey);
+      lastSelectedCellRef.current = contextMenu.cellKey;
+    }
+    setContextMenu(null);
+    setCellDetailsInitialTab('multi');
+    setIsCellHistoryApprovalView(false);
+    setIsCellDetailsHistoryOpen(true);
+    setIsSettingsOpen(false);
+    setIsFiltersOpen(false);
+    setBulkActionPreselect('Request Approval');
+    setBulkActionPreselectSignal(prev => prev + 1);
+  }, [selectedCells, contextMenu]);
+
+  const handleEnableApprovalStatusSubColumn = useCallback(() => {
+    const approvalSubColumn = AVAILABLE_SUB_COLUMNS.find(col => col.id === 'approvalStatus');
+    if (!approvalSubColumn) return;
+    setSelectedSubColumns(prev => {
+      const withoutApproval = prev.filter(col => col.id !== 'approvalStatus');
+      return ensureFixedSubColumns([approvalSubColumn, ...withoutApproval]);
+    });
+    setShowSubColumns(true);
+    setApprovalSubmittedNotification(prev => ({ ...prev, isVisible: false }));
+  }, []);
+
+  const handleContextAddFormattingRule = useCallback(() => {
+    setContextMenu(null);
+    // Collect current selected cell keys (use ref for freshest value)
+    const keys = Array.from(selectedCellsRef.current ?? selectedCells);
+    // If no explicit selection exists, use the right-clicked cell.
+    if (keys.length === 0 && contextMenu?.cellKey) {
+      keys.push(contextMenu.cellKey);
+    }
+    setCfFromSelectionCellKeys(keys);
+    setCfLaunchFromSelectionSignal(prev => prev + 1);
+    setIsSettingsOpen(true);
+    setIsFiltersOpen(false);
+    setIsSortPanelOpen(false);
+    setIsCellDetailsHistoryOpen(false);
+    setIsAlertsOpen(false);
+  }, [selectedCells, contextMenu]);
 
   const handleContextMarkAsRead = useCallback(() => {
     // Capture cell keys to mark - use ref for bulk selection (avoids stale closure if click-outside cleared selection)
@@ -2674,6 +3612,122 @@ const ForecastingGrid: React.FC = () => {
       return [...Array.from(newSet)];
     });
   }, [contextMenu, selectedCells]);
+
+  const APPROVAL_STATUS_LABELS: Record<ApprovalRequest['status'] | 'needsMoreInfo' | 'modificationSuggested' | 'inDiscussion', string> = {
+    notSubmitted: 'Not Submitted',
+    pending: 'Pending',
+    approved: 'Approved',
+    approvedWithCondition: 'Approved with Condition',
+    rejected: 'Rejected',
+    // Legacy statuses - map to Not Submitted
+    needsMoreInfo: 'Not Submitted',
+    modificationSuggested: 'Not Submitted',
+    inDiscussion: 'Not Submitted',
+  };
+
+  const createBulkHistoryEntry = (
+    cellKey: string,
+    oldStatus: ApprovalRequest['status'] | 'needsMoreInfo' | 'modificationSuggested' | 'inDiscussion',
+    newStatus: ApprovalRequest['status'] | 'needsMoreInfo' | 'modificationSuggested' | 'inDiscussion',
+    comment: string,
+    userId?: string,
+    userName?: string
+  ): CellEditHistoryEntry => {
+    const parts = cellKey.split('-');
+    const timeKey = parts[parts.length - 1];
+    const rowId = parts.slice(0, -1).join('-');
+    // Normalize legacy statuses for display (map to notSubmitted)
+    const normalizedOldStatus = (oldStatus === 'approved' || oldStatus === 'pending' || oldStatus === 'rejected' || oldStatus === 'notSubmitted') ? oldStatus : 'notSubmitted';
+    const normalizedNewStatus = (newStatus === 'approved' || newStatus === 'pending' || newStatus === 'rejected' || newStatus === 'notSubmitted') ? newStatus : 'notSubmitted';
+    const note = `${APPROVAL_STATUS_LABELS[normalizedOldStatus]} → ${APPROVAL_STATUS_LABELS[normalizedNewStatus]}${comment ? `: ${comment}` : ''}`;
+    return {
+      id: `approval-${cellKey}-${Date.now()}-${Math.random()}`,
+      cellKey,
+      rowId,
+      timeKey,
+      oldValue: 0,
+      newValue: 0,
+      note,
+      timestamp: new Date(),
+      userId: userId ?? 'current-user',
+      userName: userName ?? 'You',
+    };
+  };
+
+  // Bulk approval handlers
+  const handleBulkApprove = useCallback(() => {
+    const approvalCellKeys = Array.from(selectedCells).filter(key => key.endsWith('-approval'));
+    if (approvalCellKeys.length === 0) return;
+    const historyEntries: CellEditHistoryEntry[] = [];
+    setApprovalRequests(prev => {
+      const updated = new Map(prev);
+      approvalCellKeys.forEach(approvalCellKey => {
+        const cellKey = approvalCellKey.replace(/-approval$/, '');
+        const approval = updated.get(cellKey);
+        if (approval && approval.status === 'pending') {
+          updated.set(cellKey, { ...approval, userInitiated: true, status: 'approved', approverComment: 'Bulk approved', resolvedAt: new Date() });
+          historyEntries.push(createBulkHistoryEntry(cellKey, 'pending', 'approved', 'Bulk approved'));
+        }
+      });
+      return updated;
+    });
+    if (historyEntries.length > 0) setEditHistory(prev => [...historyEntries, ...prev]);
+    setContextMenu(null);
+  }, [selectedCells]);
+
+  const handleBulkReject = useCallback((comment: string) => {
+    const approvalCellKeys = Array.from(selectedCells).filter(key => key.endsWith('-approval'));
+    if (approvalCellKeys.length === 0) return;
+    const historyEntries: CellEditHistoryEntry[] = [];
+    setApprovalRequests(prev => {
+      const updated = new Map(prev);
+      approvalCellKeys.forEach(approvalCellKey => {
+        const cellKey = approvalCellKey.replace(/-approval$/, '');
+        const approval = updated.get(cellKey);
+        if (approval && approval.status === 'pending') {
+          updated.set(cellKey, { ...approval, userInitiated: true, status: 'rejected', approverComment: comment, resolvedAt: new Date() });
+          historyEntries.push(createBulkHistoryEntry(cellKey, 'pending', 'rejected', comment));
+        }
+      });
+      return updated;
+    });
+    if (historyEntries.length > 0) setEditHistory(prev => [...historyEntries, ...prev]);
+    setContextMenu(null);
+  }, [selectedCells]);
+
+  const handleBulkRequestMoreInfo = useCallback((comment: string) => {
+    const approvalCellKeys = Array.from(selectedCells).filter(key => key.endsWith('-approval'));
+    if (approvalCellKeys.length === 0) return;
+    const historyEntries: CellEditHistoryEntry[] = [];
+    setApprovalRequests(prev => {
+      const updated = new Map(prev);
+      approvalCellKeys.forEach(approvalCellKey => {
+        const cellKey = approvalCellKey.replace(/-approval$/, '');
+        const approval = updated.get(cellKey);
+        if (approval && approval.status === 'pending') {
+          updated.set(cellKey, { ...approval, userInitiated: true, status: 'notSubmitted', approverComment: comment, resolvedAt: undefined });
+          historyEntries.push(createBulkHistoryEntry(cellKey, 'pending', 'notSubmitted', comment));
+        }
+      });
+      return updated;
+    });
+    if (historyEntries.length > 0) setEditHistory(prev => [...historyEntries, ...prev]);
+    setContextMenu(null);
+  }, [selectedCells]);
+
+  // Calculate pending approval count for selected approval cells
+  const pendingApprovalCount = useMemo(() => {
+    const approvalCellKeys = Array.from(selectedCells).filter(key => key.endsWith('-approval'));
+    return approvalCellKeys.reduce((count, approvalCellKey) => {
+      const cellKey = approvalCellKey.replace(/-approval$/, '');
+      const approval = approvalRequests.get(cellKey);
+      return count + (approval && approval.status === 'pending' ? 1 : 0);
+    }, 0);
+  }, [selectedCells, approvalRequests]);
+
+  const hasApprovalSelection = useMemo(() => {
+    return Array.from(selectedCells).some(key => key.endsWith('-approval'));
+  }, [selectedCells]);
 
   // Handler for single cell update from the panel
   const handleSingleCellUpdate = useCallback((rowId: string, monthKey: string, newValue: number, adjustmentNote?: string) => {
@@ -2769,11 +3823,109 @@ const ForecastingGrid: React.FC = () => {
     
     // Open the panel with single cell tab
     setCellDetailsInitialTab('single');
+    setCellDetailsFocusSection(null);
     setPanelKey(prev => prev + 1); // Force remount to ensure tab switches
+    setIsCellHistoryApprovalView(false); // Context menu always opens edit history view
     setIsCellDetailsHistoryOpen(true);
     setIsSettingsOpen(false);
     setIsFiltersOpen(false);
   }, [contextMenu, handleSelectSingleCell, selectedLayoutState]);
+
+  const handleContextCellActions = useCallback(() => {
+    if (!contextMenu) return;
+    setContextMenu(null);
+
+    const cellKey = contextMenu.cellKey;
+    const parts = cellKey.split('-');
+    const monthKey = parts[parts.length - 1];
+    const rowId = parts.slice(0, -1).join('-');
+
+    handleSelectSingleCell(cellKey);
+
+    if (selectedLayoutState === 'Measures / Dimensions x Time') {
+      setCurrentFocusedCell({ rowId, monthKey: monthKey as any });
+    }
+
+    // Open panel on the Cell Actions tab ('multi')
+    setCellDetailsInitialTab('multi');
+    setCellDetailsFocusSection(null);
+    setPanelKey(prev => prev + 1);
+    setIsCellHistoryApprovalView(false);
+    setIsCellDetailsHistoryOpen(true);
+    setIsSettingsOpen(false);
+    setIsFiltersOpen(false);
+  }, [contextMenu, handleSelectSingleCell, selectedLayoutState]);
+
+  // Generate mock source records for explainability
+  const generateSourceRecords = useCallback((cellKey: string, cellValue: number): SourceRecord[] => {
+    // Parse cellKey to extract information
+    const parts = cellKey.split('-');
+    const monthKey = parts[parts.length - 1];
+    
+    // Generate mock source records with varying influence and Salesforce objects
+    const mockRecords: SourceRecord[] = [
+      {
+        id: 'source-1',
+        name: `Parent Category Total - ${monthKey}`,
+        object: 'Account',
+        field: 'Category_Total__c',
+        value: Math.round(cellValue * 1.5),
+        influence: 35.5
+      },
+      {
+        id: 'source-2',
+        name: `Related Measure - ${monthKey}`,
+        object: 'Opportunity',
+        field: 'Amount',
+        value: Math.round(cellValue * 0.8),
+        influence: 28.2
+      },
+      {
+        id: 'source-3',
+        name: `Formula Calculation`,
+        object: 'Forecast__c',
+        field: 'Calculated_Value__c',
+        value: Math.round(cellValue * 0.6),
+        influence: 22.1
+      },
+      {
+        id: 'source-4',
+        name: `External Data Source`,
+        object: 'External_Data__c',
+        field: 'Imported_Value__c',
+        value: Math.round(cellValue * 0.4),
+        influence: 10.5
+      },
+      {
+        id: 'source-5',
+        name: `Historical Average`,
+        object: 'Historical_Data__c',
+        field: 'Average_Value__c',
+        value: Math.round(cellValue * 0.9),
+        influence: 3.7
+      }
+    ];
+    
+    return mockRecords;
+  }, []);
+
+  const handleContextViewExplainability = useCallback(() => {
+    if (!contextMenu) return;
+    
+    // Close context menu first
+    setContextMenu(null);
+    
+    // Open explainability modal
+    setExplainabilityModal({
+      isOpen: true,
+      cellKey: contextMenu.cellKey,
+      cellValue: contextMenu.cellValue
+    });
+  }, [contextMenu]);
+
+  const handleCloseExplainabilityModal = useCallback(() => {
+    setExplainabilityModal(null);
+  }, []);
 
   // Open edit history panel from popover
   const handleViewEditHistory = useCallback((cellKey?: string) => {
@@ -2808,10 +3960,44 @@ const ForecastingGrid: React.FC = () => {
     // Switch to single cell tab when opening from popover
     // Force panel remount by changing key to ensure tab switches
     setCellDetailsInitialTab('single');
+    setCellDetailsFocusSection(null);
     setPanelKey(prev => prev + 1); // Change key to force remount
+    setIsCellHistoryApprovalView(false); // Opened from value cell hover popover — edit history view
     setIsCellDetailsHistoryOpen(true);
     setIsSettingsOpen(false);
     setIsFiltersOpen(false);
+  }, [handleSelectSingleCell, editInfoPopover, selectedLayoutState]);
+
+  // Open details tab from hover popover "Show details"
+  const handleShowDetailsFromPopover = useCallback((cellKey?: string) => {
+    const targetCellKey = cellKey || editInfoPopover?.cellKey;
+    if (!targetCellKey || !editInfoPopover?.entry) return;
+
+    handleSelectSingleCell(targetCellKey);
+
+    const entry = editInfoPopover.entry;
+    if (selectedLayoutState === 'Dimensions / Time x Measures' || selectedLayoutState === 'Time / Dimensions x Measures') {
+      setCurrentFocusedCell({
+        rowId: entry.rowId,
+        measureId: entry.measureId || entry.timeKey,
+      });
+    } else {
+      setCurrentFocusedCell({
+        rowId: entry.rowId,
+        monthKey: entry.timeKey,
+      });
+    }
+
+    setEditInfoPopover(null);
+    setCellDetailsInitialTab('details');
+    setCellDetailsFocusSection('approval');
+    setPanelKey(prev => prev + 1);
+    setIsCellHistoryApprovalView(false);
+    setIsCellDetailsHistoryOpen(true);
+    setIsSettingsOpen(false);
+    setIsFiltersOpen(false);
+    setIsSortPanelOpen(false);
+    setIsAlertsOpen(false);
   }, [handleSelectSingleCell, editInfoPopover, selectedLayoutState]);
 
   // Close popover on outside click and scroll
@@ -2869,17 +4055,36 @@ const ForecastingGrid: React.FC = () => {
   // "Measures / Dimensions x Time": 50px - 200px range, default = 50 + (200-50)*0.5 = 125px
   // "Dimensions / Time x Measures": 50px - 300px range, default = 50 + (300-50)*0.5 = 175px
   // "Time / Dimensions x Measures": 50px - 300px range, default = 50 + (300-50)*0.5 = 175px
-  const getDefaultColumnWidth = (layout: string): number => {
+  const getDefaultColumnWidth = (layout: string, hasSubColumns: boolean = false): number => {
     if (layout === 'Measures / Dimensions x Time') {
-      // Set to 100px to fill available space for 12 months
-      return 100;
+      // When sub-columns are enabled, use wider width for progress bars
+      return hasSubColumns ? 180 : 100;
     } else {
       // Range: 50px - 300px, default to smaller value
-      return 120;
+      // When sub-columns are enabled, use wider width for progress bars
+      return hasSubColumns ? 200 : 120;
     }
   };
   
   const [columnWidth, setColumnWidth] = useState<number>(getDefaultColumnWidth(selectedLayoutState));
+  
+  // Update column width when sub-columns are enabled to accommodate progress bars
+  useEffect(() => {
+    if (showSubColumns && selectedSubColumns.length > 0) {
+      const defaultWidth = getDefaultColumnWidth(selectedLayoutState, false);
+      const widerWidth = getDefaultColumnWidth(selectedLayoutState, true);
+      // Only update if current width is at or near the default (to avoid overriding user's manual adjustments)
+      // This ensures we increase width when enabling sub-columns, but preserve user's wider custom widths
+      setColumnWidth(prevWidth => {
+        // If width is close to default (within 20px), update to wider default
+        if (Math.abs(prevWidth - defaultWidth) <= 20) {
+          return widerWidth;
+        }
+        // Otherwise, keep current width (user may have manually adjusted)
+        return prevWidth;
+      });
+    }
+  }, [showSubColumns, selectedSubColumns.length, selectedLayoutState]);
   
   // Search state
   const [gridSearch, setGridSearch] = useState<string>('');
@@ -2887,6 +4092,7 @@ const ForecastingGrid: React.FC = () => {
   // Refs to store expand/collapse handlers from HierarchicalGrid
   const expandAllRef = useRef<(() => void) | null>(null);
   const collapseAllRef = useRef<(() => void) | null>(null);
+  const resetColumnWidthsRef = useRef<(() => void) | null>(null);
   
   const handleExpandAllRows = () => {
     if (expandAllRef.current) {
@@ -2906,6 +4112,44 @@ const ForecastingGrid: React.FC = () => {
     return `${time}, ${date}`;
   });
 
+  const headerSummaryText = useMemo(() => {
+    const allMeasureCategories = ['Revenue & Quantity Category', 'Adjustment Measures Category'];
+    const selectedCategories = allMeasureCategories.filter(c => selectedMeasureSubgroup.has(c));
+    const measureSummary =
+      selectedCategories.length === allMeasureCategories.length
+        ? 'All measure categories'
+        : selectedCategories.length === 0
+          ? 'No measure categories'
+          : selectedCategories.map(c => c.replace(' Category', '')).join(', ');
+
+    const filterSummary = activeFilterCount > 0
+      ? `${activeFilterCount} filter${activeFilterCount === 1 ? '' : 's'} applied`
+      : 'No filters';
+
+    const monthLabels: Record<string, string> = {
+      jan2026: 'Jan 2026', feb2026: 'Feb 2026', mar2026: 'Mar 2026', apr2026: 'Apr 2026',
+      may2026: 'May 2026', jun2026: 'Jun 2026', jul2026: 'Jul 2026', aug2026: 'Aug 2026',
+      sep2026: 'Sep 2026', oct2026: 'Oct 2026', nov2026: 'Nov 2026', dec2026: 'Dec 2026',
+    };
+    const formatPeriod = (period: string) => monthLabels[period] ?? period;
+    const selectedGranularities = Array.from(selectedTimeGranularities);
+    const granularityLabel = selectedGranularities.length > 0 ? selectedGranularities.join(', ') : 'month';
+    const timeSummary = showAllPeriods
+      ? `All periods (${granularityLabel})`
+      : (startPeriod && endPeriod)
+        ? `${formatPeriod(startPeriod)} to ${formatPeriod(endPeriod)} (${granularityLabel})`
+        : 'Custom time range';
+
+    return `${measureSummary} • ${filterSummary} • ${timeSummary}`;
+  }, [
+    selectedMeasureSubgroup,
+    activeFilterCount,
+    selectedTimeGranularities,
+    showAllPeriods,
+    startPeriod,
+    endPeriod,
+  ]);
+
 
   const handleDimensionLevelsChange = (levels: Set<string>) => {
     setSelectedDimensionLevels(levels);
@@ -2918,8 +4162,9 @@ const ForecastingGrid: React.FC = () => {
   // Handle layout change - preserve focus and update column width to layout-specific default
   const handleLayoutChange = (newLayout: string) => {
     setSelectedLayoutState(newLayout);
-    // Update column width to default for new layout
-    setColumnWidth(getDefaultColumnWidth(newLayout));
+    // Update column width to default for new layout (consider sub-columns if enabled)
+    const hasSubColumns = showSubColumns && selectedSubColumns.length > 0;
+    setColumnWidth(getDefaultColumnWidth(newLayout, hasSubColumns));
   };
 
   // Helper to map HierarchicalGrid focus to DimensionsTimeGrid focus
@@ -3025,6 +4270,9 @@ const ForecastingGrid: React.FC = () => {
           <div className="page-header-title">
             Planning & Forecasting FY26 - Grid View
           </div>
+          <div className="grid-status-text-header">
+            {headerSummaryText}
+          </div>
         </div>
         <div className="page-header-right">
           <div className="last-refreshed-row">
@@ -3044,36 +4292,70 @@ const ForecastingGrid: React.FC = () => {
             <GridToolbar 
               onSettingsClick={() => {
                 setIsSettingsOpen(true);
-                setIsFiltersOpen(false); // Close filters if settings opens
-                setIsCellDetailsHistoryOpen(false); // Close cell details if settings opens
+                setIsFiltersOpen(false);
+                setIsSortPanelOpen(false);
+                setIsCellDetailsHistoryOpen(false);
+                setIsAlertsOpen(false);
               }}
               onFilterClick={() => {
                 setIsFiltersOpen(true);
-                setIsSettingsOpen(false); // Close settings if filters opens
-                setIsCellDetailsHistoryOpen(false); // Close cell details if filters opens
+                setIsSettingsOpen(false);
+                setIsSortPanelOpen(false);
+                setIsCellDetailsHistoryOpen(false);
+                setIsAlertsOpen(false);
               }}
               onNotesClick={() => {
-                // Capture selectedCells size from ref BEFORE any state changes or click handlers run
-                // This ensures we get the value before click-outside handler potentially clears it
-                const hasMultipleSelection = selectedCellsRef.current.size > 1;
-                
-                // Set the initial tab and open panel
-                // The useEffect in CellDetailsHistoryPanel will handle updating the active tab
-                setCellDetailsInitialTab(hasMultipleSelection ? 'multi' : 'single');
+                setCellDetailsInitialTab('multi');
+                setCellDetailsFocusSection(null);
                 setIsCellDetailsHistoryOpen(true);
-                setIsSettingsOpen(false); // Close settings if cell details opens
-                setIsFiltersOpen(false); // Close filters if cell details opens
+                setIsSettingsOpen(false);
+                setIsFiltersOpen(false);
+                setIsSortPanelOpen(false);
+                setIsAlertsOpen(false);
+              }}
+              onSortClick={() => {
+                setIsSortPanelOpen(v => !v);
+                setIsSettingsOpen(false);
+                setIsFiltersOpen(false);
+                setIsCellDetailsHistoryOpen(false);
+                setIsAlertsOpen(false);
+              }}
+              onAlertClick={() => {
+                setIsAlertsOpen(v => !v);
+                setIsSettingsOpen(false);
+                setIsFiltersOpen(false);
+                setIsCellDetailsHistoryOpen(false);
+                setIsSortPanelOpen(false);
               }}
               searchValue={gridSearch}
               onSearchChange={setGridSearch}
               isSettingsActive={isSettingsOpen}
               isFilterActive={isFiltersOpen}
               isNotesActive={isCellDetailsHistoryOpen}
+              isSortActive={isSortPanelOpen || globalSortConfig.criteria.length > 0}
+              isAlertActive={isAlertsOpen}
               activeFilterCount={activeFilterCount}
+              activeSortCount={globalSortConfig.criteria.length}
+              globalSortConfig={globalSortConfig}
             />
           </div>
         </div>
       </div>
+      {approvalSubmittedNotification.isVisible && (
+        <ScopedNotification
+          className="scoped-notification--approval-success"
+          icon={
+            <svg className="scoped-notification-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+              <circle cx="10" cy="10" r="9" fill="currentColor" />
+              <path d="M6 10.2l2.5 2.5L14 7.2" stroke="var(--color-surface-white)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          }
+          message="Approval submitted."
+          ctaLabel="Show status"
+          onCtaClick={handleEnableApprovalStatusSubColumn}
+          onClose={() => setApprovalSubmittedNotification(prev => ({ ...prev, isVisible: false }))}
+        />
+      )}
       <div style={{ display: 'flex', flexDirection: 'row', flex: '1 1 0', minHeight: 0, overflow: 'hidden' }}>
         <div className="grid-wrapper">
         {selectedLayoutState === 'Dimensions / Time x Measures' ? (
@@ -3111,6 +4393,10 @@ const ForecastingGrid: React.FC = () => {
             onCellSelect={handleCellSelect}
             onCellMouseDown={handleCellMouseDown}
             onCellMouseMove={handleCellMouseMove}
+            newlyAddedMeasureIds={newlyAddedMeasureIds}
+            onScrollToMeasureReady={(handler) => {
+              scrollToMeasureDimensionsTimeRef.current = handler;
+            }}
           />
         ) : selectedLayoutState === 'Time / Dimensions x Measures' ? (
           <TimeDimensionsGrid 
@@ -3147,16 +4433,32 @@ const ForecastingGrid: React.FC = () => {
             onCellSelect={handleCellSelect}
             onCellMouseDown={handleCellMouseDown}
             onCellMouseMove={handleCellMouseMove}
+            newlyAddedMeasureIds={newlyAddedMeasureIds}
+            onScrollToMeasureReady={(handler) => {
+              scrollToMeasureTimeDimensionsRef.current = handler;
+            }}
           />
         ) : (
           <HierarchicalGrid 
-            data={filteredData} 
-            onDataChange={setData} 
+            key={currentIndustry}
+            data={hierarchicalGridData} 
+            onDataChange={handleHierarchicalGridDataChange} 
+            parentTotalsRollupMode={parentTotalsRollupMode}
+            planReviewGridLock={planReviewGridLock}
+            planReviewRequesterStripes={planReviewRequesterStripes}
+            approverMayOpenReviewPopover={isCurrentUserApprover}
+            approverOverrideCellKeys={approverOverrideCellKeys}
+            pendingApproverEdit={pendingApproverEdit}
+            onPendingApproverEditConsumed={handlePendingApproverEditConsumed}
+            onManagerOverrideForCell={handleApproverOverrideForCell}
+            initialCellMapsSnapshot={initialHierarchicalCellMaps}
+            onCellMapsSnapshotChange={handleCellMapsSnapshotChange}
             selectedDimensionLevels={selectedDimensionLevels}
             selectedTimeGranularities={selectedTimeGranularities}
             columnWidth={columnWidth}
             onExpandAllRows={(handler) => { expandAllRef.current = handler; }}
             onCollapseAllRows={(handler) => { collapseAllRef.current = handler; }}
+            onResetColumnWidths={(handler) => { resetColumnWidthsRef.current = handler; }}
             onSettingsClick={() => setIsSettingsOpen(true)}
             initialFocusedCell={mapToHierarchicalFocus(dimensionsTimeGridFocusRef.current)}
             onFocusedCellChange={(focus) => { 
@@ -3189,6 +4491,23 @@ const ForecastingGrid: React.FC = () => {
             onCellFocusWithHistory={handleCellFocusWithHistory}
             lockedCells={lockedCells}
             readCells={readCells}
+            onApprovalStatusChangeViewHistory={(cellKey) => {
+              // Parse cellKey to get rowId and timeKey
+              const parts = cellKey.split('-');
+              const timeKey = parts[parts.length - 1];
+              const rowId = parts.slice(0, -1).join('-');
+              setCurrentFocusedCell({ rowId, monthKey: timeKey });
+              setIsCellDetailsHistoryOpen(true);
+              setIsSettingsOpen(false);
+              setIsFiltersOpen(false);
+            }}
+            onApprovalStatusChangeMarkAsRead={(cellKey) => {
+              setReadCells((prev: string[]) => {
+                const newSet = new Set(prev);
+                newSet.add(cellKey);
+                return [...Array.from(newSet)];
+              });
+            }}
             readonlyMeasureIds={readonlyMeasureIds}
             isAdjustmentGroupSelected={selectedMeasureSubgroup.has('Adjustment Measures Category')}
             onMeasureGroupChange={setSelectedMeasureSubgroup}
@@ -3261,9 +4580,28 @@ const ForecastingGrid: React.FC = () => {
             onGetVisibleTimeKeysReady={(handler) => {
               getVisibleTimeKeysRef.current = handler;
             }}
+            onScrollToMeasureReady={(handler) => {
+              scrollToMeasureRef.current = handler;
+            }}
             showAllPeriods={showAllPeriods}
             startPeriod={startPeriod}
             endPeriod={endPeriod}
+            newlyAddedMeasureIds={newlyAddedMeasureIds}
+            frozenColumns={showAdditionalFrozenColumns ? selectedFrozenColumns : []}
+            showAdditionalFrozenColumns={showAdditionalFrozenColumns}
+            subColumns={showSubColumns ? [
+              ...selectedSubColumns,
+              ...effectiveConditionalFormattingRules
+                .filter(r => r.mode === 'createColumns' && r.isActive)
+                .map(r => ({ id: r.id, name: r.name })),
+            ] : []}
+            globalSortConfig={globalSortConfig}
+            approvalRequests={approvalRequests}
+            onApprovalUpdate={handleApprovalUpdate}
+            onApprovalAction={handleApprovalAction}
+            conditionalFormattingRules={effectiveConditionalFormattingRules}
+            conditionalFormattingColorScaleMerge={applyCfRulesAsColorScale}
+            isDesignSystemRulesEnabled={isDesignSystemRulesEnabled}
         />
           )}
         </div>
@@ -3291,6 +4629,46 @@ const ForecastingGrid: React.FC = () => {
           onStartPeriodChange={setStartPeriod}
           endPeriod={endPeriod}
           onEndPeriodChange={setEndPeriod}
+          showAdditionalFrozenColumns={showAdditionalFrozenColumns}
+          onShowAdditionalFrozenColumnsChange={setShowAdditionalFrozenColumns}
+          onEditFrozenColumns={() => setIsEditFrozenColumnsModalOpen(true)}
+          showSubColumns={showSubColumns}
+          onShowSubColumnsChange={setShowSubColumns}
+          onEditSubColumns={() => setIsEditSubColumnsModalOpen(true)}
+          conditionalFormattingRules={conditionalFormattingRules}
+          onConditionalFormattingRulesChange={handleConditionalFormattingRulesChange}
+          onConditionalFormattingPreviewChange={setPreviewConditionalFormattingRule}
+          applyCfRulesAsColorScale={applyCfRulesAsColorScale}
+          onApplyCfRulesAsColorScaleChange={setApplyCfRulesAsColorScale}
+          designSystemRulesEnabled={isDesignSystemRulesEnabled}
+          onDesignSystemRulesChange={handleDesignSystemRulesChange}
+          selectedCellKey={lastSelectedCell}
+          forceFormattingTabSignal={cfLaunchFromSelectionSignal}
+          cfLaunchFromSelectionSignal={cfLaunchFromSelectionSignal}
+          cfLaunchFromSelectionCellKeys={cfFromSelectionCellKeys}
+        />
+        <EditFrozenColumnsModal
+          isOpen={isEditFrozenColumnsModalOpen}
+          onClose={() => setIsEditFrozenColumnsModalOpen(false)}
+          availableColumns={AVAILABLE_FROZEN_COLUMNS}
+          selectedColumns={selectedFrozenColumns}
+          onSave={(columns) => {
+            setSelectedFrozenColumns(columns);
+            setIsEditFrozenColumnsModalOpen(false);
+          }}
+        />
+        <EditSubColumnsModal
+          isOpen={isEditSubColumnsModalOpen}
+          onClose={() => setIsEditSubColumnsModalOpen(false)}
+          availableColumns={AVAILABLE_SUB_COLUMNS.filter(col => !FIXED_SUB_COLUMNS.some(fixed => fixed.id === col.id))}
+          selectedColumns={selectedSubColumns}
+          fixedColumns={FIXED_SUB_COLUMNS}
+          customColumns={customSubColumns}
+          onSave={(columns, customColumns) => {
+            setSelectedSubColumns(ensureFixedSubColumns(columns));
+            setCustomSubColumns(customColumns);
+            setIsEditSubColumnsModalOpen(false);
+          }}
         />
         <FiltersPanel 
           isOpen={isFiltersOpen} 
@@ -3310,13 +4688,35 @@ const ForecastingGrid: React.FC = () => {
             setData(filteredData);
           }}
           onActiveFilterCountChange={setActiveFilterCount}
+          parentTotalsRollupMode={parentTotalsRollupMode}
+          onParentTotalsRollupModeChange={setParentTotalsRollupMode}
+          visibleMeasureIds={visibleMeasureIds}
+        />
+        <GlobalSortPanel
+          isOpen={isSortPanelOpen}
+          onClose={() => setIsSortPanelOpen(false)}
+          availableColumns={globalSortAvailableColumns}
+          initialConfig={globalSortConfig}
+          onApply={setGlobalSortConfig}
+          showSortCriteriaSection
+          sortCriteriaSectionTitle={
+            useCalculatedFieldSortUi ? 'Sort by calculated fields' : 'Sort by column'
+          }
+          sortPickerFieldLabel={useCalculatedFieldSortUi ? 'Calculated field' : 'Column'}
+          placeholderSelectColumn={
+            useCalculatedFieldSortUi ? 'Select a calculated field' : 'Select a column'
+          }
+          addSortButtonLabel={
+            useCalculatedFieldSortUi ? 'Add a calculated field sort' : 'Add a sort column'
+          }
         />
         <CellDetailsHistoryPanel 
           key={panelKey}
           isOpen={isCellDetailsHistoryOpen} 
           onClose={() => {
             setIsCellDetailsHistoryOpen(false);
-            setCellDetailsInitialTab('single'); // Reset to single tab for next open
+            setCellDetailsInitialTab('multi');
+            setCellDetailsFocusSection(null);
           }}
           focusedCell={currentFocusedCell}
           data={data}
@@ -3328,6 +4728,9 @@ const ForecastingGrid: React.FC = () => {
           onClearSelection={handleClearSelection}
           onMassUpdate={handleMassUpdate}
           initialTab={cellDetailsInitialTab}
+          detailsFocusSection={cellDetailsFocusSection}
+          preselectAction={bulkActionPreselect}
+          preselectActionSignal={bulkActionPreselectSignal}
           onSetFocusedCell={setCurrentFocusedCell}
           onSingleCellUpdate={handleSingleCellUpdate}
           onToggleCellLock={handleToggleCellLock}
@@ -3336,8 +4739,71 @@ const ForecastingGrid: React.FC = () => {
           onSelectSingleCell={handleSelectSingleCell}
           selectedCellsOrder={selectedCellsOrder}
           getSelectedCellsOrder={() => selectedCellsOrderRef.current}
+          approvalRequests={approvalRequests}
+          isApprovalView={isCellHistoryApprovalView}
+          planWideApprovalSubmitted={planWideApprovalSubmitted}
         />
-        
+
+        <AlertsPanel
+          isOpen={isAlertsOpen}
+          onClose={() => setIsAlertsOpen(false)}
+          approvalRequests={approvalRequests}
+          editHistory={editHistory}
+          data={data}
+          onJumpToCell={(cellKey) => {
+            // Select & focus the cell in the grid — visual highlight without opening any panel
+            handleSelectSingleCell(cellKey);
+            const parts = cellKey.split('-');
+            const monthKey = parts[parts.length - 1];
+            const rowId = parts.slice(0, -1).join('-');
+            setCurrentFocusedCell({ rowId, monthKey });
+          }}
+          onViewCellHistory={(cellKey) => {
+            // Focus the cell AND open Edit Info history panel (for notification cards)
+            const parts = cellKey.split('-');
+            const monthKey = parts[parts.length - 1];
+            const rowId = parts.slice(0, -1).join('-');
+            setCurrentFocusedCell({ rowId, monthKey });
+            setIsCellDetailsHistoryOpen(true);
+            setIsAlertsOpen(false);
+          }}
+          onFocusGrid={(params: FocusGridParams | null) => {
+            if (params === null) {
+              // Toggle off — reset search and time range
+              setGridSearch('');
+              setShowAllPeriods(true);
+              setStartPeriod('');
+              setEndPeriod('');
+            } else {
+              if (params.searchTerm !== undefined) setGridSearch(params.searchTerm);
+              if (params.startPeriod || params.endPeriod) {
+                setShowAllPeriods(false);
+                if (params.startPeriod) setStartPeriod(params.startPeriod);
+                if (params.endPeriod) setEndPeriod(params.endPeriod);
+              }
+              if (params.selectedCellKeys && params.selectedCellKeys.length > 0) {
+                const orderedKeys = [...params.selectedCellKeys];
+                const selectedSet = new Set(orderedKeys);
+                setSelectedCells(selectedSet);
+                selectedCellsRef.current = selectedSet;
+                selectedCellsOrderRef.current = orderedKeys;
+                setSelectedCellsOrder(orderedKeys);
+                const firstKey = orderedKeys[0];
+                if (firstKey) {
+                  lastSelectedCellRef.current = firstKey;
+                  setLastSelectedCell(firstKey);
+                  const parts = firstKey.split('-');
+                  const monthKey = parts[parts.length - 1];
+                  const rowId = parts.slice(0, -1).join('-');
+                  setCurrentFocusedCell({ rowId, monthKey });
+                }
+              }
+            }
+            // Always reset auto-expanded column widths so visible columns keep fixed sizes
+            if (resetColumnWidthsRef.current) resetColumnWidthsRef.current();
+          }}
+        />
+
         {/* Cell Edit Info Popover - shown when a cell with edit history is focused */}
         {editInfoPopover && editInfoPopover.entry && (
           <CellEditInfoPopover
@@ -3346,17 +4812,24 @@ const ForecastingGrid: React.FC = () => {
             isLocked={editInfoPopover.isLocked || false}
             lockedValue={editInfoPopover.isLocked ? editInfoPopover.cellValue : undefined}
             measureName={editInfoPopover.measureName}
+            approvalSummary={(() => {
+              const approval = approvalRequests.get(editInfoPopover.cellKey);
+              if (!approval || approval.status !== 'pending') return undefined;
+              const list = approval.approvers;
+              if (list && list.length > 0) {
+                return {
+                  approvedCount: list.filter(
+                    (a) => a.status === 'approved' || a.status === 'approvedWithCondition'
+                  ).length,
+                  requestedCount: list.length,
+                };
+              }
+              // Legacy pending row without per-approver list — treat as single approver
+              return { approvedCount: 0, requestedCount: 1 };
+            })()}
             onViewHistory={() => handleViewEditHistory(editInfoPopover.cellKey)}
             onMarkAsRead={() => {
-              if (editInfoPopover.cellKey) {
-                setReadCells((prev: string[]) => {
-                  const newSet = new Set(prev);
-                  newSet.add(editInfoPopover.cellKey);
-                  return [...Array.from(newSet)];
-                });
-                // Close the popover after marking as read
-                handleCloseEditInfoPopover();
-              }
+              if (editInfoPopover.cellKey) handleShowDetailsFromPopover(editInfoPopover.cellKey);
             }}
             onClose={handleCloseEditInfoPopover}
           />
@@ -3373,11 +4846,55 @@ const ForecastingGrid: React.FC = () => {
             onToggleLock={handleContextToggleLock}
             onMassUpdate={handleContextMassUpdate}
             onViewEditHistory={handleContextViewEditHistory}
+            onViewExplainability={handleContextViewExplainability}
             onMarkAsRead={handleContextMarkAsRead}
             isLocked={contextMenu.isLocked}
             canPaste={clipboardValue !== null}
             isEditable={contextMenu.isEditable}
             hasMultipleSelection={selectedCells.size > 1}
+            hasApprovalSelection={hasApprovalSelection}
+            pendingApprovalCount={pendingApprovalCount}
+            onBulkApprove={handleBulkApprove}
+            onBulkReject={handleBulkReject}
+            onBulkRequestMoreInfo={handleBulkRequestMoreInfo}
+            onAddFormattingRule={handleContextAddFormattingRule}
+            onRequestApproval={handleContextRequestApproval}
+            onCellActions={handleContextCellActions}
+          />
+        )}
+
+        {/* CF Rule from Selection — standalone modal outside SettingsPanel */}
+        <ConditionalFormattingRuleModal
+          isOpen={cfFromSelectionOpen}
+          onClose={() => {
+            setCfFromSelectionOpen(false);
+            setPreviewConditionalFormattingRule(null);
+          }}
+          onPreview={setPreviewConditionalFormattingRule}
+          onSave={(rule) => {
+            setConditionalFormattingRules(prev => {
+              const next = [...prev, { ...rule, priority: prev.length }];
+              if (next.some(r => r.mode === 'modifyCells' && r.isActive)) {
+                setIsDesignSystemRulesEnabled(false);
+              }
+              return next;
+            });
+            setPreviewConditionalFormattingRule(null);
+            setCfFromSelectionOpen(false);
+          }}
+          mode="modifyCells"
+          availableMeasures={data}
+          prefillCellKeys={cfFromSelectionCellKeys}
+        />
+
+        {/* Cell Explainability Modal */}
+        {explainabilityModal && (
+          <CellExplainabilityModal
+            isOpen={explainabilityModal.isOpen}
+            onClose={handleCloseExplainabilityModal}
+            cellKey={explainabilityModal.cellKey}
+            cellValue={explainabilityModal.cellValue}
+            sourceRecords={generateSourceRecords(explainabilityModal.cellKey, explainabilityModal.cellValue)}
           />
         )}
       </div>

@@ -110,11 +110,11 @@ const GenericCommentCard: React.FC<GenericCommentCardProps> = ({
               )}
             </svg>
           </button>
-          <div className="sf-timeline-avatar" style={{ backgroundColor: '#0176D3' }}>
+          <div className="sf-timeline-avatar" style={{ backgroundColor: 'var(--color-accent-blue)' }}>
             <span className="sf-timeline-avatar-initials">{userInitials}</span>
           </div>
         </div>
-        {!isLast && <div className="sf-timeline-line" style={{ backgroundColor: '#0176D3' }}></div>}
+        {!isLast && <div className="sf-timeline-line" style={{ backgroundColor: 'var(--color-accent-blue)' }}></div>}
       </div>
       
       {/* Right side: Content */}
@@ -122,7 +122,7 @@ const GenericCommentCard: React.FC<GenericCommentCardProps> = ({
         {/* Header Row */}
         <div className="sf-timeline-header">
           <div className="sf-timeline-title-row">
-            <span className="sf-timeline-username-secondary" style={{ color: '#181818', fontWeight: 600 }}>{userName}</span>
+            <span className="sf-timeline-username-secondary" style={{ color: 'var(--color-on-surface-strong)', fontWeight: 600 }}>{userName}</span>
             <span className="sf-timeline-timestamp">{formatFullTimestamp(timestamp)}</span>
           </div>
         </div>

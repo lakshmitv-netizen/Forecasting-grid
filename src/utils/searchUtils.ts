@@ -199,22 +199,26 @@ function escapeHtml(text: string): string {
 
 /**
  * Check if a row matches search terms (for HierarchicalGrid)
+ * @param timeTerms - Optional time period terms to match against specific time columns
+ * @param matchingTimeKeys - Optional set of time keys that match the time terms
  */
 export function rowMatchesSearch(
   row: GridRow,
   searchTerms: string[],
-  measureName: string
+  measureName: string,
+  timeTerms?: string[],
+  matchingTimeKeys?: Set<string>
 ): { matches: boolean; matchedCellKeys: Set<string> } {
   const matchedCellKeys = new Set<string>();
   
-  if (searchTerms.length === 0) {
+  if (searchTerms.length === 0 && (!timeTerms || timeTerms.length === 0)) {
     return { matches: true, matchedCellKeys };
   }
   
   try {
     // Check row name
-    const nameMatches = matchesText(row.name || '', searchTerms);
-    const measureMatches = matchesText(measureName || '', searchTerms);
+    const nameMatches = searchTerms.length > 0 ? matchesText(row.name || '', searchTerms) : true;
+    const measureMatches = searchTerms.length > 0 ? matchesText(measureName || '', searchTerms) : true;
     
     // Check cell values
     const timeKeys: (keyof GridRow['values'])[] = [
@@ -224,13 +228,35 @@ export function rowMatchesSearch(
     ];
     
     let hasMatchingCell = false;
+    let hasMatchingTimeCell = false;
+    
     if (row.values) {
       timeKeys.forEach(key => {
         try {
           const value = row.values[key] || 0;
-          if (matchesNumber(value, searchTerms)) {
-            matchedCellKeys.add(key);
-            hasMatchingCell = true;
+          
+          // If we have time terms and matching time keys, only check cells in matching time columns
+          if (timeTerms && timeTerms.length > 0 && matchingTimeKeys) {
+            if (matchingTimeKeys.has(key)) {
+              // Check if value matches any search terms (for numeric search)
+              if (searchTerms.length > 0 && matchesNumber(value, searchTerms)) {
+                matchedCellKeys.add(key);
+                hasMatchingCell = true;
+                hasMatchingTimeCell = true;
+              } else if (searchTerms.length === 0) {
+                // If only time terms (no other search terms), show rows with data in matching time columns
+                if (value !== 0 && value !== null && value !== undefined) {
+                  matchedCellKeys.add(key);
+                  hasMatchingTimeCell = true;
+                }
+              }
+            }
+          } else {
+            // No time filtering - check all cells for search term matches
+            if (searchTerms.length > 0 && matchesNumber(value, searchTerms)) {
+              matchedCellKeys.add(key);
+              hasMatchingCell = true;
+            }
           }
         } catch (e) {
           // Skip if error accessing value
@@ -238,13 +264,23 @@ export function rowMatchesSearch(
       });
     }
     
-    const matches = nameMatches || measureMatches || hasMatchingCell;
+    // Row matches if:
+    // 1. Name matches search terms (show row if name matches, regardless of time data)
+    // 2. Measure matches search terms (show row if measure matches, regardless of time data)
+    // 3. Has matching cell values (numeric matches in any cell, or in time-filtered cells if time terms exist)
+    // 4. If only time terms (no other search terms), show rows with data in matching time columns
+    // Note: Time terms filter which columns are visible, but don't require data in those columns for row matching
+    const matches = 
+      nameMatches ||
+      measureMatches ||
+      hasMatchingCell ||
+      (timeTerms && timeTerms.length > 0 && matchingTimeKeys && hasMatchingTimeCell && searchTerms.length === 0);
     
     // Recursively check children
     if (row.children && row.children.length > 0) {
       for (const child of row.children) {
         try {
-          const childResult = rowMatchesSearch(child, searchTerms, measureName);
+          const childResult = rowMatchesSearch(child, searchTerms, measureName, timeTerms, matchingTimeKeys);
           if (childResult.matches) {
             childResult.matchedCellKeys.forEach(key => matchedCellKeys.add(key));
             return { matches: true, matchedCellKeys };
@@ -305,12 +341,20 @@ export function transformedRowMatchesSearch(
 }
 
 /**
- * Separate search terms into time period terms and other terms
+ * Separate search terms into measure terms, dimension terms, and time period terms
+ * Backward compatible: if availableMeasures is not provided, returns timeTerms and otherTerms
  */
-export function separateSearchTerms(searchTerms: string[]): {
+export function separateSearchTerms(
+  searchTerms: string[],
+  availableMeasures?: Array<{ id: string; name: string }>
+): {
+  measureTerms?: string[];
+  dimensionTerms?: string[];
   timeTerms: string[];
   otherTerms: string[];
 } {
+  const measureTerms: string[] = [];
+  const dimensionTerms: string[] = [];
   const timeTerms: string[] = [];
   const otherTerms: string[] = [];
   
@@ -320,7 +364,7 @@ export function separateSearchTerms(searchTerms: string[]): {
       return;
     }
     
-    // Check if it's a time term - be more specific
+    // Check if it's a time term first
     const isTimeTerm = 
       // Exact month abbreviation match (e.g., "may" matches "may")
       MONTH_ABBREVIATIONS.some(m => termLower === m) ||
@@ -335,17 +379,51 @@ export function separateSearchTerms(searchTerms: string[]): {
       // Month abbreviations at start of term (e.g., "may" matches)
       /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(termLower);
     
-    console.log(`[separateSearchTerms] Term "${term}" (lower: "${termLower}") isTimeTerm:`, isTimeTerm);
-    
     if (isTimeTerm) {
       timeTerms.push(term);
+      return;
+    }
+    
+    // Check if it matches a measure name (only if availableMeasures is provided)
+    if (availableMeasures && availableMeasures.length > 0) {
+      const matchesMeasure = availableMeasures.some(measure => {
+        const measureNameLower = measure.name.toLowerCase();
+        // Check if term is contained in measure name or vice versa
+        if (measureNameLower.includes(termLower) || termLower.includes(measureNameLower)) {
+          return true;
+        }
+        // For multi-word terms, check if all words appear in measure name
+        const termWords = termLower.split(/\s+/).filter(w => w.length > 0);
+        if (termWords.length > 1) {
+          return termWords.every(word => measureNameLower.includes(word));
+        }
+        return false;
+      });
+      
+      if (matchesMeasure) {
+        measureTerms.push(term);
+        return;
+      }
+    }
+    
+    // If not a time term or measure, it's likely a dimension term or other term
+    if (availableMeasures) {
+      // Enhanced mode: treat as dimension term
+      dimensionTerms.push(term);
     } else {
+      // Backward compatible mode: treat as other term
       otherTerms.push(term);
     }
   });
   
-  console.log('[separateSearchTerms] Result:', { timeTerms, otherTerms });
-  return { timeTerms, otherTerms };
+  console.log('[separateSearchTerms] Result:', { measureTerms, dimensionTerms, timeTerms, otherTerms });
+  
+  // Return backward compatible format if availableMeasures not provided
+  if (!availableMeasures) {
+    return { timeTerms, otherTerms };
+  }
+  
+  return { measureTerms, dimensionTerms, timeTerms, otherTerms };
 }
 
 /**

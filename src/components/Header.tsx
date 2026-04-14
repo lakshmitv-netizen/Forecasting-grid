@@ -1,16 +1,49 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { useIndustry } from '../contexts/IndustryContext';
+import { useIndustry, type IndustryType } from '../contexts/IndustryContext';
+import { useCurrentUser } from '../contexts/UserContext';
+import {
+  useNotifications,
+  formatNotificationTimestamp,
+} from '../contexts/NotificationsContext';
+import { getAppUserInitialsStyle } from '../utils/appUserAvatar';
 import '../styles/components/Header.css';
+import '../styles/components/HeaderNotificationsPanel.css';
 
 const Header: React.FC = () => {
   const navigate = useNavigate();
   const { industry, setIndustry } = useIndustry();
+  const { currentUser, users, setCurrentUserByName } = useCurrentUser();
+  const {
+    notifications,
+    markAllReadForUser,
+    markNotificationRead,
+    notificationsPanelOpenRequest,
+    consumeNotificationsPanelOpenRequest,
+  } = useNotifications();
+  const currentAvatar = getAppUserInitialsStyle(currentUser.name);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [dropdownPosition, setDropdownPosition] = useState<{ top: number; right: number } | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const avatarRef = useRef<HTMLDivElement>(null);
+  const bellRef = useRef<HTMLButtonElement>(null);
+  const notificationsPanelRef = useRef<HTMLDivElement>(null);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [notificationsPosition, setNotificationsPosition] = useState<{ top: number; left: number } | null>(null);
+
+  const myNotifications = useMemo(
+    () =>
+      notifications
+        .filter((n) => n.recipientUserId === currentUser.id)
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
+    [notifications, currentUser.id]
+  );
+
+  const unreadNotificationCount = useMemo(
+    () => myNotifications.filter((n) => !n.read).length,
+    [myNotifications]
+  );
   
   const tabs = [
     'Home',
@@ -56,15 +89,78 @@ const Header: React.FC = () => {
     };
   }, [isDropdownOpen]);
 
-  const handleIndustrySwitch = (selectedIndustry: 'manufacturing' | 'consumer-goods') => {
+  useEffect(() => {
+    if (!isNotificationsOpen || !bellRef.current) {
+      setNotificationsPosition(null);
+      return;
+    }
+    const rect = bellRef.current.getBoundingClientRect();
+    const panelWidth = Math.min(420, window.innerWidth - 24);
+    let left = rect.right - panelWidth;
+    if (left < 12) left = 12;
+    if (left + panelWidth > window.innerWidth - 12) {
+      left = Math.max(12, window.innerWidth - panelWidth - 12);
+    }
+    setNotificationsPosition({
+      top: rect.bottom + 6,
+      left,
+    });
+  }, [isNotificationsOpen]);
+
+  useEffect(() => {
+    if (!isNotificationsOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      const t = event.target as Node;
+      if (bellRef.current?.contains(t)) return;
+      if (notificationsPanelRef.current?.contains(t)) return;
+      setIsNotificationsOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
+  }, [isNotificationsOpen]);
+
+  useEffect(() => {
+    if (!isNotificationsOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsNotificationsOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isNotificationsOpen]);
+
+  useEffect(() => {
+    if (!notificationsPanelOpenRequest) return;
+    if (notificationsPanelOpenRequest.userId !== currentUser.id) return;
+    setIsNotificationsOpen(true);
+    consumeNotificationsPanelOpenRequest();
+  }, [notificationsPanelOpenRequest, currentUser.id, consumeNotificationsPanelOpenRequest]);
+
+  const handleIndustrySwitch = (selectedIndustry: IndustryType) => {
     setIndustry(selectedIndustry);
     if (selectedIndustry === 'manufacturing') {
       navigate('/home/manufacturing');
-    } else {
+    } else if (selectedIndustry === 'consumer-goods') {
       navigate('/home/consumergoods');
+    } else {
+      navigate('/home/grid-264');
     }
     setIsDropdownOpen(false);
   };
+
+  const navigateToForecastingGrid = useCallback(() => {
+    if (industry === 'consumer-goods') {
+      navigate('/home/consumergoods');
+      return;
+    }
+    if (industry === 'grid-264') {
+      navigate('/home/grid-264');
+      return;
+    }
+    if (industry !== 'manufacturing') {
+      setIndustry('manufacturing');
+    }
+    navigate('/home/manufacturing');
+  }, [industry, navigate, setIndustry]);
 
   return (
     <div className="header-wrapper">
@@ -115,20 +211,41 @@ const Header: React.FC = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
             </div>
-            <div className="header-icon with-badge">
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <button
+              type="button"
+              ref={bellRef}
+              className={`header-icon header-bell-trigger${isNotificationsOpen ? ' header-bell-trigger--open' : ''}${unreadNotificationCount > 0 ? ' header-icon--with-badge' : ''}`}
+              aria-label={`Notifications${unreadNotificationCount > 0 ? `, ${unreadNotificationCount} unread` : ''}`}
+              aria-expanded={isNotificationsOpen}
+              aria-haspopup="dialog"
+              onClick={() => setIsNotificationsOpen((open) => !open)}
+            >
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
               </svg>
-              <span className="notification-badge">2</span>
-            </div>
+              {unreadNotificationCount > 0 && (
+                <span className="header-notification-badge" aria-hidden>
+                  {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
+                </span>
+              )}
+            </button>
           </div>
           <div className="user-avatar" ref={avatarRef} style={{ position: 'relative' }}>
-            <img 
-              src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23fff'%3E%3Cpath d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z'/%3E%3C/svg%3E" 
-              alt="User" 
+            <button
+              type="button"
+              className="user-avatar-trigger"
               onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-              style={{ cursor: 'pointer' }}
-            />
+              aria-expanded={isDropdownOpen}
+              aria-haspopup="true"
+              aria-label={`Account menu, ${currentUser.name}`}
+            >
+              <span
+                className="user-avatar-initials-face"
+                style={{ backgroundColor: currentAvatar.backgroundColor }}
+              >
+                {currentAvatar.initials}
+              </span>
+            </button>
             {isDropdownOpen && dropdownPosition && createPortal(
               <div 
                 ref={dropdownRef}
@@ -136,7 +253,7 @@ const Header: React.FC = () => {
                   position: 'fixed',
                   top: `${dropdownPosition.top}px`,
                   right: `${dropdownPosition.right}px`,
-                  backgroundColor: '#ffffff',
+                  backgroundColor: 'var(--color-surface-white)',
                   border: '1px solid #c9c9c9',
                   borderRadius: '4px',
                   boxShadow: '0 2px 8px 0 rgba(0, 0, 0, 0.12)',
@@ -149,7 +266,7 @@ const Header: React.FC = () => {
                   padding: '8px 16px',
                   fontSize: '12px',
                   fontWeight: '700',
-                  color: '#706e6b',
+                  color: 'var(--color-interactive-border)',
                   textTransform: 'uppercase',
                   letterSpacing: '0.5px',
                   borderBottom: '1px solid #e5e5e5'
@@ -162,14 +279,14 @@ const Header: React.FC = () => {
                     padding: '12px 16px',
                     cursor: 'pointer',
                     fontSize: '14px',
-                    color: industry === 'manufacturing' ? '#0176d3' : '#181818',
-                    backgroundColor: industry === 'manufacturing' ? '#f3f2f2' : 'transparent',
+                    color: industry === 'manufacturing' ? 'var(--color-accent-blue)' : 'var(--color-on-surface-strong)',
+                    backgroundColor: industry === 'manufacturing' ? 'var(--color-surface-gray)' : 'transparent',
                     fontWeight: industry === 'manufacturing' ? '600' : '400',
                     transition: 'background-color 0.1s ease'
                   }}
                   onMouseEnter={(e) => {
                     if (industry !== 'manufacturing') {
-                      e.currentTarget.style.backgroundColor = '#f9f9f9';
+                      e.currentTarget.style.backgroundColor = 'var(--slds-g-color-surface-container-1)';
                     }
                   }}
                   onMouseLeave={(e) => {
@@ -186,14 +303,14 @@ const Header: React.FC = () => {
                     padding: '12px 16px',
                     cursor: 'pointer',
                     fontSize: '14px',
-                    color: industry === 'consumer-goods' ? '#0176d3' : '#181818',
-                    backgroundColor: industry === 'consumer-goods' ? '#f3f2f2' : 'transparent',
+                    color: industry === 'consumer-goods' ? 'var(--color-accent-blue)' : 'var(--color-on-surface-strong)',
+                    backgroundColor: industry === 'consumer-goods' ? 'var(--color-surface-gray)' : 'transparent',
                     fontWeight: industry === 'consumer-goods' ? '600' : '400',
                     transition: 'background-color 0.1s ease'
                   }}
                   onMouseEnter={(e) => {
                     if (industry !== 'consumer-goods') {
-                      e.currentTarget.style.backgroundColor = '#f9f9f9';
+                      e.currentTarget.style.backgroundColor = 'var(--slds-g-color-surface-container-1)';
                     }
                   }}
                   onMouseLeave={(e) => {
@@ -204,12 +321,200 @@ const Header: React.FC = () => {
                 >
                   Consumer Goods
                 </div>
+                <div
+                  onClick={() => handleIndustrySwitch('grid-264')}
+                  style={{
+                    padding: '12px 16px',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    color: industry === 'grid-264' ? 'var(--color-accent-blue)' : 'var(--color-on-surface-strong)',
+                    backgroundColor: industry === 'grid-264' ? 'var(--color-surface-gray)' : 'transparent',
+                    fontWeight: industry === 'grid-264' ? '600' : '400',
+                    transition: 'background-color 0.1s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (industry !== 'grid-264') {
+                      e.currentTarget.style.backgroundColor = 'var(--slds-g-color-surface-container-1)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (industry !== 'grid-264') {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }
+                  }}
+                >
+                  264 Updated Grid
+                </div>
+                <div style={{
+                  padding: '8px 16px',
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  color: 'var(--color-interactive-border)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  borderTop: '1px solid #e5e5e5',
+                  marginTop: '4px'
+                }}>
+                  Switch User
+                </div>
+                {users.map((user) => {
+                  const rowAvatar = getAppUserInitialsStyle(user.name);
+                  return (
+                    <button
+                      key={user.id}
+                      type="button"
+                      className="header-user-switch-row"
+                      onClick={() => {
+                        if (currentUser.id !== user.id) {
+                          setCurrentUserByName(user.name);
+                          navigate('/planning-forecasting-list');
+                        }
+                        setIsDropdownOpen(false);
+                      }}
+                      style={{
+                        width: '100%',
+                        border: 'none',
+                        textAlign: 'left',
+                        fontFamily: 'inherit',
+                        padding: '12px 16px',
+                        cursor: 'pointer',
+                        fontSize: '14px',
+                        color: currentUser.name === user.name ? 'var(--color-accent-blue)' : 'var(--color-on-surface-strong)',
+                        backgroundColor: currentUser.name === user.name ? 'var(--color-surface-gray)' : 'transparent',
+                        fontWeight: currentUser.name === user.name ? '600' : '400',
+                        transition: 'background-color 0.1s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (currentUser.name !== user.name) {
+                          e.currentTarget.style.backgroundColor = 'var(--slds-g-color-surface-container-1)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (currentUser.name !== user.name) {
+                          e.currentTarget.style.backgroundColor = 'transparent';
+                        }
+                      }}
+                    >
+                      <span
+                        className="header-user-switch-initials"
+                        style={{ backgroundColor: rowAvatar.backgroundColor }}
+                        aria-hidden
+                      >
+                        {rowAvatar.initials}
+                      </span>
+                      <span>{user.name}</span>
+                    </button>
+                  );
+                })}
               </div>,
               document.body
             )}
           </div>
         </div>
       </header>
+
+      {isNotificationsOpen &&
+        notificationsPosition &&
+        createPortal(
+          <div
+            ref={notificationsPanelRef}
+            className="header-notifications-panel"
+            role="dialog"
+            aria-labelledby="header-notifications-title"
+            style={{
+              top: `${notificationsPosition.top}px`,
+              left: `${notificationsPosition.left}px`,
+            }}
+          >
+            <div className="header-notifications-panel__header">
+              <h2 id="header-notifications-title" className="header-notifications-panel__title">
+                Notifications
+              </h2>
+              <div className="header-notifications-panel__header-actions">
+                <button
+                  type="button"
+                  className="header-notifications-panel__mark-read"
+                  disabled={unreadNotificationCount === 0}
+                  onClick={() => markAllReadForUser(currentUser.id)}
+                >
+                  Mark all as read
+                </button>
+                <button
+                  type="button"
+                  className="header-notifications-panel__close"
+                  aria-label="Close notifications"
+                  onClick={() => setIsNotificationsOpen(false)}
+                >
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            {myNotifications.length === 0 ? (
+              <p className="header-notifications-panel__empty">You have no notifications yet.</p>
+            ) : (
+              <ul className="header-notifications-panel__list">
+                {myNotifications.map((n) => (
+                  <li key={n.id}>
+                    <button
+                      type="button"
+                      className={`header-notifications-panel__item${n.read ? '' : ' header-notifications-panel__item--unread'}`}
+                      onClick={() => {
+                        markNotificationRead(n.id);
+                        setIsNotificationsOpen(false);
+                        if (n.kind === 'plan_approver_decision') {
+                          navigate('/planning-forecasting');
+                        } else {
+                          navigateToForecastingGrid();
+                        }
+                      }}
+                    >
+                      <span className="header-notifications-panel__item-icon" aria-hidden>
+                        {n.kind === 'plan_approver_decision' ? (
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.75"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0 1 18 14.158V11a6.002 6.002 0 0 0-4-5.659V5a2 2 0 1 0-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 1 1-6 0v-1m6 0H9" />
+                          </svg>
+                        ) : (
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.75"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+                            <path d="M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2" />
+                            <path d="m9 12 2 2 4-4" />
+                          </svg>
+                        )}
+                      </span>
+                      <span className="header-notifications-panel__item-body">
+                        <span className="header-notifications-panel__item-title">{n.title}</span>
+                        <span className="header-notifications-panel__item-text">{n.body}</span>
+                        <span className="header-notifications-panel__item-meta">
+                          {!n.read && (
+                            <span className="header-notifications-panel__unread-dot" aria-hidden />
+                          )}
+                          <span>{formatNotificationTimestamp(n.createdAt)}</span>
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>,
+          document.body
+        )}
       
       {/* Bottom Row - Navigation */}
       <nav className="header-bottom">

@@ -10,11 +10,20 @@ interface CellContextMenuProps {
   onToggleLock: () => void;
   onMassUpdate?: () => void;
   onViewEditHistory?: () => void;
+  onViewExplainability?: () => void;
   onMarkAsRead?: () => void;
   isLocked: boolean;
   canPaste: boolean;
   isEditable: boolean;
   hasMultipleSelection: boolean;
+  hasApprovalSelection?: boolean;
+  pendingApprovalCount?: number;
+  onBulkApprove?: () => void;
+  onBulkReject?: (comment: string) => void;
+  onBulkRequestMoreInfo?: (comment: string) => void;
+  onAddFormattingRule?: () => void;
+  onRequestApproval?: () => void;
+  onCellActions?: () => void;
 }
 
 const CellContextMenu: React.FC<CellContextMenuProps> = ({
@@ -26,11 +35,20 @@ const CellContextMenu: React.FC<CellContextMenuProps> = ({
   onToggleLock,
   onMassUpdate,
   onViewEditHistory,
+  onViewExplainability,
   onMarkAsRead,
   isLocked,
   canPaste,
   isEditable,
-  hasMultipleSelection
+  hasMultipleSelection,
+  hasApprovalSelection = false,
+  pendingApprovalCount = 0,
+  onBulkApprove,
+  onBulkReject,
+  onBulkRequestMoreInfo,
+  onAddFormattingRule,
+  onRequestApproval,
+  onCellActions,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -126,66 +144,87 @@ const CellContextMenu: React.FC<CellContextMenuProps> = ({
 
       <div className="cell-context-menu-separator" />
 
-      {/* Mass Update - only show when multiple cells are selected */}
-      {hasMultipleSelection && onMassUpdate && (
-        <>
-          <button 
-            className="cell-context-menu-item"
-            onMouseDown={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              if (onMassUpdate) {
-                onMassUpdate();
-              }
-            }}
-          >
-            <svg className="cell-context-menu-icon" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
-            </svg>
-            <span className="cell-context-menu-label">Bulk Edit</span>
-          </button>
-        </>
+      {/* ── Actions group: Actions (bulk), View history, View Explainability ── */}
+
+      {/* Actions - single cell: opens Cell Actions tab in right panel */}
+      {!hasMultipleSelection && onCellActions && (
+        <button
+          className="cell-context-menu-item"
+          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onCellActions();
+          }}
+        >
+          <svg className="cell-context-menu-icon" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+          </svg>
+          <span className="cell-context-menu-label">Actions</span>
+        </button>
       )}
 
-      {/* View Edit History - only show when single cell is selected */}
+      {/* Actions - only show when multiple cells are selected */}
+      {hasMultipleSelection && onMassUpdate && (
+        <button
+          className="cell-context-menu-item"
+          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (onMassUpdate) onMassUpdate();
+          }}
+        >
+          <svg className="cell-context-menu-icon" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+          </svg>
+          <span className="cell-context-menu-label">Actions</span>
+        </button>
+      )}
+
+      {/* View history - only show when single cell is selected */}
       {onViewEditHistory && !hasMultipleSelection && (
-        <>
-          <button 
-            className="cell-context-menu-item"
-            onClick={() => handleAction(onViewEditHistory)}
-          >
-            <svg className="cell-context-menu-icon" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/>
-            </svg>
-            <span className="cell-context-menu-label">View Edit History</span>
-          </button>
-        </>
+        <button
+          className="cell-context-menu-item"
+          onClick={() => handleAction(onViewEditHistory)}
+        >
+          <svg className="cell-context-menu-icon" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/>
+          </svg>
+          <span className="cell-context-menu-label">View history</span>
+        </button>
+      )}
+
+      {/* View Explainability - only show when single cell is selected */}
+      {onViewExplainability && !hasMultipleSelection && (
+        <button
+          className="cell-context-menu-item"
+          onClick={() => handleAction(onViewExplainability)}
+        >
+          <svg className="cell-context-menu-icon" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
+          </svg>
+          <span className="cell-context-menu-label">View Explainability</span>
+        </button>
       )}
 
       {/* Mark as Read - only show for multi-cell selection */}
       {onMarkAsRead && hasMultipleSelection && (
-        <>
-          {onMassUpdate && (
-            <div className="cell-context-menu-separator" />
-          )}
-          <button 
-            className="cell-context-menu-item"
-            onClick={() => handleAction(onMarkAsRead)}
-          >
-            <svg className="cell-context-menu-icon" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
-            </svg>
-            <span className="cell-context-menu-label">Mark as read</span>
-          </button>
-        </>
+        <button
+          className="cell-context-menu-item"
+          onClick={() => handleAction(onMarkAsRead)}
+        >
+          <svg className="cell-context-menu-icon" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+          </svg>
+          <span className="cell-context-menu-label">Mark as read</span>
+        </button>
       )}
 
+      <div className="cell-context-menu-separator" />
+
       {/* Lock/Unlock */}
-      <button 
+      <button
         className="cell-context-menu-item"
         onClick={() => handleAction(onToggleLock)}
       >

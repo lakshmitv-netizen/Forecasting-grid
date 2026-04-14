@@ -1,9 +1,23 @@
-import { MeasureData, GridRow } from '../types';
+import { MeasureData, GridRow, ParentTotalsRollupMode } from '../types';
 
 type MonthKey = keyof GridRow['values'];
 
+/** Children included when summing or distributing from a parent (excludes synthetic filtered-out rows in visibleOnly mode). */
+export const childrenForParentRollup = (
+  children: GridRow[] | undefined,
+  mode: ParentTotalsRollupMode | undefined,
+): GridRow[] => {
+  if (!children?.length) return [];
+  if (mode === 'visibleOnly') {
+    return children.filter(
+      c => !(c.type === 'filterSummary' && c.filterSummaryRole === 'filteredOut'),
+    );
+  }
+  return children;
+};
+
 // Flatten the hierarchy to make searching easier
-const flattenHierarchy = (data: MeasureData[]): GridRow[] => {
+export const flattenHierarchy = (data: MeasureData[]): GridRow[] => {
   const result: GridRow[] = [];
   
   const traverse = (rows: GridRow[]) => {
@@ -160,10 +174,11 @@ export const propagateDownward = (
   monthKey: MonthKey,
   delta: number,
   data: MeasureData[],
-  lockedCells?: Set<string>
+  lockedCells?: Set<string>,
+  parentRollupMode?: ParentTotalsRollupMode,
 ): { rowId: string; monthKey: MonthKey; newValue: number }[] => {
   const updates: { rowId: string; monthKey: MonthKey; newValue: number }[] = [];
-  const children = getChildren(rowId, data);
+  const children = childrenForParentRollup(getChildren(rowId, data), parentRollupMode);
   
   if (children.length === 0) return updates;
   
@@ -183,8 +198,8 @@ export const propagateDownward = (
     const newValue = currentValue + childDelta;
     updates.push({ rowId: childId, monthKey, newValue });
     
-    // Recursively propagate to grandchildren (pass lockedCells down)
-    const grandchildUpdates = propagateDownward(childId, monthKey, childDelta, data, lockedCells);
+    // Recursively propagate to grandchildren (pass lockedCells and rollup mode down)
+    const grandchildUpdates = propagateDownward(childId, monthKey, childDelta, data, lockedCells, parentRollupMode);
     updates.push(...grandchildUpdates);
   }
   

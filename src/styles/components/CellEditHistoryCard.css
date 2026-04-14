@@ -26,7 +26,7 @@
   height: 20px;
   border: none;
   background: none;
-  color: #706e6b;
+  color: var(--slds-g-color-neutral-base-40);
   cursor: pointer;
   padding: 0;
   display: flex;
@@ -36,11 +36,11 @@
 }
 
 .sf-timeline-expand-btn:hover {
-  color: #181818;
+  color: var(--slds-g-color-neutral-base-10);
 }
 
 .sf-timeline-item.expanded .sf-timeline-expand-btn {
-  color: #181818;
+  color: var(--slds-g-color-neutral-base-10);
 }
 
 /* Spacer when no expand button needed */
@@ -53,7 +53,7 @@
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: #0176d3;
+  background: var(--slds-g-color-accent-1);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -61,8 +61,8 @@
 }
 
 .sf-timeline-avatar-initials {
-  color: #ffffff;
-  font-size: 12px;
+  color: var(--slds-g-color-surface-1);
+  font-size: 12px !important;
   font-weight: 600;
   letter-spacing: 0.5px;
 }
@@ -75,7 +75,7 @@
   align-self: flex-start;
   margin-left: 39px;
   border-radius: 1.5px;
-  background-color: #0176d3;
+  background-color: var(--slds-g-color-accent-1);
   opacity: 0.4;
   min-height: 24px;
 }
@@ -98,10 +98,10 @@
 }
 
 .sf-timeline-cell-context {
-  font-size: 12px;
+  font-size: 12px !important;
   font-weight: 600;
-  color: #0176d3;
-  background-color: #f0f7ff;
+  color: var(--slds-g-color-accent-1);
+  background-color: var(--slds-g-color-accent-container-1);
   padding: 4px 8px;
   border-radius: 4px;
   margin-top: 4px;
@@ -122,7 +122,7 @@
 .sf-timeline-cell-context-header {
   font-size: 13px;
   font-weight: 600;
-  color: #181818;
+  color: var(--slds-g-color-neutral-base-10);
   line-height: 1.4;
   white-space: nowrap;
   overflow: hidden;
@@ -142,7 +142,7 @@
   border: none;
   padding: 2px;
   cursor: pointer;
-  color: #747474;
+  color: var(--slds-g-color-border-base-4);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -151,21 +151,21 @@
 }
 
 .sf-timeline-hierarchy-info-btn:hover {
-  color: #0176d3;
-  background-color: #f0f7ff;
+  color: var(--slds-g-color-accent-1);
+  background-color: var(--slds-g-color-accent-container-1);
 }
 
 .sf-timeline-hierarchy-tooltip {
   position: fixed;
-  background-color: #032d60;
-  color: white;
+  background-color: var(--slds-g-color-brand-base-20);
+  color: var(--color-surface-white);
   padding: 10px 14px;
   border-radius: 6px;
   font-size: 13px;
   font-weight: 500;
   line-height: 1.4;
   z-index: 10002;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--slds-g-color-neutral-base-10) 20%, transparent);
   min-width: 280px;
   max-width: 400px;
   white-space: normal;
@@ -178,7 +178,7 @@
   transform: rotate(45deg);
   width: 12px;
   height: 12px;
-  background-color: #032d60;
+  background-color: var(--slds-g-color-brand-base-20);
   z-index: 10003;
 }
 
@@ -186,7 +186,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
+  color: var(--color-surface-white);
 }
 
 .sf-timeline-user-row {
@@ -199,7 +199,7 @@
 .sf-timeline-username-secondary {
   font-size: 13px;
   font-weight: 500;
-  color: #5c5c5c;
+  color: var(--slds-g-color-neutral-base-40);
   line-height: 1.4;
 }
 
@@ -207,7 +207,7 @@
 .sf-timeline-view-all-btn {
   background: none;
   border: none;
-  color: #0176d3;
+  color: var(--slds-g-color-accent-1);
   font-size: 13px;
   font-weight: 500;
   font-family: var(--font-family-base);
@@ -221,22 +221,22 @@
 }
 
 .sf-timeline-view-all-btn:hover {
-  color: #014486;
+  color: var(--slds-g-color-brand-base-30);
   text-decoration: underline;
 }
 
 .sf-timeline-username {
   font-size: 14px;
   font-weight: 700;
-  color: #181818;
+  color: var(--slds-g-color-neutral-base-10);
   line-height: 1.4;
 }
 
 .sf-timeline-draft-badge {
-  font-size: 11px;
+  font-size: 12px !important;
   font-weight: 600;
-  color: #ff9800;
-  background-color: #fff3e0;
+  color: var(--slds-g-color-warning-2);
+  background-color: var(--slds-g-color-warning-container-1);
   padding: 2px 6px;
   border-radius: 3px;
   text-transform: uppercase;
@@ -244,21 +244,21 @@
 }
 
 .sf-timeline-timestamp {
-  font-size: 12px;
-  color: #706e6b;
+  font-size: 12px !important;
+  color: var(--slds-g-color-neutral-base-40);
   margin-left: auto;
 }
 
 .sf-timeline-subtitle {
   font-size: 13px;
-  color: #3e3e3c;
+  color: var(--slds-g-color-neutral-base-20);
   margin-top: 4px;
   line-height: 1.5;
 }
 
 .sf-timeline-subtitle strong {
   font-weight: 600;
-  color: #181818;
+  color: var(--slds-g-color-neutral-base-10);
 }
 
 .sf-timeline-delta {
@@ -268,17 +268,17 @@
 
 /* Orange for increase, Blue for decrease */
 .sf-timeline-delta.increase {
-  color: #ff6b35;
+  color: var(--slds-g-color-palette-hot-orange-60);
 }
 
 .sf-timeline-delta.decrease {
-  color: #0176d3;
+  color: var(--slds-g-color-accent-1);
 }
 
 /* Note Preview for note-only entries */
 .sf-timeline-note-preview {
   display: block;
-  color: #3e3e3c;
+  color: var(--slds-g-color-neutral-base-20);
 }
 
 .sf-timeline-note-text {
@@ -289,10 +289,81 @@
   line-height: 1.5;
 }
 
+/* Approval Status Change Display */
+.sf-timeline-approval-status-change {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sf-timeline-approval-badge {
+  display: inline-block;
+  font-size: 12px !important;
+  font-weight: 500;
+  border-radius: 8px;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+
+.sf-timeline-approval-badge--notsubmitted {
+  background-color: var(--slds-g-color-neutral-base-90);
+  color: var(--slds-g-color-neutral-base-40);
+}
+
+.sf-timeline-approval-badge--pending {
+  background-color: var(--slds-g-color-warning-container-1);
+  color: var(--slds-g-color-warning-1);
+}
+
+/* Legacy statuses - map to notSubmitted styles */
+.sf-timeline-approval-badge--needsmoreinfo {
+  background-color: var(--slds-g-color-neutral-base-90);
+  color: var(--slds-g-color-neutral-base-40);
+}
+
+.sf-timeline-approval-badge--modificationsuggested {
+  background-color: var(--slds-g-color-neutral-base-90);
+  color: var(--slds-g-color-neutral-base-40);
+}
+
+.sf-timeline-approval-badge--indiscussion {
+  background-color: var(--slds-g-color-neutral-base-90);
+  color: var(--slds-g-color-neutral-base-40);
+}
+
+.sf-timeline-approval-badge--approved {
+  background-color: var(--slds-g-color-success-container-1);
+  color: var(--slds-g-color-success-1);
+}
+
+.sf-timeline-approval-badge--rejected {
+  background-color: var(--slds-g-color-error-container-1);
+  color: var(--slds-g-color-error-1);
+}
+
+.sf-timeline-approval-badge--modificationsuggested {
+  background-color: var(--slds-g-color-palette-violet-90);
+  color: var(--slds-g-color-neutral-base-20);
+}
+
+.sf-timeline-approval-arrow {
+  color: var(--slds-g-color-neutral-base-40);
+  font-size: 12px !important;
+  font-weight: 500;
+}
+
+.sf-timeline-approval-comment {
+  color: var(--slds-g-color-neutral-base-10);
+  font-size: 13px;
+  line-height: 1.5;
+  margin-left: 4px;
+}
+
 .sf-timeline-see-more-btn {
   background: none;
   border: none;
-  color: #0176d3;
+  color: var(--slds-g-color-accent-1);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -315,7 +386,7 @@
 .sf-timeline-see-note-btn {
   background: none !important;
   border: none !important;
-  color: #0176d3 !important;
+  color: var(--slds-g-color-accent-1) !important;
   font-size: 13px !important;
   font-weight: 500 !important;
   cursor: pointer !important;
@@ -327,14 +398,14 @@
 
 .sf-timeline-see-note-btn:hover {
   text-decoration: underline !important;
-  color: #014486 !important;
+  color: var(--slds-g-color-brand-base-30) !important;
 }
 
 /* Expanded Details */
 .sf-timeline-details {
   margin-top: 12px;
-  background: #fafaf9;
-  border: 1px solid #dddbda;
+  background: var(--slds-g-color-surface-container-1);
+  border: 1px solid var(--slds-g-color-neutral-base-80);
   border-radius: 4px;
   padding: 12px 16px;
   overflow: hidden;
@@ -351,16 +422,16 @@
 }
 
 .sf-timeline-info-label {
-  font-size: 11px;
+  font-size: 12px !important;
   font-weight: 700;
-  color: #706e6b;
+  color: var(--slds-g-color-neutral-base-40);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
 .sf-timeline-info-value {
   font-size: 13px;
-  color: #181818;
+  color: var(--slds-g-color-neutral-base-10);
   line-height: 1.5;
   word-wrap: break-word;
   overflow-wrap: break-word;
@@ -390,13 +461,13 @@
   width: 24px;
   height: 24px;
   min-width: 24px;
-  background: #0176d3;
+  background: var(--slds-g-color-accent-1);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #ffffff;
-  font-size: 9px;
+  color: var(--slds-g-color-surface-1);
+  font-size: 12px !important;
   font-weight: 600;
 }
 
@@ -411,17 +482,17 @@
 .sf-timeline-reply-username {
   font-size: 13px;
   font-weight: 600;
-  color: #181818;
+  color: var(--slds-g-color-neutral-base-10);
 }
 
 .sf-timeline-reply-message {
   font-size: 13px;
-  color: #3e3e3c;
+  color: var(--slds-g-color-neutral-base-20);
 }
 
 .sf-timeline-reply-timestamp {
-  font-size: 11px;
-  color: #706e6b;
+  font-size: 12px !important;
+  color: var(--slds-g-color-neutral-base-40);
 }
 
 /* Reply Input */
@@ -433,7 +504,7 @@
 .sf-timeline-reply-input input {
   flex: 1;
   padding: 8px 12px;
-  border: 1px solid #c9c9c9;
+  border: 1px solid var(--slds-g-color-border-base-4);
   border-radius: 4px;
   font-size: 13px;
   font-family: inherit;
@@ -442,31 +513,31 @@
 }
 
 .sf-timeline-reply-input input:focus {
-  border-color: #0176d3;
-  box-shadow: 0 0 0 1px #0176d3;
+  border-color: var(--slds-g-color-accent-1);
+  box-shadow: 0 0 0 1px var(--slds-g-color-accent-1);
 }
 
 .sf-timeline-reply-input input::placeholder {
-  color: #706e6b;
+  color: var(--slds-g-color-neutral-base-40);
 }
 
 .sf-timeline-post-btn {
-  background: #0176d3;
+  background: var(--slds-g-color-accent-1);
   border: none;
   border-radius: 4px;
   padding: 8px 16px;
   font-size: 13px;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--slds-g-color-surface-1);
   cursor: pointer;
   transition: background 0.15s;
 }
 
 .sf-timeline-post-btn:hover {
-  background: #014486;
+  background: var(--slds-g-color-brand-base-30);
 }
 
 .sf-timeline-post-btn:disabled {
-  background: #c9c9c9;
+  background: var(--slds-g-color-neutral-base-80);
   cursor: not-allowed;
 }

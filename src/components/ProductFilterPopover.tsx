@@ -1,5 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
+import ReactDOM from 'react-dom';
 import { MeasureData } from '../types';
+// Icon imports - using public folder paths (SVGs with built-in colored backgrounds)
+const ProductIcon = '/product.svg';
 import '../styles/components/ProductFilterPopover.css';
 
 interface ProductFilterPopoverProps {
@@ -325,9 +328,17 @@ const ProductFilterPopover: React.FC<ProductFilterPopoverProps> = ({
     const maxNubbinTop = finalPopoverHeight - 20;
     const clampedNubbinTop = Math.max(minNubbinTop, Math.min(nubbinOffsetFromPopoverTop, maxNubbinTop));
     
+    const vw = window.innerWidth;
+    const gap = 8;
+    const leftOfAnchor = rect.left - popoverWidth - gap;
+    const rightOfAnchor = rect.right + gap;
+    const finalLeft = leftOfAnchor >= gap ? leftOfAnchor
+      : rightOfAnchor + popoverWidth <= vw - gap ? rightOfAnchor
+      : Math.max(gap, vw - popoverWidth - gap);
+
     return {
       top: adjustedTop,
-      left: rect.left - popoverWidth - 8, // Position to the left with 8px gap
+      left: finalLeft,
       maxHeight: `${finalPopoverHeight}px`, // Total height including padding, content, buttons, and gaps
       contentMaxHeight: `${finalContentHeight}px`, // Max height for scrollable content area
       nubbinTop: `${clampedNubbinTop}px` // Dynamic nubbin position, clamped within bounds
@@ -336,8 +347,8 @@ const ProductFilterPopover: React.FC<ProductFilterPopoverProps> = ({
   
   const position = getPopoverPosition();
   const selectedCount = selectedValues.length;
-  
-  return (
+
+  const popoverContent = (
     <>
       {/* Backdrop overlay */}
       <div className="product-filter-popover-backdrop" onClick={handleCancel} />
@@ -374,6 +385,7 @@ const ProductFilterPopover: React.FC<ProductFilterPopoverProps> = ({
                 setIsOperatorDropdownOpen(false);
               }}
             >
+              <img src={ProductIcon} alt="Product" style={{ width: '16px', height: '16px', marginRight: '8px', flexShrink: 0 }} />
               <span className="product-filter-dropdown-value">
                 {fieldOptions.find(f => f.value === selectedField)?.label || selectedField}
               </span>
@@ -392,6 +404,7 @@ const ProductFilterPopover: React.FC<ProductFilterPopoverProps> = ({
                       setIsFieldDropdownOpen(false);
                     }}
                   >
+                    <img src={ProductIcon} alt="Product" style={{ width: '16px', height: '16px', marginRight: '8px', flexShrink: 0 }} />
                     {option.label}
                   </div>
                 ))}
@@ -543,6 +556,8 @@ const ProductFilterPopover: React.FC<ProductFilterPopoverProps> = ({
       </div>
     </>
   );
+
+  return ReactDOM.createPortal(popoverContent, document.body);
 };
 
 export default ProductFilterPopover;

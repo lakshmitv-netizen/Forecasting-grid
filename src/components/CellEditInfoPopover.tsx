@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useLayoutEffect } from 'react';
 import { CellEditHistoryEntry } from '../types/editHistory';
 import '../styles/components/CellEditInfoPopover.css';
 
@@ -8,6 +8,10 @@ interface CellEditInfoPopoverProps {
   isLocked?: boolean;
   lockedValue?: number;
   measureName?: string; // Measure name to determine if $ symbol should be added
+  approvalSummary?: {
+    approvedCount: number;
+    requestedCount: number;
+  };
   onViewHistory: () => void;
   onMarkAsRead?: () => void;
   onClose: () => void;
@@ -19,9 +23,10 @@ const CellEditInfoPopover: React.FC<CellEditInfoPopoverProps> = ({
   isLocked = false,
   lockedValue,
   measureName,
+  approvalSummary,
   onViewHistory,
   onMarkAsRead,
-  onClose
+  onClose,
 }) => {
   const formatTimestamp = (date: Date) => {
     return new Intl.DateTimeFormat('en-US', {
@@ -69,6 +74,21 @@ const CellEditInfoPopover: React.FC<CellEditInfoPopoverProps> = ({
   const delta = hasEdit ? (entry.newValue! - entry.oldValue!) : 0;
   const isIncrease = delta > 0;
   const hasNote = entry.note && entry.note.trim() !== '';
+  /** Show value line for a real delta or for locked state (previously gated only on hasEdit, which hid locked-only). */
+  const showValueLine = hasEdit || (isLocked && lockedValue !== undefined);
+  const hasSecondaryContent =
+    hasNote || !!approvalSummary || !!entry.disaggregationRule;
+  const showEmptyFallback = !showValueLine && !hasSecondaryContent;
+
+  useLayoutEffect(() => {
+    if (showEmptyFallback) {
+      onClose();
+    }
+  }, [showEmptyFallback, onClose]);
+
+  if (showEmptyFallback) {
+    return null;
+  }
 
   // Build the change description like the side panel
   const getChangeDescription = () => {
@@ -80,7 +100,7 @@ const CellEditInfoPopover: React.FC<CellEditInfoPopoverProps> = ({
         </>
       );
     }
-    
+
     // Only show change description if there's an actual edit
     const action = isIncrease ? 'Increased' : 'Decreased';
     return (
@@ -102,7 +122,7 @@ const CellEditInfoPopover: React.FC<CellEditInfoPopoverProps> = ({
       onMouseEnter={(e) => e.stopPropagation()}
     >
       <div className="cell-edit-info-popover-nubbin"></div>
-      
+
       {/* Header row with avatar */}
       <div className="cell-edit-info-header">
         <div className="cell-edit-info-avatar">
@@ -114,22 +134,19 @@ const CellEditInfoPopover: React.FC<CellEditInfoPopoverProps> = ({
         </div>
       </div>
       
-      {/* Change description - only show if there's an actual edit */}
-      {hasEdit && (
+      {/* Value / lock / delta — not only when hasEdit, so locked cells and fallbacks behave */}
+      {showValueLine && (
         <div className="cell-edit-info-change-text">
           {getChangeDescription()}
         </div>
       )}
-      
-      {/* Note section - show directly, no "Added a note" text */}
-      {hasNote && (
-        <div className="cell-edit-info-note">
-          <span className="cell-edit-info-note-text">
-            "{entry.note!.length > 100 ? entry.note!.slice(0, 100) + '...' : entry.note}"
-          </span>
+
+      {approvalSummary && (
+        <div className="ascp-summary-line">
+          <strong>{approvalSummary.approvedCount}/{approvalSummary.requestedCount}</strong> approved
         </div>
       )}
-      
+
       {/* Disaggregation Rule - show if present */}
       {entry.disaggregationRule && (
         <div className="cell-edit-info-disaggregation-rule">
@@ -137,7 +154,16 @@ const CellEditInfoPopover: React.FC<CellEditInfoPopoverProps> = ({
           <span className="cell-edit-info-disaggregation-rule-value">{entry.disaggregationRule}</span>
         </div>
       )}
-      
+
+      {/* Note section — italic quote */}
+      {hasNote && (
+        <div className="cell-edit-info-note">
+          <span className="cell-edit-info-note-text">
+            "{entry.note!.length > 100 ? entry.note!.slice(0, 100) + '...' : entry.note}"
+          </span>
+        </div>
+      )}
+
       {/* Mark as read and View history buttons */}
       <div className="cell-edit-info-separator"></div>
       <div className="cell-edit-info-actions">
@@ -150,7 +176,7 @@ const CellEditInfoPopover: React.FC<CellEditInfoPopoverProps> = ({
           </>
         )}
         <button className="cell-edit-info-history-btn" onClick={onViewHistory}>
-          View Edit History
+          View history
         </button>
       </div>
       

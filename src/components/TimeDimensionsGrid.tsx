@@ -32,6 +32,8 @@ interface TimeDimensionsGridProps {
   onCellSelect?: (cellKey: string, event: React.MouseEvent) => void; // Callback when a cell is clicked for selection
   onCellMouseDown?: (cellKey: string, event: React.MouseEvent) => void; // Callback for mouse down (drag selection)
   onCellMouseMove?: (cellKey: string) => void; // Callback for mouse move (drag selection)
+  newlyAddedMeasureIds?: string[]; // IDs of newly added measures for animation effect
+  onScrollToMeasureReady?: (handler: (measureId: string) => void) => void; // Callback to expose function to scroll to a measure column
 }
 
 const TimeDimensionsGrid: React.FC<TimeDimensionsGridProps> = ({
@@ -49,7 +51,13 @@ const TimeDimensionsGrid: React.FC<TimeDimensionsGridProps> = ({
   onEditHistory,
   showAllPeriods = true,
   startPeriod = '',
-  endPeriod = ''
+  endPeriod = '',
+  newlyAddedMeasureIds = [],
+  onScrollToMeasureReady,
+  selectedCells,
+  onCellSelect,
+  onCellMouseDown,
+  onCellMouseMove,
 }) => {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [focusedCell, setFocusedCell] = useState<{ rowId: string; measureId: string } | null>(initialFocusedCell || null);
@@ -58,29 +66,8 @@ const TimeDimensionsGrid: React.FC<TimeDimensionsGridProps> = ({
   const [impactedCells, setImpactedCells] = useState<Map<string, number>>(new Map());
   const [savedEditedCells] = useState<Map<string, string>>(new Map());
   const [gridData, setGridData] = useState<MeasureData[]>(data);
+  const tableWrapperRef = useRef<HTMLDivElement>(null);
 
-  // Debug: Log when onEditHistory prop changes
-  useEffect(() => {
-    console.log('[TimeDimensionsGrid] Component mounted/updated, onEditHistory prop:', typeof onEditHistory, !!onEditHistory);
-    if (onEditHistory) {
-      console.log('[TimeDimensionsGrid] Testing onEditHistory callback...');
-      try {
-        onEditHistory({
-          cellKey: 'test-cell-key-time',
-          rowId: 'test-row-id-time',
-          timeKey: 'jan2026',
-          measureId: 'test-measure',
-          oldValue: 100,
-          newValue: 200,
-        });
-        console.log('[TimeDimensionsGrid] ✓ Test callback succeeded');
-      } catch (error) {
-        console.error('[TimeDimensionsGrid] ✗ Test callback failed:', error);
-      }
-    } else {
-      console.warn('[TimeDimensionsGrid] ⚠ onEditHistory is NOT available!');
-    }
-  }, [onEditHistory]);
 
   // Update local data when prop changes
   useEffect(() => {
@@ -133,6 +120,19 @@ const TimeDimensionsGrid: React.FC<TimeDimensionsGridProps> = ({
     collectRowIds(transformedRows);
     setExpandedRows(allRowIds);
   }, [transformedRows]);
+
+  // Expose scroll function to parent
+  useEffect(() => {
+    if (onScrollToMeasureReady) {
+      onScrollToMeasureReady((measureId: string) => {
+        // Find the header cell for this measure
+        const headerCell = document.querySelector(`th.newly-added-measure-column[data-measure-id="${measureId}"]`);
+        if (headerCell && tableWrapperRef.current) {
+          headerCell.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }
+      });
+    }
+  }, [onScrollToMeasureReady]);
 
   // Filter dimension rows based on selected dimension levels (applied at each time period)
   const filterDimensionsByLevels = useCallback((
@@ -750,13 +750,20 @@ const TimeDimensionsGrid: React.FC<TimeDimensionsGridProps> = ({
     }
   }, [onCollapseAllRows, collapseAllRows]);
 
-  // Restore focus when initialFocusedCell changes
+  // Restore focus when initialFocusedCell changes (e.g. switching back to this layout).
+  // We must NOT steal focus from an active input — that would instantly cancel editing.
   useEffect(() => {
     if (initialFocusedCell && cellRefs.current) {
       const cellKey = `${initialFocusedCell.rowId}-${initialFocusedCell.measureId}`;
       const cellElement = cellRefs.current.get(cellKey);
       if (cellElement) {
         setTimeout(() => {
+          // If an input/textarea is currently focused the user is in edit mode — don't interfere.
+          const active = document.activeElement;
+          // #region agent log
+          fetch('http://127.0.0.1:7712/ingest/7ccf0a04-1ab0-4b5b-9e3b-b6f761e482ab',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'fc12f9'},body:JSON.stringify({sessionId:'fc12f9',location:'TimeDimensionsGrid.tsx:useEffect-initialFocusedCell-timer',message:'focus restore timer fired',data:{activeTag:active?.tagName,wouldSteal:!!(active&&(active.tagName==='INPUT'||active.tagName==='TEXTAREA')),cellKey},hypothesisId:'C',timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
+          if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return;
           cellElement.focus();
         }, 100);
       }
@@ -1018,10 +1025,14 @@ const TimeDimensionsGrid: React.FC<TimeDimensionsGridProps> = ({
   const isFiltering = searchTerm && searchTerm.trim().length > 0;
 
   return (
-    <div className="grid-container-wrapper">
-      <div className="grid-container" tabIndex={0}>
-        <div className="grid-wrapper">
-        <table className={`grid-table dimensions-time-table time-dimensions-table ${isFiltering ? 'filtered' : ''}`}>
+      <div className="grid-container-wrapper">
+      <div className="grid-container">
+        <div className="grid-wrapper" ref={tableWrapperRef}>
+        <table
+          role="grid"
+          aria-label="Time, dimensions, and measures"
+          className={`grid-table dimensions-time-table time-dimensions-table ${isFiltering ? 'filtered' : ''}`}
+        >
           <thead className="grid-header dimensions-time-layout">
             <tr>
               <th style={{ width: '300px', minWidth: '300px' }}>
@@ -1044,9 +1055,12 @@ const TimeDimensionsGrid: React.FC<TimeDimensionsGridProps> = ({
               {measures.map((measure) => {
                 const searchTerms = searchTerm && searchTerm.trim() ? extractSearchTerms(searchTerm) : [];
                 const { otherTerms } = searchTerms.length > 0 ? separateSearchTerms(searchTerms) : { otherTerms: [] };
+                const isNewlyAdded = newlyAddedMeasureIds.includes(measure.id);
                 return (
                   <th
                     key={measure.id}
+                    className={isNewlyAdded ? 'newly-added-measure-column' : ''}
+                    data-measure-id={measure.id}
                     style={{
                       minWidth: `${columnWidth}px`,
                       width: `${columnWidth}px`,
@@ -1092,6 +1106,12 @@ const TimeDimensionsGrid: React.FC<TimeDimensionsGridProps> = ({
                   savedEditedCells={savedEditedCells}
                   columnWidth={columnWidth}
                   searchTerm={searchTerm}
+                  newlyAddedMeasureIds={newlyAddedMeasureIds}
+                  data={gridData}
+                  selectedCells={selectedCells}
+                  onCellSelect={onCellSelect}
+                  onCellMouseDown={onCellMouseDown}
+                  onCellMouseMove={onCellMouseMove}
                 />
               ))
             )}

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import ReactDOM from 'react-dom';
 import '../styles/components/TimeFilterPopover.css';
 
 interface TimeFilterPopoverProps {
@@ -224,19 +225,25 @@ const TimeFilterPopover: React.FC<TimeFilterPopoverProps> = ({
   
   // Calculate popover position relative to viewport (fixed positioning)
   const getPopoverPosition = () => {
-    if (!anchorElement) return { top: 0, left: 0 };
-    
+    if (!anchorElement) return { top: 8, left: 8 };
     const rect = anchorElement.getBoundingClientRect();
-    return {
-      top: rect.bottom + 8,
-      left: rect.left
-    };
+    const popoverWidth = 320;
+    const gap = 8;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const leftOfAnchor = rect.left - popoverWidth - gap;
+    const rightOfAnchor = rect.right + gap;
+    const left = leftOfAnchor >= gap ? leftOfAnchor
+      : rightOfAnchor + popoverWidth <= vw - gap ? rightOfAnchor
+      : Math.max(gap, vw - popoverWidth - gap);
+    const top = Math.min(rect.bottom + gap, vh - 300);
+    return { top, left };
   };
-  
+
   const position = getPopoverPosition();
   const selectedCount = selectedValues.length;
-  
-  return (
+
+  const popoverContent = (
     <>
       {/* Backdrop overlay */}
       <div className="time-filter-popover-backdrop" onClick={handleCancel} />
@@ -432,6 +439,8 @@ const TimeFilterPopover: React.FC<TimeFilterPopoverProps> = ({
       </div>
     </>
   );
+
+  return ReactDOM.createPortal(popoverContent, document.body);
 };
 
 export default TimeFilterPopover;

@@ -38,7 +38,7 @@ const GridFooter: React.FC<GridFooterProps> = ({
   return (
     <div className="grid-footer">
       <div className="grid-footer-left">
-        <button className="grid-footer-button grid-footer-button-outline" onClick={onCancel}>
+        <button type="button" className="grid-footer-button grid-footer-button-outline" onClick={onCancel}>
           Cancel
         </button>
       </div>
@@ -70,6 +70,7 @@ const GridFooter: React.FC<GridFooterProps> = ({
       <div className="grid-footer-right">
         <div className="grid-footer-button-group">
           <button
+            type="button"
             className="grid-footer-icon-button"
             onClick={onUndo}
             disabled={!canUndo}
@@ -80,6 +81,7 @@ const GridFooter: React.FC<GridFooterProps> = ({
             </svg>
           </button>
           <button
+            type="button"
             className="grid-footer-icon-button"
             onClick={onRedo}
             disabled={!canRedo}
@@ -90,7 +92,7 @@ const GridFooter: React.FC<GridFooterProps> = ({
             </svg>
           </button>
         </div>
-        <button className="grid-footer-button grid-footer-button-brand" onClick={onSave}>
+        <button type="button" className="grid-footer-button grid-footer-button-brand" onClick={onSave}>
           Save Changes
         </button>
       </div>

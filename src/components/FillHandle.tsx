@@ -17,7 +17,7 @@ const FillHandle: React.FC<FillHandleProps> = ({
   onDragEnd,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
-  const handleRef = useRef<HTMLDivElement>(null);
+  const handleRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!isDragging) return;
@@ -62,18 +62,21 @@ const FillHandle: React.FC<FillHandleProps> = ({
   if (!cellElement) return null;
 
   return (
-    <div
+    <button
+      type="button"
       ref={handleRef}
       className="fill-handle"
+      aria-label="Fill down drag handle"
       onMouseDown={handleMouseDown}
       style={{
         position: 'absolute',
-        bottom: '-4px',
-        right: '-4px',
+        bottom: '0',
+        right: '0',
+        transform: 'translate(50%, 50%)',
         width: '8px',
         height: '8px',
         cursor: 'crosshair',
-        zIndex: 1000,
+        zIndex: 2000,
       }}
     />
   );

@@ -4,14 +4,17 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
+    "dev": "node ./node_modules/vite/bin/vite.js",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "preview": "vite preview",
+    "preview": "node ./node_modules/vite/bin/vite.js preview",
+    "tokens-pdf": "node generate-planning-grid-design-tokens-pdf.cjs",
     "start": "node server.js",
-    "start:vite": "vite preview --host 0.0.0.0 --port ${PORT:-5000}"
+    "start:vite": "node ./node_modules/vite/bin/vite.js preview --host 0.0.0.0 --port ${PORT:-5000}"
   },
   "dependencies": {
+    "@salesforce-ux/design-system": "^2.29.0",
     "@vitejs/plugin-react": "^4.3.4",
     "express": "^4.18.2",
     "react": "^18.3.1",

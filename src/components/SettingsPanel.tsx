@@ -1,10 +1,16 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { MeasureData } from '../types';
+import { ConditionalFormattingRule } from '../types/conditionalFormatting';
 import ReorderMeasuresModal from './ReorderMeasuresModal';
 import ReadOnlyMeasuresDetailsModal from './ReadOnlyMeasuresDetailsModal';
+import ConditionalFormattingTab from './ConditionalFormattingTab';
 import { getMockData } from '../data/mockData';
 import { adjustmentMeasuresData } from '../data/adjustmentMeasuresData';
 import { useIndustry } from '../contexts/IndustryContext';
+// Icon imports - using public folder paths (SVGs with built-in colored backgrounds)
+const AccountIcon = '/new_account.svg';
+const CategoryIcon = '/category.svg';
+const ProductIcon = '/product.svg';
 import '../styles/components/SettingsPanel.css';
 
 interface SettingsPanelProps {
@@ -31,6 +37,23 @@ interface SettingsPanelProps {
   endPeriod?: string;
   onStartPeriodChange?: (period: string) => void;
   onEndPeriodChange?: (period: string) => void;
+  showAdditionalFrozenColumns?: boolean;
+  onShowAdditionalFrozenColumnsChange?: (show: boolean) => void;
+  showSubColumns?: boolean;
+  onShowSubColumnsChange?: (show: boolean) => void;
+  onEditFrozenColumns?: () => void;
+  onEditSubColumns?: () => void;
+  conditionalFormattingRules?: ConditionalFormattingRule[];
+  onConditionalFormattingRulesChange?: (rules: ConditionalFormattingRule[]) => void;
+  onConditionalFormattingPreviewChange?: (rule: ConditionalFormattingRule | null) => void;
+  applyCfRulesAsColorScale?: boolean;
+  onApplyCfRulesAsColorScaleChange?: (enabled: boolean) => void;
+  selectedCellKey?: string | null;
+  designSystemRulesEnabled?: boolean;
+  onDesignSystemRulesChange?: (enabled: boolean) => void;
+  forceFormattingTabSignal?: number;
+  cfLaunchFromSelectionSignal?: number;
+  cfLaunchFromSelectionCellKeys?: string[];
 }
 
 const layoutOptions = [
@@ -40,7 +63,7 @@ const layoutOptions = [
   },
   {
     value: 'Dimensions / Time x Measures',
-    subtitle: 'Dimension, Time in Rows, Meaasures in columns'
+    subtitle: 'Dimension, Time in Rows, Measures in columns'
   },
   {
     value: 'Time / Dimensions x Measures',
@@ -103,7 +126,24 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   startPeriod = '',
   endPeriod = '',
   onStartPeriodChange,
-  onEndPeriodChange
+  onEndPeriodChange,
+  showAdditionalFrozenColumns: propShowAdditionalFrozenColumns = false,
+  onShowAdditionalFrozenColumnsChange,
+  showSubColumns: propShowSubColumns = false,
+  onShowSubColumnsChange,
+  onEditFrozenColumns,
+  onEditSubColumns,
+  conditionalFormattingRules = [],
+  onConditionalFormattingRulesChange,
+  onConditionalFormattingPreviewChange,
+  applyCfRulesAsColorScale = false,
+  onApplyCfRulesAsColorScaleChange,
+  selectedCellKey = null,
+  designSystemRulesEnabled = true,
+  onDesignSystemRulesChange,
+  forceFormattingTabSignal = 0,
+  cfLaunchFromSelectionSignal = 0,
+  cfLaunchFromSelectionCellKeys = []
 }) => {
   const { industry } = useIndustry();
   const [selectedLayout, setSelectedLayout] = useState(propSelectedLayout || layoutOptions[0].value);
@@ -117,7 +157,11 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const measureSubgroupDropdownRef = useRef<HTMLDivElement>(null);
   const [isReorderModalOpen, setIsReorderModalOpen] = useState(false);
   const [isReadOnlyDetailsModalOpen, setIsReadOnlyDetailsModalOpen] = useState(false);
-  
+  const [activeTab, setActiveTab] = useState<'layout' | 'formatting' | 'shortcuts'>('layout');
+  const [enableKeyboardShortcuts, setEnableKeyboardShortcuts] = useState(true);
+  const [enableRightClickMenuOptions, setEnableRightClickMenuOptions] = useState(true);
+
+
   // Sync internal state with props
   useEffect(() => {
     if (propSelectedMeasureSubgroup !== undefined) {
@@ -130,12 +174,35 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       setSelectedLayout(propSelectedLayout);
     }
   }, [propSelectedLayout]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (forceFormattingTabSignal > 0) {
+      setActiveTab('formatting');
+    }
+  }, [isOpen, forceFormattingTabSignal]);
   
   const [isDimensionDropdownOpen, setIsDimensionDropdownOpen] = useState(false);
   const dimensionDropdownRef = useRef<HTMLDivElement>(null);
   
   const [isTimeGranularityDropdownOpen, setIsTimeGranularityDropdownOpen] = useState(false);
   const timeGranularityDropdownRef = useRef<HTMLDivElement>(null);
+  
+  const [showAdditionalFrozenColumns, setShowAdditionalFrozenColumns] = useState(propShowAdditionalFrozenColumns);
+  const [showSubColumns, setShowSubColumns] = useState(propShowSubColumns);
+  
+  // Sync internal state with props
+  useEffect(() => {
+    if (propShowAdditionalFrozenColumns !== undefined) {
+      setShowAdditionalFrozenColumns(propShowAdditionalFrozenColumns);
+    }
+  }, [propShowAdditionalFrozenColumns]);
+  
+  useEffect(() => {
+    if (propShowSubColumns !== undefined) {
+      setShowSubColumns(propShowSubColumns);
+    }
+  }, [propShowSubColumns]);
   
   // Column width slider state
   const [isDragging, setIsDragging] = useState(false);
@@ -366,318 +433,386 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
         {/* Panel Body */}
         <div className="settings-panel-body">
-          {/* Layout Section */}
-          <div className="settings-section">
-            <div className="settings-section-header">
-              <p className="settings-section-title">Layout</p>
-            </div>
-
-            <div className="settings-field">
-              <label className="settings-field-label">Select Layout</label>
-              <div className="settings-dropdown-wrapper" ref={layoutDropdownRef}>
-                <div 
-                  className={`settings-dropdown-trigger ${isLayoutDropdownOpen ? 'open' : ''}`}
-                  onClick={() => setIsLayoutDropdownOpen(!isLayoutDropdownOpen)}
-                >
-                  <span className={selectedLayout ? 'settings-dropdown-value' : 'settings-dropdown-placeholder'}>
-                    {selectedLayout || 'Select Layout'}
-                  </span>
-                  <svg className="settings-input-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </div>
-                {isLayoutDropdownOpen && (
-                  <div className="settings-dropdown-list">
-                    {layoutOptions.map((option, index) => (
-                      <div
-                        key={index}
-                        className={`settings-dropdown-option ${selectedLayout === option.value ? 'selected' : ''}`}
-                        onClick={() => {
-                          setSelectedLayout(option.value);
-                          setIsLayoutDropdownOpen(false);
-                          if (onLayoutChange) {
-                            onLayoutChange(option.value);
-                          }
-                        }}
-                      >
-                        <div className="settings-dropdown-option-title">{option.value}</div>
-                        <div className="settings-dropdown-option-subtitle">{option.subtitle}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
+          {/* Tabs */}
+          <div className="settings-tabs">
+            <button
+              type="button"
+              className={`settings-tab ${activeTab === 'layout' ? 'active' : ''}`}
+              onClick={() => setActiveTab('layout')}
+            >
+              Layout
+            </button>
+            <button
+              type="button"
+              className={`settings-tab ${activeTab === 'formatting' ? 'active' : ''}`}
+              onClick={() => setActiveTab('formatting')}
+            >
+              Formatting
+            </button>
+            <button
+              type="button"
+              className={`settings-tab ${activeTab === 'shortcuts' ? 'active' : ''}`}
+              onClick={() => setActiveTab('shortcuts')}
+            >
+              Shortcuts
+            </button>
           </div>
 
-          {/* Measure, Dimension & Time Settings Section */}
-          <div className="settings-section">
-            <div className="settings-section-header">
-              <p className="settings-section-title">Measure, Dimension & Time Settings</p>
-            </div>
+          {/* Data Tab */}
+          {/* Layout Tab — Measures/Dimensions/Time + Layout settings */}
+          {activeTab === 'layout' && (
+            <div className="settings-tab-content">
 
-            <div className="settings-field">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                <label className="settings-field-label" style={{ marginBottom: 0 }}>Measure Category</label>
-                <a 
-                  href="#" 
-                  className="settings-link" 
-                  style={{ marginBottom: 0 }}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setIsReorderModalOpen(true);
-                  }}
-                >
-                  Reorder Measures
-                </a>
-              </div>
-              <div className="settings-dropdown-wrapper" ref={measureSubgroupDropdownRef}>
-                <div 
-                  className={`settings-dropdown-trigger ${isMeasureSubgroupDropdownOpen ? 'open' : ''}`}
-                  onClick={() => setIsMeasureSubgroupDropdownOpen(!isMeasureSubgroupDropdownOpen)}
-                >
-                  <span className={getMeasureSubgroupSelectedCount() > 0 ? 'settings-dropdown-value' : 'settings-dropdown-placeholder'}>
-                    {getMeasureSubgroupSelectedCount() > 0 ? `${getMeasureSubgroupSelectedCount()} Category${getMeasureSubgroupSelectedCount() !== 1 ? 'ies' : ''} Selected` : 'Select Measure Category'}
-                  </span>
-                  <svg className="settings-input-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
+              {/* ── Measures, Dimensions & Time ── */}
+              <div className="settings-section" style={{ order: 2 }}>
+                <div className="settings-section-header settings-section-header-mdt">
+                  <p className="settings-section-title">Measures, Dimensions & Time</p>
                 </div>
-                {isMeasureSubgroupDropdownOpen && (
-                  <div className="settings-dropdown-list settings-dimension-dropdown">
-                    {measureSubgroupOptions.map((option, index) => {
-                      const isSelected = selectedMeasureSubgroup.has(option.value);
-                      return (
-                        <div
-                          key={index}
-                          className="settings-dropdown-checkbox-option"
-                          onClick={() => toggleMeasureSubgroup(option.value)}
-                        >
-                          <div className={`settings-checkbox-wrapper ${isSelected ? 'checked' : ''}`}>
-                            {isSelected ? (
-                              <svg className="settings-checkbox-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                              </svg>
-                            ) : null}
-                          </div>
-                          <span className="settings-dropdown-checkbox-label">{option.value}</span>
-                        </div>
-                      );
-                    })}
+
+                <div className="settings-field">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <label className="settings-field-label" style={{ marginBottom: 0 }}>Measure category</label>
+                    <a
+                      href="#"
+                      className="settings-link"
+                      style={{ marginBottom: 0 }}
+                      onClick={(e) => { e.preventDefault(); setIsReorderModalOpen(true); }}
+                    >
+                      Reorder
+                    </a>
                   </div>
-                )}
-              </div>
-              {measures.length > 0 && (
-                <p className="settings-field-helper-text">
-                  Showing {visibleMeasureIds.size === 0 ? measures.length : measures.filter(m => visibleMeasureIds.has(m.id)).length} out of {totalMeasuresAvailable} measures available across {selectedMeasureSubgroup.size} categor{selectedMeasureSubgroup.size !== 1 ? 'ies' : 'y'}
-                </p>
-              )}
-            </div>
-
-            <div className="settings-field settings-field-spaced">
-              <label className="settings-field-label">Dimension Levels</label>
-              <div className="settings-dropdown-wrapper" ref={dimensionDropdownRef}>
-                <div 
-                  className={`settings-dropdown-trigger ${isDimensionDropdownOpen ? 'open' : ''}`}
-                  onClick={() => setIsDimensionDropdownOpen(!isDimensionDropdownOpen)}
-                >
-                  <span className={getSelectedCount() > 0 ? 'settings-dropdown-value' : 'settings-dropdown-placeholder'}>
-                    {getSelectedCount() > 0 ? `${getSelectedCount()} Level${getSelectedCount() !== 1 ? 's' : ''} Selected` : 'Select Dimension Levels'}
-                  </span>
-                  <svg className="settings-input-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </div>
-                {isDimensionDropdownOpen && (
-                  <div className="settings-dropdown-list settings-dimension-dropdown">
-                    {Object.entries(getHierarchyGroups()).map(([hierarchy, levels]) => (
-                      <div key={hierarchy}>
-                        <div className="settings-dropdown-header">{hierarchy}</div>
-                        {levels.map((level) => {
-                          const isSelected = selectedDimensionLevels.has(level.id);
+                  <div className="settings-dropdown-wrapper" ref={measureSubgroupDropdownRef}>
+                    <div
+                      className={`settings-dropdown-trigger ${isMeasureSubgroupDropdownOpen ? 'open' : ''}`}
+                      onClick={() => setIsMeasureSubgroupDropdownOpen(!isMeasureSubgroupDropdownOpen)}
+                    >
+                      <span className={getMeasureSubgroupSelectedCount() > 0 ? 'settings-dropdown-value' : 'settings-dropdown-placeholder'}>
+                        {getMeasureSubgroupSelectedCount() > 0 ? `${getMeasureSubgroupSelectedCount()} Categor${getMeasureSubgroupSelectedCount() !== 1 ? 'ies' : 'y'} Selected` : 'Select Measure Category'}
+                      </span>
+                      <svg className="settings-input-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                    {isMeasureSubgroupDropdownOpen && (
+                      <div className="settings-dropdown-list settings-dimension-dropdown">
+                        {measureSubgroupOptions.map((option, index) => {
+                          const isSelected = selectedMeasureSubgroup.has(option.value);
                           return (
-                            <div
-                              key={level.id}
-                              className="settings-dropdown-checkbox-option"
-                              onClick={() => toggleDimensionLevel(level.id)}
-                            >
+                            <div key={index} className="settings-dropdown-checkbox-option" onClick={() => toggleMeasureSubgroup(option.value)}>
                               <div className={`settings-checkbox-wrapper ${isSelected ? 'checked' : ''}`}>
-                                {isSelected ? (
-                                  <svg className="settings-checkbox-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                                  </svg>
-                                ) : null}
+                                {isSelected && <svg className="settings-checkbox-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>}
                               </div>
-                              <span className="settings-dropdown-checkbox-label">{level.name}</span>
+                              <span className="settings-dropdown-checkbox-label">{option.value}</span>
                             </div>
                           );
                         })}
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="settings-field" style={{ marginTop: '12px' }}>
-              <label className="settings-field-label">Time Granularity</label>
-              <div className="settings-dropdown-wrapper" ref={timeGranularityDropdownRef}>
-                <div 
-                  className={`settings-dropdown-trigger ${isTimeGranularityDropdownOpen ? 'open' : ''}`}
-                  onClick={() => setIsTimeGranularityDropdownOpen(!isTimeGranularityDropdownOpen)}
-                >
-                  <span className={getTimeGranularitySelectedCount() > 0 ? 'settings-dropdown-value' : 'settings-dropdown-placeholder'}>
-                    {getTimeGranularitySelectedCount() > 0 ? `${getTimeGranularitySelectedCount()} Level${getTimeGranularitySelectedCount() !== 1 ? 's' : ''} Selected` : 'Select Time Granularity'}
-                  </span>
-                  <svg className="settings-input-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </div>
-                {isTimeGranularityDropdownOpen && (
-                  <div className="settings-dropdown-list settings-dimension-dropdown">
-                    {timeGranularities.map((granularity) => {
-                      const isSelected = selectedTimeGranularities.has(granularity.id);
-                      return (
-                        <div
-                          key={granularity.id}
-                          className="settings-dropdown-checkbox-option"
-                          onClick={() => toggleTimeGranularity(granularity.id)}
-                        >
-                          <div className={`settings-checkbox-wrapper ${isSelected ? 'checked' : ''}`}>
-                            {isSelected ? (
-                              <svg className="settings-checkbox-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                              </svg>
-                            ) : null}
-                          </div>
-                          <span className="settings-dropdown-checkbox-label">{granularity.name}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Show all Periods Toggle */}
-            <div className="settings-field" style={{ marginTop: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <label className="settings-field-label">Show all Periods</label>
-                <button
-                  className={`settings-toggle ${showAllPeriods ? 'active' : ''}`}
-                  onClick={() => onShowAllPeriodsChange?.(!showAllPeriods)}
-                  aria-label="Toggle show all periods"
-                >
-                  <div className="settings-toggle-track">
-                    <div className="settings-toggle-thumb"></div>
-                    {showAllPeriods && (
-                      <svg className="settings-toggle-check" fill="none" stroke="white" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                      </svg>
                     )}
                   </div>
-                </button>
-              </div>
-            </div>
+                  {measures.length > 0 && (
+                    <p className="settings-field-helper-text">
+                      Showing {visibleMeasureIds.size === 0 ? measures.length : measures.filter(m => visibleMeasureIds.has(m.id)).length} of {totalMeasuresAvailable} measures
+                    </p>
+                  )}
+                </div>
 
-            {/* Start and End Period Inputs */}
-            {!showAllPeriods && (
-              <>
-                <div className="settings-field" style={{ marginTop: '12px' }}>
-                  <label className="settings-field-label">Start</label>
-                  <div className="settings-input-wrapper">
-                    <input
-                      type="date"
-                      className="settings-input settings-date-input"
-                      placeholder="Start"
-                      value={startPeriod}
-                      onChange={(e) => onStartPeriodChange?.(e.target.value)}
-                    />
+                <div className="settings-field settings-field-spaced">
+                  <label className="settings-field-label">Dimension levels</label>
+                  <div className="settings-dropdown-wrapper" ref={dimensionDropdownRef}>
+                    <div
+                      className={`settings-dropdown-trigger ${isDimensionDropdownOpen ? 'open' : ''}`}
+                      onClick={() => setIsDimensionDropdownOpen(!isDimensionDropdownOpen)}
+                    >
+                      <span className={getSelectedCount() > 0 ? 'settings-dropdown-value' : 'settings-dropdown-placeholder'}>
+                        {getSelectedCount() > 0 ? `${getSelectedCount()} Level${getSelectedCount() !== 1 ? 's' : ''} Selected` : 'Select Dimension Levels'}
+                      </span>
+                      <svg className="settings-input-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                    {isDimensionDropdownOpen && (
+                      <div className="settings-dropdown-list settings-dimension-dropdown">
+                        {Object.entries(getHierarchyGroups()).map(([hierarchy, levels]) => (
+                          <div key={hierarchy}>
+                            <div className="settings-dropdown-header">{hierarchy}</div>
+                            {levels.map((level) => {
+                              const isSelected = selectedDimensionLevels.has(level.id);
+                              const getLevelIcon = () => {
+                                if (level.id === 'account') return <img src={AccountIcon} alt="Account" style={{ width: '20px', height: '20px', marginLeft: '12px', marginRight: '4px', flexShrink: 0 }} />;
+                                if (level.id === 'category') return <img src={CategoryIcon} alt="Category" style={{ width: '20px', height: '20px', marginLeft: '12px', marginRight: '4px', flexShrink: 0 }} />;
+                                if (level.id === 'product') return <img src={ProductIcon} alt="Product" style={{ width: '20px', height: '20px', marginLeft: '12px', marginRight: '4px', flexShrink: 0 }} />;
+                                return null;
+                              };
+                              return (
+                                <div key={level.id} className="settings-dropdown-checkbox-option" onClick={() => toggleDimensionLevel(level.id)}>
+                                  <div className={`settings-checkbox-wrapper ${isSelected ? 'checked' : ''}`}>
+                                    {isSelected && <svg className="settings-checkbox-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>}
+                                  </div>
+                                  {getLevelIcon()}
+                                  <span className="settings-dropdown-checkbox-label">{level.name}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
 
                 <div className="settings-field" style={{ marginTop: '12px' }}>
-                  <label className="settings-field-label">End</label>
-                  <div className="settings-input-wrapper">
-                    <input
-                      type="date"
-                      className="settings-input settings-date-input"
-                      placeholder="End"
-                      value={endPeriod}
-                      onChange={(e) => onEndPeriodChange?.(e.target.value)}
-                    />
+                  <label className="settings-field-label">Time granularity</label>
+                  <div className="settings-dropdown-wrapper" ref={timeGranularityDropdownRef}>
+                    <div
+                      className={`settings-dropdown-trigger ${isTimeGranularityDropdownOpen ? 'open' : ''}`}
+                      onClick={() => setIsTimeGranularityDropdownOpen(!isTimeGranularityDropdownOpen)}
+                    >
+                      <span className={getTimeGranularitySelectedCount() > 0 ? 'settings-dropdown-value' : 'settings-dropdown-placeholder'}>
+                        {getTimeGranularitySelectedCount() > 0 ? `${getTimeGranularitySelectedCount()} Level${getTimeGranularitySelectedCount() !== 1 ? 's' : ''} Selected` : 'Select Time Granularity'}
+                      </span>
+                      <svg className="settings-input-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                    {isTimeGranularityDropdownOpen && (
+                      <div className="settings-dropdown-list settings-dimension-dropdown">
+                        {timeGranularities.map((granularity) => {
+                          const isSelected = selectedTimeGranularities.has(granularity.id);
+                          return (
+                            <div key={granularity.id} className="settings-dropdown-checkbox-option" onClick={() => toggleTimeGranularity(granularity.id)}>
+                              <div className={`settings-checkbox-wrapper ${isSelected ? 'checked' : ''}`}>
+                                {isSelected && <svg className="settings-checkbox-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>}
+                              </div>
+                              <span className="settings-dropdown-checkbox-label">{granularity.name}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 </div>
-              </>
-            )}
-          </div>
 
-          {/* Display Settings Section */}
-          <div className="settings-section">
-            <div className="settings-section-header">
-              <p className="settings-section-title">Display Settings</p>
-            </div>
-
-            <div className="settings-field settings-field-spacing">
-              <label className="settings-field-label">Row Settings</label>
-              <div className="settings-button-group">
-                <button 
-                  className="settings-button settings-button-left"
-                  onClick={onExpandAllRows}
-                  disabled={!onExpandAllRows}
-                >
-                  Expand All Rows
-                </button>
-                <button 
-                  className="settings-button settings-button-right"
-                  onClick={onCollapseAllRows}
-                  disabled={!onCollapseAllRows}
-                >
-                  <span className="settings-button-text">Collapse All Rows</span>
-                  <svg className="settings-button-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            <div className="settings-field settings-field-spacing">
-              <label className="settings-field-label">Column Settings</label>
-              <div className="settings-button-group">
-                <button 
-                  className="settings-button settings-button-left"
-                  onClick={handleResetColumnWidth}
-                >
-                  Reset Column Width
-                </button>
-                <button className="settings-button settings-button-right">
-                  <span className="settings-button-text">Freeze columns</span>
-                  <svg className="settings-button-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            <div className="settings-field">
-              <label className="settings-field-label">Column Width</label>
-              <div className="settings-slider-wrapper">
-                <span className="settings-slider-label">1-100</span>
-                <div className="settings-slider-container" ref={sliderRef} onClick={handleSliderClick}>
-                  <div className="settings-slider-track">
-                    <div className="settings-slider-fill" style={{ width: `${((sliderValue - 1) / 99) * 100}%` }}></div>
-                    <div 
-                      className="settings-slider-thumb" 
-                      style={{ left: `${((sliderValue - 1) / 99) * 100}%` }}
-                      onMouseDown={handleSliderMouseDown}
-                    ></div>
+                {/* Show all Periods Toggle */}
+                <div className="settings-field" style={{ marginTop: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <label className="settings-field-label">Show all periods</label>
+                    <button
+                      className={`settings-toggle ${showAllPeriods ? 'active' : ''}`}
+                      onClick={() => onShowAllPeriodsChange?.(!showAllPeriods)}
+                      aria-label="Toggle show all periods"
+                    >
+                      <div className="settings-toggle-track">
+                        <div className="settings-toggle-thumb"></div>
+                        {showAllPeriods && (
+                          <svg className="settings-toggle-check" fill="none" stroke="white" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </div>
+                    </button>
                   </div>
                 </div>
-                <span className="settings-slider-value">{sliderValue}</span>
+
+                {/* Date range */}
+                {!showAllPeriods && (
+                  <>
+                    <div className="settings-field" style={{ marginTop: '12px' }}>
+                      <label className="settings-field-label">Start</label>
+                      <div className="settings-input-wrapper">
+                        <input type="date" className="settings-input settings-date-input" value={startPeriod} onChange={(e) => onStartPeriodChange?.(e.target.value)} />
+                      </div>
+                    </div>
+                    <div className="settings-field" style={{ marginTop: '12px' }}>
+                      <label className="settings-field-label">End</label>
+                      <div className="settings-input-wrapper">
+                        <input type="date" className="settings-input settings-date-input" value={endPeriod} onChange={(e) => onEndPeriodChange?.(e.target.value)} />
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* ── Layout ── */}
+              <div className="settings-section" style={{ order: 1 }}>
+                <div className="settings-section-header settings-section-header-layout">
+                  <p className="settings-section-title">Layout</p>
+                </div>
+
+                {/* Layout dropdown */}
+                <div className="settings-field">
+                  <label className="settings-field-label">Select layout</label>
+                  <div className="settings-dropdown-wrapper" ref={layoutDropdownRef}>
+                    <div
+                      className={`settings-dropdown-trigger ${isLayoutDropdownOpen ? 'open' : ''}`}
+                      onClick={() => setIsLayoutDropdownOpen(!isLayoutDropdownOpen)}
+                    >
+                      <span className={selectedLayout ? 'settings-dropdown-value' : 'settings-dropdown-placeholder'}>
+                        {selectedLayout || 'Select Layout'}
+                      </span>
+                      <svg className="settings-input-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                    {isLayoutDropdownOpen && (
+                      <div className="settings-dropdown-list">
+                        {layoutOptions.map((option, index) => (
+                          <div
+                            key={index}
+                            className={`settings-dropdown-option ${selectedLayout === option.value ? 'selected' : ''}`}
+                            onClick={() => { setSelectedLayout(option.value); setIsLayoutDropdownOpen(false); onLayoutChange?.(option.value); }}
+                          >
+                            <div className="settings-dropdown-option-title">{option.value}</div>
+                            <div className="settings-dropdown-option-subtitle">{option.subtitle}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Show row information */}
+                <div className="settings-field">
+                  <div className="settings-checkbox-row">
+                    <label
+                      className="settings-standalone-checkbox-label"
+                      onClick={() => { const next = !showAdditionalFrozenColumns; setShowAdditionalFrozenColumns(next); onShowAdditionalFrozenColumnsChange?.(next); }}
+                    >
+                      <div className={`settings-checkbox-wrapper settings-checkbox-wrapper-standalone ${showAdditionalFrozenColumns ? 'checked' : ''}`}>
+                        {showAdditionalFrozenColumns && <svg className="settings-checkbox-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>}
+                      </div>
+                      <span className="settings-checkbox-text">Show row information</span>
+                    </label>
+                    <button type="button" className="settings-link-button" onClick={(e) => { e.stopPropagation(); onEditFrozenColumns?.(); }}>Configure</button>
+                  </div>
+                </div>
+
+                {/* Show sub columns */}
+                <div className="settings-field">
+                  <div className="settings-checkbox-row">
+                    <label
+                      className="settings-standalone-checkbox-label"
+                      onClick={() => { const next = !showSubColumns; setShowSubColumns(next); onShowSubColumnsChange?.(next); }}
+                    >
+                      <div className={`settings-checkbox-wrapper settings-checkbox-wrapper-standalone ${showSubColumns ? 'checked' : ''}`}>
+                        {showSubColumns && <svg className="settings-checkbox-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>}
+                      </div>
+                      <span className="settings-checkbox-text">Show sub columns</span>
+                    </label>
+                    <button type="button" className="settings-link-button" onClick={(e) => { e.stopPropagation(); onEditSubColumns?.(); }}>Configure</button>
+                  </div>
+                </div>
+
+                {/* Column width + reset */}
+                <div className="settings-field" style={{ marginTop: '16px' }}>
+                  <div className="settings-field-inline-header">
+                    <label className="settings-field-label">Column width</label>
+                    <button type="button" className="settings-link-button" onClick={handleResetColumnWidth}>Reset</button>
+                  </div>
+                  <div className="settings-slider-wrapper">
+                    <span className="settings-slider-label">1–100</span>
+                    <div className="settings-slider-container" ref={sliderRef} onClick={handleSliderClick}>
+                      <div className="settings-slider-track">
+                        <div className="settings-slider-fill" style={{ width: `${((sliderValue - 1) / 99) * 100}%` }}></div>
+                        <div className="settings-slider-thumb" style={{ left: `${((sliderValue - 1) / 99) * 100}%` }} onMouseDown={handleSliderMouseDown}></div>
+                      </div>
+                    </div>
+                    <span className="settings-slider-value">{sliderValue}</span>
+                  </div>
+                </div>
+              </div>
+
+
+            </div>
+          )}
+
+          {/* Formatting Tab */}
+          {activeTab === 'formatting' && (
+            <div className="settings-tab-content">
+              <ConditionalFormattingTab
+                rules={conditionalFormattingRules}
+                onRulesChange={(rules) => {
+                  if (onConditionalFormattingRulesChange) {
+                    onConditionalFormattingRulesChange(rules);
+                  }
+                }}
+                onPreviewRuleChange={onConditionalFormattingPreviewChange}
+                availableMeasures={measures}
+                selectedCellKey={selectedCellKey}
+                designSystemRulesEnabled={designSystemRulesEnabled}
+                onDesignSystemRulesChange={onDesignSystemRulesChange}
+                launchFromSelectionSignal={cfLaunchFromSelectionSignal}
+                launchFromSelectionCellKeys={cfLaunchFromSelectionCellKeys}
+                applyRulesAsColorScale={applyCfRulesAsColorScale}
+                onApplyRulesAsColorScaleChange={onApplyCfRulesAsColorScaleChange}
+              />
+            </div>
+          )}
+
+          {/* Shortcuts Tab */}
+          {activeTab === 'shortcuts' && (
+            <div className="settings-tab-content">
+              <div className="settings-section">
+                <div className="settings-section-header">
+                  <p className="settings-section-title">Shortcuts</p>
+                </div>
+
+                <div className="settings-field">
+                  <p className="settings-field-helper-text settings-shortcuts-intro">Use these controls to configure and turn shortcuts on or off.</p>
+                </div>
+
+                <div className="settings-field">
+                  <div className="settings-checkbox-row">
+                    <label
+                      className="settings-standalone-checkbox-label"
+                      onClick={() => setEnableKeyboardShortcuts(prev => !prev)}
+                    >
+                      <div className={`settings-checkbox-wrapper settings-checkbox-wrapper-standalone ${enableKeyboardShortcuts ? 'checked' : ''}`}>
+                        {enableKeyboardShortcuts && (
+                          <svg className="settings-checkbox-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </div>
+                      <span className="settings-checkbox-text">Keyboard shortcuts</span>
+                    </label>
+                    <button
+                      type="button"
+                      className="settings-link-button"
+                      onClick={(e) => { e.stopPropagation(); }}
+                    >
+                      Configure
+                    </button>
+                  </div>
+                </div>
+
+                <div className="settings-field">
+                  <div className="settings-checkbox-row">
+                    <label
+                      className="settings-standalone-checkbox-label"
+                      onClick={() => setEnableRightClickMenuOptions(prev => !prev)}
+                    >
+                      <div className={`settings-checkbox-wrapper settings-checkbox-wrapper-standalone ${enableRightClickMenuOptions ? 'checked' : ''}`}>
+                        {enableRightClickMenuOptions && (
+                          <svg className="settings-checkbox-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </div>
+                      <span className="settings-checkbox-text">Right click menu options</span>
+                    </label>
+                    <button
+                      type="button"
+                      className="settings-link-button"
+                      onClick={(e) => { e.stopPropagation(); }}
+                    >
+                      Configure
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
+          )}
         </div>
-      </div>
       
       {/* Reorder Measures Modal */}
       {measures.length > 0 && (

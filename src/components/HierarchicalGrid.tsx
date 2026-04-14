@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
-import { MeasureData, GridRow as GridRowType } from '../types';
+import { MeasureData, GridRow as GridRowType, ParentTotalsRollupMode } from '../types';
 import GridRowComponent from './GridRow';
 import GridFooter from './GridFooter';
 import CellNotePopover from './CellNotePopover';
@@ -10,15 +10,129 @@ import {
   updateCrossMeasureDependencies,
   findRowById,
   distributeProportionally,
+  childrenForParentRollup,
 } from '../utils/valuePropagation';
+import {
+  mergeColumnFilteredSiblingsIntoTree,
+  mergeGlobalTopBottomNMeasureChildren,
+} from '../utils/filterSummaryRows';
 import {
   extractSearchTerms,
   rowMatchesSearch,
   getMatchingTimePeriodKeys,
   separateSearchTerms,
 } from '../utils/searchUtils';
+import { ApprovalRequest } from '../types';
+import type { PlanningGridCellMapsSnapshot } from '../contexts/PlanningGridSessionContext';
 import { SearchHighlight } from './SearchHighlight';
+import ColumnFilterPopover, { ColumnFilter } from './ColumnFilterPopover';
 import '../styles/components/Grid.css';
+
+type HierarchyDim = 'account' | 'category' | 'product';
+
+/** Single dimension targeted by active Top/Bottom N when hierarchy is not preserved (flat N mode). */
+function getGlobalTopBottomNFlatViewTargetDimension(
+  columnFilters: Map<string, ColumnFilter>,
+  preserveHierarchy: boolean,
+): HierarchyDim | null {
+  if (preserveHierarchy) return null;
+  const dims = new Set<HierarchyDim>();
+  for (const [, filter] of columnFilters) {
+    if (!filter.conditions?.length) continue;
+    for (const c of filter.conditions) {
+      if (c.value?.trim() === '') continue;
+      if (c.operator === 'topN' || c.operator === 'bottomN') {
+        const d = c.dimension;
+        if (d === 'account' || d === 'category' || d === 'product') dims.add(d);
+      }
+    }
+  }
+  if (dims.size !== 1) return null;
+  return [...dims][0];
+}
+
+/** Legacy 32×32 bidirectional sort icon (neutral / third-click state) */
+const COL_HEADER_SORT_ICON_NEUTRAL_PATH =
+  'M16.923 9.84655C17.2922 9.47731 17.2922 8.92343 16.923 8.55419L9.9076 1.47695C9.53837 1.1077 8.98452 1.1077 8.61529 1.47695L1.5384 8.55419C1.16917 8.92343 1.16917 9.47731 1.5384 9.84655L2.8307 11.1389C3.19993 11.5082 3.75377 11.5082 4.123 11.1389L6.33838 8.92344C6.70761 8.55419 7.38453 8.80035 7.38453 9.35422V22.401C7.38453 22.8933 7.8153 23.3241 8.3076 23.3241H10.1537C10.6461 23.3241 11.0768 22.8318 11.0768 22.401V9.35422C11.0768 8.80035 11.7537 8.55419 12.123 8.92344L14.3383 11.1389C14.7076 11.5082 15.2614 11.5082 15.6307 11.1389L16.923 9.84655V9.84655ZM30.4617 22.1535L29.1694 20.9226C28.8001 20.5534 28.2463 20.5534 27.8771 20.9226L25.6617 23.1381C25.2924 23.5074 24.6155 23.2612 24.6155 22.7073V9.53752C24.6155 9.04519 24.1848 8.61441 23.6925 8.61441H21.8463C21.354 8.61441 20.9232 9.10674 20.9232 9.53752V22.5843C20.9232 23.1381 20.2463 23.3843 19.8771 23.015L17.6617 20.7996C17.2925 20.4303 16.7386 20.4303 16.3694 20.7996L15.0771 22.1535C14.7079 22.5227 14.7079 23.0766 15.0771 23.4458L22.154 30.5231C22.5232 30.8923 23.0771 30.8923 23.4463 30.5231L30.5232 23.4458C30.8309 23.0766 30.8309 22.4612 30.4617 22.1535V22.1535Z';
+
+/** Column header: neutral (legacy ↕), ascending (↑), descending (↓) — color from .col-sort-icon-btn */
+function ColHeaderSortGlyph({ dir, muted }: { dir: 'asc' | 'desc' | null; muted?: boolean }) {
+  const stroke = { stroke: 'currentColor', strokeWidth: 2.25, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
+  const op = muted ? 0.45 : 1;
+  if (dir === 'asc') {
+    return (
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ opacity: op, transition: 'opacity 0.2s' }}>
+        <path d="M12 19V5M12 5l-4.5 4.5M12 5l4.5 4.5" {...stroke} />
+      </svg>
+    );
+  }
+  if (dir === 'desc') {
+    return (
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ opacity: op, transition: 'opacity 0.2s' }}>
+        <path d="M12 5v14M12 19l-4.5-4.5M12 19l4.5-4.5" {...stroke} />
+      </svg>
+    );
+  }
+  return (
+    <svg width="11" height="11" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ opacity: muted ? 0.45 : 0.92, transition: 'opacity 0.2s' }}>
+      <path fillRule="evenodd" clipRule="evenodd" d={COL_HEADER_SORT_ICON_NEUTRAL_PATH} fill="currentColor" />
+    </svg>
+  );
+}
+
+/** Deterministic pseudo-random [0,1) from a string seed - must match GridRow's getSubColumnValue */
+const seededRandom = (seed: string): number => {
+  let h = 5381;
+  for (let i = 0; i < seed.length; i++) {
+    h = (Math.imul(33, h) ^ seed.charCodeAt(i)) >>> 0;
+  }
+  return h / 4294967296;
+};
+
+const getTargetAchievementPct = (rowId: string, timeKey: string): number => {
+  const rand = seededRandom(`${rowId}-${timeKey}-targetAchievement`);
+  if (rand < 0.18) {
+    return Math.round(4 + rand * 170);
+  }
+  if (rand > 0.78) {
+    return Math.round(100 + ((rand - 0.78) / 0.22) * 35);
+  }
+  return Math.round(55 + ((rand - 0.18) / 0.60) * 45);
+};
+
+const getTargetValue = (actualValue: number, rowId: string, timeKey: string): number => {
+  const achievementPct = getTargetAchievementPct(rowId, timeKey);
+  if (actualValue === 0 || achievementPct <= 0) return 0;
+  return actualValue / (achievementPct / 100);
+};
+
+/** Get numeric value for filter/sort. Supports composite keys like "jan2026-Actual" or "jan2026-MoM" */
+const getCellNumericValueForColumn = (row: GridRowType, compositeKey: string): number => {
+  const dashIdx = compositeKey.indexOf('-');
+  const timeKey = dashIdx >= 0 ? compositeKey.slice(0, dashIdx) : compositeKey;
+  const subColId = dashIdx >= 0 ? compositeKey.slice(dashIdx + 1) : 'Actual';
+  const actualValue = Number(row.values?.[timeKey as keyof typeof row.values] ?? 0);
+  const rand = seededRandom(`${row.id}-${timeKey}-${subColId}`);
+  const targetValue = getTargetValue(actualValue, row.id, timeKey);
+  if (subColId === 'Actual' || subColId === 'achieved') return actualValue;
+  switch (subColId) {
+    case 'yoy': return Math.round((rand * 40) - 20);
+    case 'mom': return Math.round((rand * 20) - 10);
+    case 'target': return targetValue;
+    case 'targetAchievement': return getTargetAchievementPct(row.id, timeKey);
+    case 'planned': return actualValue * (0.85 + rand * 0.2);
+    default: return actualValue;
+  }
+};
+
+/** Map global-sort criterion keys to composite keys for getCellNumericValueForColumn (e.g. yoy → jan2026-yoy). */
+function expandGlobalSortColumnKey(columnKey: string, visibleTimeKeys: string[]): string {
+  if (columnKey.includes('-')) return columnKey;
+  const visibleSet = new Set(visibleTimeKeys);
+  if (visibleSet.has(columnKey)) return columnKey;
+  const first = visibleTimeKeys[0];
+  return first ? `${first}-${columnKey}` : columnKey;
+}
 
 interface HierarchicalGridProps {
   data: MeasureData[];
@@ -28,6 +142,7 @@ interface HierarchicalGridProps {
   columnWidth?: number; // Column width in pixels for time period columns
   onExpandAllRows?: (handler: () => void) => void; // Callback to register expand handler
   onCollapseAllRows?: (handler: () => void) => void; // Callback to register collapse handler
+  onResetColumnWidths?: (handler: () => void) => void; // Callback to register column-width reset handler
   onSettingsClick?: () => void; // Callback to open settings panel
   initialFocusedCell?: { rowId: string; monthKey: string } | null; // Initial focused cell when switching layouts
   onFocusedCellChange?: (focus: { rowId: string; monthKey: string } | null) => void; // Callback when focused cell changes
@@ -74,6 +189,38 @@ interface HierarchicalGridProps {
   measureGroupContext?: Map<string, string>; // Per-measure group context for shared measures
   onMeasureGroupContextChange?: (measureId: string, groupContext: string) => void; // Callback to change per-measure group context
   sharedMeasureIds?: string[]; // IDs of measures that exist in multiple groups
+  onScrollToMeasureReady?: (handler: (measureId: string) => void) => void; // Callback to expose function to scroll to a measure
+  newlyAddedMeasureIds?: string[]; // IDs of newly added measures for animation effect
+  frozenColumns?: Array<{ id: string; name: string }>; // Array of frozen columns to display
+  showAdditionalFrozenColumns?: boolean; // Whether to show additional frozen columns
+  subColumns?: Array<{ id: string; name: string }>; // Sub-columns to show within each time column
+  globalSortConfig?: import('../components/GlobalSortPanel').GlobalSortConfig; // Global multi-column sort config
+  approvalRequests?: Map<string, import('../types').ApprovalRequest>; // Map of approval requests keyed by cellKey
+  onApprovalUpdate?: (cellKey: string, approval: import('../types').ApprovalRequest | null) => void; // Callback to update approval status
+  onApprovalAction?: (approvalId: string, action: 'submitForApproval' | 'approved' | 'approvedWithCondition' | 'rejected', comment: string, approverRole?: string) => void; // Direct action handler (supports multi-approver)
+  onApprovalStatusChangeViewHistory?: (cellKey: string) => void; // Callback to view edit history for approval status change
+  onApprovalStatusChangeMarkAsRead?: (cellKey: string) => void; // Callback to mark approval status change as read
+  conditionalFormattingRules?: import('../types/conditionalFormatting').ConditionalFormattingRule[];
+  /** Merge background "greater than" rules into one color scale by threshold. */
+  conditionalFormattingColorScaleMerge?: boolean;
+  isDesignSystemRulesEnabled?: boolean;
+  /** Parent totals: full hierarchy vs visible rows only (excludes synthetic filtered-out aggregates). */
+  parentTotalsRollupMode?: ParentTotalsRollupMode;
+  /** Plan is Submitted — grid shows pending approval styling and blocks edits. */
+  planReviewGridLock?: boolean;
+  /** Plan submitter during Submitted — stripes all plan-locked value cells (read-only texture). */
+  planReviewRequesterStripes?: boolean;
+  /** Manager/approver: pencil opens inline edit popover (Manager override in More Actions) during review. */
+  approverMayOpenReviewPopover?: boolean;
+  /** Per-cell unlock when an approver uses Override (value cells only). */
+  approverOverrideCellKeys?: Set<string>;
+  pendingApproverEdit?: { rowId: string; monthKey: string } | null;
+  onPendingApproverEditConsumed?: () => void;
+  onManagerOverrideForCell?: (cellKey: string) => void;
+  /** Restore cell edit maps after navigating back to the grid (Planning session persistence). */
+  initialCellMapsSnapshot?: PlanningGridCellMapsSnapshot | null;
+  /** Called when edit/impact/note maps change (debounced) so parent can persist across routes. */
+  onCellMapsSnapshotChange?: (snapshot: PlanningGridCellMapsSnapshot) => void;
 }
 
 const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({ 
@@ -85,6 +232,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   columnWidth = 100, 
   onExpandAllRows, 
   onCollapseAllRows,
+  onResetColumnWidths,
   onCellFocusWithHistory,
   onSettingsClick,
   initialFocusedCell,
@@ -129,7 +277,31 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   onMeasureGroupChange,
   measureGroupContext = new Map<string, string>(),
   onMeasureGroupContextChange,
-  sharedMeasureIds = []
+  sharedMeasureIds = [],
+  onScrollToMeasureReady,
+  newlyAddedMeasureIds = [],
+  frozenColumns = [],
+  showAdditionalFrozenColumns = false,
+  subColumns = [],
+  globalSortConfig,
+  approvalRequests = new Map(),
+  onApprovalUpdate,
+  onApprovalAction: onApprovalActionDirect,
+  onApprovalStatusChangeViewHistory,
+  onApprovalStatusChangeMarkAsRead,
+  conditionalFormattingRules = [],
+  conditionalFormattingColorScaleMerge = false,
+  isDesignSystemRulesEnabled = true,
+  parentTotalsRollupMode = 'fullHierarchy',
+  planReviewGridLock = false,
+  planReviewRequesterStripes = false,
+  approverMayOpenReviewPopover = false,
+  approverOverrideCellKeys,
+  pendingApproverEdit = null,
+  onPendingApproverEditConsumed,
+  onManagerOverrideForCell,
+  initialCellMapsSnapshot = null,
+  onCellMapsSnapshotChange,
 }) => {
   const readonlyMeasureIds = readonlyMeasureIdsProp;
   const { industry } = useIndustry();
@@ -143,6 +315,489 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   // Note: Debug logging for onEditHistory removed
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [gridData, setGridData] = useState<MeasureData[]>(data);
+
+  // Sync gridData when the data prop reference changes (e.g. industry switch or HMR reload)
+  useEffect(() => {
+    setGridData(data);
+  }, [data]);
+
+  // Pre-compute per-(timeKey, parentId) sibling value arrays for concentration ranking.
+  // Grouping by parentId means products rank only vs siblings under the same category,
+  // categories vs siblings under the same account, accounts vs siblings under the same measure.
+  const allCellValuesByType = useMemo(() => {
+    const result = new Map<string, Map<string, number[]>>();
+    // Include _cost as a special key so sibling cost values can be looked up per parent group.
+    const timeKeys = ['jan2026','feb2026','mar2026','apr2026','may2026','jun2026','jul2026','aug2026','sep2026','oct2026','nov2026','dec2026','q1','q2','q3','q4','year','_cost'];
+    const visitRow = (row: GridRowType) => {
+      const siblingGroupKey = row.parentId ?? 'root';
+      for (const tk of timeKeys) {
+        const v = (row.values as Record<string, number>)[tk];
+        if (typeof v === 'number' && isFinite(v)) {
+          if (!result.has(tk)) result.set(tk, new Map());
+          const bySibling = result.get(tk)!;
+          if (!bySibling.has(siblingGroupKey)) bySibling.set(siblingGroupKey, []);
+          bySibling.get(siblingGroupKey)!.push(v);
+        }
+      }
+      row.children?.forEach(visitRow);
+    };
+    gridData.forEach(m => m.children?.forEach(visitRow));
+    return result;
+  }, [gridData]);
+
+  // All values per time key across every row — used for pctOfColumnTotal (data bar relative sizing).
+  const allCellValues = useMemo(() => {
+    const result = new Map<string, number[]>();
+    const timeKeys = ['jan2026','feb2026','mar2026','apr2026','may2026','jun2026','jul2026','aug2026','sep2026','oct2026','nov2026','dec2026','q1','q2','q3','q4','year'];
+    const visitRow = (row: GridRowType) => {
+      for (const tk of timeKeys) {
+        const v = (row.values as Record<string, number>)[tk];
+        if (typeof v === 'number' && isFinite(v)) {
+          if (!result.has(tk)) result.set(tk, []);
+          result.get(tk)!.push(v);
+        }
+      }
+      row.children?.forEach(visitRow);
+    };
+    gridData.forEach(m => { visitRow(m); m.children?.forEach(visitRow); });
+    return result;
+  }, [gridData]);
+  
+  // Quick filter state: map of rowId -> QuickFilterCriteria
+  const [quickFilters, setQuickFilters] = useState<Map<string, import('./AddRemoveChildNodesModal').QuickFilterCriteria>>(new Map());
+  
+  // Helper function to get frozen column value (same as GridRow)
+  const getFrozenColumnValue = useCallback((colId: string, rowId: string): string => {
+    // Deterministic pseudo-random from rowId + colId
+    let h = 5381;
+    const seed = `${rowId}-${colId}`;
+    for (let i = 0; i < seed.length; i++) {
+      h = (Math.imul(33, h) ^ seed.charCodeAt(i)) >>> 0;
+    }
+    const rand = h / 4294967296;
+    
+    switch (colId) {
+      case 'users': {
+        const userNames = [
+          'John Doe', 'Jane Smith', 'Michael Johnson', 'Sarah Williams', 
+          'David Brown', 'Emily Davis', 'Robert Miller', 'Lisa Wilson',
+          'James Moore', 'Jennifer Taylor', 'William Anderson', 'Maria Martinez',
+          'Richard Jackson', 'Patricia White', 'Joseph Harris', 'Linda Martin'
+        ];
+        return userNames[Math.floor(rand * userNames.length)];
+      }
+      case 'status': {
+        const statuses = ['Active', 'Inactive'];
+        return statuses[Math.floor(rand * statuses.length)];
+      }
+      case 'region':
+        return ['North', 'South', 'East', 'West', 'Central', 'Northeast', 'Northwest'][Math.floor(rand * 7)];
+      case 'team':
+        return ['Team A', 'Team B', 'Team C', 'Team Alpha', 'Team Beta', 'Team Gamma'][Math.floor(rand * 6)];
+      case 'condition': {
+        // Determine condition based on target achievement percentage
+        // Use first time key as reference for consistency
+        const firstTimeKey = 'jan2026';
+        const achievementPct = getTargetAchievementPct(rowId, firstTimeKey);
+        
+        if (achievementPct >= 100) {
+          return 'Excellent';
+        } else if (achievementPct >= 80) {
+          return 'Good';
+        } else {
+          return 'Needs Attention';
+        }
+      }
+      default:
+        return '';
+    }
+  }, []);
+  
+  // Handler to apply quick filter
+  const handleApplyQuickFilter = useCallback((rowId: string, criteria: import('./AddRemoveChildNodesModal').QuickFilterCriteria | null) => {
+    setQuickFilters(prev => {
+      const newMap = new Map(prev);
+      if (criteria === null) {
+        newMap.delete(rowId);
+      } else {
+        newMap.set(rowId, criteria);
+      }
+      return newMap;
+    });
+  }, []);
+  
+  // Filter children based on quick filter criteria (recursive)
+  const filterChildrenByQuickFilter = useCallback((row: GridRowType): GridRowType | null => {
+    if (!row.children || row.children.length === 0) {
+      return row;
+    }
+    
+    const rowQuickFilter = quickFilters.get(row.id);
+    
+    if (!rowQuickFilter || !rowQuickFilter.filterColumn) {
+      // No filter for this row, but recursively filter children
+      const filteredChildren = row.children
+        .map(child => filterChildrenByQuickFilter(child))
+        .filter((c): c is GridRowType => c !== null);
+      
+      if (filteredChildren.length === 0) {
+        return null;
+      }
+      return { ...row, children: filteredChildren };
+    }
+    
+    // Apply filter to children
+    const filteredChildren = row.children
+      .map(child => {
+        let matches = false;
+        
+        if (rowQuickFilter.filterColumn === 'dimension') {
+          // Filter by node ID when filterColumn is 'dimension'
+          matches = rowQuickFilter.selectedValues.includes(child.id);
+        } else {
+          // Filter by frozen column value
+          const childValue = getFrozenColumnValue(rowQuickFilter.filterColumn!, child.id);
+          matches = rowQuickFilter.selectedValues.includes(childValue);
+        }
+        
+        if (matches) {
+          // Recursively filter this child's children
+          return filterChildrenByQuickFilter(child);
+        }
+        return null;
+      })
+      .filter((c): c is GridRowType => c !== null);
+    
+    if (filteredChildren.length === 0) {
+      return null; // No children match the filter
+    }
+    
+    return { ...row, children: filteredChildren };
+  }, [quickFilters, getFrozenColumnValue]);
+
+  // Frozen column resize - only tracks the frozen columns width (not dimensions column)
+  // Dimensions column is always 300px, frozen columns are resizable
+  const [frozenColWidth, setFrozenColWidth] = useState(() => frozenColumns.length * 140);
+  const frozenColResizingRef = useRef(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const mainHeaderCellRef = useRef<HTMLTableCellElement>(null);
+  const [headerRowHeight, setHeaderRowHeight] = useState(37);
+  const dimensionsColWidth = 300; // Always fixed
+  const totalFrozenWidth = dimensionsColWidth + frozenColWidth;
+
+  // Column-level sort
+  const [sortConfig, setSortConfig] = useState<{ columnKey: string; direction: 'asc' | 'desc' } | null>(null);
+
+  const handleSortClick = useCallback((e: React.MouseEvent<HTMLButtonElement>, key: string) => {
+    e.stopPropagation();
+    setSortConfig(prev => {
+      if (!prev || prev.columnKey !== key) {
+        return { columnKey: key, direction: 'asc' };
+      }
+      if (prev.direction === 'asc') {
+        return { columnKey: key, direction: 'desc' };
+      }
+      return null;
+    });
+  }, []);
+
+  /** Flat list under each measure whenever panel has "preserve hierarchy" off (independent of column sort) */
+  const isFlattenedSortAncestorPathVisible = useMemo(() => {
+    if (!globalSortConfig || globalSortConfig.preserveHierarchy) return false;
+    return true;
+  }, [globalSortConfig]);
+
+  // Recursively sort children at each level (preserve hierarchy mode)
+  const sortRowTree = useCallback((row: GridRowType, colKey: string, dir: 'asc' | 'desc', preserve: boolean): GridRowType => {
+    if (!row.children || row.children.length === 0) return row;
+    const getVal = (r: GridRowType) => colKey.includes('-')
+      ? getCellNumericValueForColumn(r, colKey)
+      : Number(r.values?.[colKey as keyof typeof r.values] ?? 0);
+    const sorted = [...row.children].sort((a, b) => {
+      const av = getVal(a);
+      const bv = getVal(b);
+      return dir === 'asc' ? av - bv : bv - av;
+    });
+    if (preserve) {
+      return { ...row, children: sorted.map(c => sortRowTree(c, colKey, dir, preserve)) };
+    } else {
+      const flattenAll = (r: GridRowType): GridRowType[] => [r, ...(r.children ? r.children.flatMap(flattenAll) : [])];
+      const allDesc = row.children.flatMap(flattenAll);
+      const sortedFlat = allDesc.sort((a, b) => {
+        const av = getVal(a);
+        const bv = getVal(b);
+        return dir === 'asc' ? av - bv : bv - av;
+      });
+      return { ...row, children: sortedFlat.map(c => ({ ...c, children: undefined })) };
+    }
+  }, []);
+
+  /** Flatten dimension rows under a measure in tree order (no sort) — used when preserveHierarchy is off but column sort is cleared */
+  const flattenMeasureChildrenInTreeOrder = useCallback((row: GridRowType): GridRowType => {
+    if (!row.children?.length) return row;
+    const flattenAll = (r: GridRowType): GridRowType[] => [
+      r,
+      ...(r.children?.length ? r.children.flatMap(flattenAll) : []),
+    ];
+    const flat = row.children.flatMap(flattenAll);
+    return { ...row, children: flat.map(c => ({ ...c, children: undefined })) };
+  }, []);
+
+  // Column-level filters: map of columnKey -> ColumnFilter
+  const [columnFilters, setColumnFilters] = useState<Map<string, ColumnFilter>>(new Map());
+  const [openFilterKey, setOpenFilterKey] = useState<string | null>(null);
+  const [filterAnchorEl, setFilterAnchorEl] = useState<HTMLElement | null>(null);
+  const filterBtnRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+
+  const handleFilterIconClick = useCallback((e: React.MouseEvent<HTMLButtonElement>, key: string) => {
+    e.stopPropagation();
+    if (openFilterKey === key) {
+      setOpenFilterKey(null);
+      setFilterAnchorEl(null);
+    } else {
+      setOpenFilterKey(key);
+      setFilterAnchorEl(e.currentTarget);
+    }
+  }, [openFilterKey]);
+
+  const handleFilterApply = useCallback((columnKey: string, filter: ColumnFilter | null) => {
+    setColumnFilters(prev => {
+      const next = new Map(prev);
+      if (filter === null) {
+        next.delete(columnKey);
+      } else {
+        next.set(columnKey, filter);
+      }
+      return next;
+    });
+    setOpenFilterKey(null);
+    setFilterAnchorEl(null);
+  }, []);
+
+  // Check if a single row's values pass all active column filters
+  const rowPassesFilters = useCallback((row: GridRowType): boolean => {
+    if (row.type === 'filterSummary') return true;
+    if (columnFilters.size === 0) return true;
+
+    const evaluateNumeric = (numVal: number, operator: '>=' | '<=' | '>' | '<' | '=' | '!=', filterValue: string): boolean => {
+      const filterNum = parseFloat(filterValue);
+      if (isNaN(numVal) || isNaN(filterNum)) return true;
+      switch (operator) {
+        case '>=': return numVal >= filterNum;
+        case '<=': return numVal <= filterNum;
+        case '>': return numVal > filterNum;
+        case '<': return numVal < filterNum;
+        case '=': return numVal === filterNum;
+        case '!=': return numVal !== filterNum;
+        default: return true;
+      }
+    };
+
+    const rowMatchesDimension = (dimension: 'account' | 'category' | 'product'): boolean => {
+      const rowType = String(row.type || '').toLowerCase();
+      return rowType === dimension;
+    };
+
+    const getRowMeasureId = (): string | null => {
+      if (row.type === 'measure') return row.id;
+      const parts = row.id.split('-');
+      const measureIndex = parts.findIndex(part => part === 'measure');
+      if (measureIndex >= 0 && measureIndex < parts.length - 1) {
+        return `measure-${parts.slice(measureIndex + 1).join('-')}`;
+      }
+      return null;
+    };
+    const rowMeasureId = getRowMeasureId();
+    const topBottomCache = new Map<string, Set<string>>();
+    const preserveHierarchyForTopBottom = globalSortConfig?.preserveHierarchy ?? true;
+
+    for (const [colKey, filter] of columnFilters) {
+      // Handle approval status columns specially
+      if (colKey.includes('-approvalStatus')) {
+        // Extract time key from column key (e.g., "jan2026-approvalStatus" -> "jan2026")
+        const timeKey = colKey.replace('-approvalStatus', '');
+        const cellKey = `${row.id}-${timeKey}`;
+        const approval = approvalRequests.get(cellKey);
+        const cellStatus = approval ? approval.status : 'notSubmitted';
+        // For approval status, operator is always '=' and value is the status string
+        const passes = filter.value === cellStatus;
+        if (!passes) return false;
+        continue;
+      }
+
+      // Handle multi-condition (AND) filters with dimension selection.
+      if (filter.conditions && filter.conditions.length > 0) {
+        const activeConditions = filter.conditions.filter(c => c.value?.trim() !== '');
+        if (activeConditions.length === 0) continue;
+        const matchingConditions = activeConditions.filter(cond => rowMatchesDimension(cond.dimension));
+        // If this row doesn't belong to any targeted dimension for this filter,
+        // keep it visible (e.g., product rows remain when only account/category
+        // conditions are defined).
+        if (matchingConditions.length === 0) continue;
+
+        const numVal = colKey.includes('-')
+          ? getCellNumericValueForColumn(row, colKey)
+          : (typeof row.values?.[colKey as keyof typeof row.values] === 'number' ? row.values![colKey as keyof typeof row.values] : parseFloat(String(row.values?.[colKey as keyof typeof row.values] ?? '')));
+
+        const passesAll = matchingConditions.every(cond => {
+          if (cond.measureId && rowMeasureId && cond.measureId !== rowMeasureId) {
+            return true;
+          }
+          if (cond.measureId && !rowMeasureId) {
+            return false;
+          }
+          if (cond.operator === 'topN' || cond.operator === 'bottomN') {
+            const n = parseInt(cond.value, 10);
+            if (!Number.isFinite(n) || n <= 0) return false;
+
+            const cacheKey = `${colKey}|${cond.dimension}|${cond.measureId ?? ''}|${cond.operator}|${n}|ph:${preserveHierarchyForTopBottom ? '1' : '0'}`;
+            let allowedRowIds = topBottomCache.get(cacheKey);
+            if (!allowedRowIds) {
+              allowedRowIds = new Set<string>();
+
+              const rowValueForCol = (r: GridRowType): number => {
+                const val = colKey.includes('-')
+                  ? getCellNumericValueForColumn(r, colKey)
+                  : (typeof r.values?.[colKey as keyof typeof r.values] === 'number'
+                    ? r.values[colKey as keyof typeof r.values]
+                    : parseFloat(String(r.values?.[colKey as keyof typeof r.values] ?? '')));
+                return val;
+              };
+
+              if (preserveHierarchyForTopBottom) {
+                /** Top/Bottom N among direct children of each parent that match the dimension */
+                const rankSiblingsUnderParent = (children: GridRowType[] | undefined) => {
+                  if (!children?.length) return;
+                  const dimRows = children.filter(c => c.type === cond.dimension);
+                  if (dimRows.length > 0) {
+                    const ranked = dimRows
+                      .map(r => ({ id: r.id, value: rowValueForCol(r) }))
+                      .filter(x => !isNaN(x.value));
+                    ranked.sort((a, b) =>
+                      cond.operator === 'topN' ? b.value - a.value : a.value - b.value
+                    );
+                    ranked.slice(0, n).forEach(x => allowedRowIds!.add(x.id));
+                  }
+                  for (const c of children) {
+                    rankSiblingsUnderParent(c.children);
+                  }
+                };
+
+                gridData.forEach(measure => {
+                  if (cond.measureId && cond.measureId !== measure.id) return;
+                  rankSiblingsUnderParent(measure.children);
+                });
+              } else {
+                /** Top/Bottom N across all rows of that dimension under the measure (ignore parent boundaries) */
+                const candidates: Array<{ id: string; value: number }> = [];
+                const collectByDimension = (rows: GridRowType[] | undefined) => {
+                  if (!rows) return;
+                  rows.forEach(r => {
+                    if (r.type === cond.dimension) {
+                      const val = rowValueForCol(r);
+                      if (!isNaN(val)) candidates.push({ id: r.id, value: val });
+                    }
+                    if (r.children && r.children.length > 0) collectByDimension(r.children);
+                  });
+                };
+
+                gridData.forEach(measure => {
+                  if (cond.measureId && cond.measureId !== measure.id) return;
+                  collectByDimension(measure.children);
+                });
+
+                const sorted = [...candidates].sort((a, b) =>
+                  cond.operator === 'topN' ? b.value - a.value : a.value - b.value
+                );
+                sorted.slice(0, n).forEach(c => allowedRowIds!.add(c.id));
+              }
+
+              topBottomCache.set(cacheKey, allowedRowIds);
+            }
+            return allowedRowIds.has(row.id);
+          }
+          return evaluateNumeric(numVal, cond.operator, cond.value);
+        });
+
+        if (!passesAll) return false;
+        continue;
+      }
+
+      // Backward-compatible single-condition numeric filter.
+      if (!filter.operator || typeof filter.value !== 'string') continue;
+      const numVal = colKey.includes('-')
+        ? getCellNumericValueForColumn(row, colKey)
+        : (typeof row.values?.[colKey as keyof typeof row.values] === 'number' ? row.values![colKey as keyof typeof row.values] : parseFloat(String(row.values?.[colKey as keyof typeof row.values] ?? '')));
+      const passes = evaluateNumeric(numVal, filter.operator, filter.value);
+      if (!passes) return false;
+    }
+    return true;
+  }, [columnFilters, approvalRequests, globalSortConfig]);
+
+  /** Measure id for synthetic filtered-out row ids (column-filter path). */
+  const getMeasureIdForFilteredOutRow = useCallback(
+    (row: GridRowType): string => {
+      if (row.type === 'measure') return row.id;
+      for (const m of gridData) {
+        if (findRowById(row.id, [m])) return m.id;
+      }
+      const parts = row.id.split('-');
+      const idx = parts.findIndex(p => p === 'measure');
+      if (idx >= 0 && idx < parts.length - 1) {
+        const cand = `measure-${parts.slice(idx + 1).join('-')}`;
+        if (gridData.some(m => m.id === cand)) return cand;
+      }
+      return gridData[0]?.id ?? row.id;
+    },
+    [gridData],
+  );
+
+  // Recursively apply column filters: excluded dimension siblings become "Filtered out (N)" rows
+  // (same shape as global panel filters) instead of disappearing; styling follows parentTotalsRollupMode.
+  const filterRowTree = useCallback((row: GridRowType): GridRowType | null => {
+    if (columnFilters.size === 0) return row;
+
+    const flatTopBottomDim = getGlobalTopBottomNFlatViewTargetDimension(
+      columnFilters,
+      globalSortConfig?.preserveHierarchy ?? true,
+    );
+    if (row.type === 'measure' && flatTopBottomDim) {
+      const children = mergeGlobalTopBottomNMeasureChildren(row, flatTopBottomDim, rowPassesFilters);
+      return { ...row, children };
+    }
+
+    const hasActiveConditionsForDimension = (dimension: 'account' | 'category' | 'product'): boolean => {
+      for (const [, filter] of columnFilters) {
+        if (!filter.conditions || filter.conditions.length === 0) continue;
+        const hasActiveForDimension = filter.conditions.some(c => c.value?.trim() !== '' && c.dimension === dimension);
+        if (hasActiveForDimension) return true;
+      }
+      return false;
+    };
+
+    let filteredChildren: GridRowType[] | undefined;
+    if (row.children && row.children.length > 0) {
+      const mapped = row.children.map(filterRowTree);
+      filteredChildren = mergeColumnFilteredSiblingsIntoTree(
+        row,
+        row.children,
+        mapped,
+        getMeasureIdForFilteredOutRow(row),
+      );
+    }
+    const selfPasses = rowPassesFilters(row);
+    const hasMatchingChild = filteredChildren && filteredChildren.length > 0;
+
+    // Hard-gate constrained hierarchy levels so filters visibly apply.
+    // Example: if Account conditions exist, non-matching Account branches are removed
+    // even when descendant levels are unconstrained.
+    if (row.type === 'account' && hasActiveConditionsForDimension('account') && !selfPasses) return null;
+    if (row.type === 'category' && hasActiveConditionsForDimension('category') && !selfPasses) return null;
+    if (row.type === 'product' && hasActiveConditionsForDimension('product') && !selfPasses) return null;
+
+    if (!selfPasses && !hasMatchingChild) return null;
+    return { ...row, children: filteredChildren };
+  }, [columnFilters, rowPassesFilters, getMeasureIdForFilteredOutRow, globalSortConfig]);
   
   // Sync gridData with data prop changes (for mass updates from parent)
   // Use a ref to track if we're updating from internal changes vs external
@@ -273,36 +928,57 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     }
   }, [onEditingCellChange]);
   
-  // Track edited cells and their original values to show delta
-  const [editedCells, setEditedCells] = useState<Map<string, number>>(new Map()); // key: `${rowId}-${monthKey}`, value: originalValue
-  // Track impacted cells (cells that changed due to editing another cell) and their original values
-  const [impactedCells, setImpactedCells] = useState<Map<string, number>>(new Map()); // key: `${rowId}-${monthKey}`, value: originalValue
-  // Track saved edited cells (cells that were edited and saved - these keep the icon but no badge)
-  // Map key: `${rowId}-${monthKey}`, value: icon color ('#ff5d2d' for increment, '#2E76E1' for decrement)
-  const [savedEditedCells, setSavedEditedCells] = useState<Map<string, string>>(new Map());
-  
-  // Track cells that were impacted but are now saved (to prevent showing old notes/popovers)
-  // Set of cellKeys that were impacted in the current session but are now saved
-  const [savedImpactedCells, setSavedImpactedCells] = useState<Set<string>>(new Set());
-  
-  // Initialize savedEditedCells from cellEditHistory on mount and when it changes
+  // Track edited cells and their original values to show delta (restore from planning session when reopening grid)
+  const [editedCells, setEditedCells] = useState<Map<string, number>>(() =>
+    initialCellMapsSnapshot ? new Map(initialCellMapsSnapshot.editedCells) : new Map()
+  );
+  const [impactedCells, setImpactedCells] = useState<Map<string, number>>(() =>
+    initialCellMapsSnapshot ? new Map(initialCellMapsSnapshot.impactedCells) : new Map()
+  );
+  const [savedEditedCells, setSavedEditedCells] = useState<Map<string, string>>(() =>
+    initialCellMapsSnapshot ? new Map(initialCellMapsSnapshot.savedEditedCells) : new Map()
+  );
+  const [savedImpactedCells, setSavedImpactedCells] = useState<Set<string>>(() =>
+    initialCellMapsSnapshot ? new Set(initialCellMapsSnapshot.savedImpactedCells) : new Set()
+  );
+  const [unsavedNotes, setUnsavedNotes] = useState<Map<string, string>>(() =>
+    initialCellMapsSnapshot ? new Map(initialCellMapsSnapshot.unsavedNotes) : new Map()
+  );
+
+  // Merge arrow indicators from cellEditHistory (do not replace — preserves session-restored savedEditedCells)
   useEffect(() => {
-    if (cellEditHistory.length > 0) {
-      const initialSavedCells = new Map<string, string>();
+    if (cellEditHistory.length === 0) return;
+    setSavedEditedCells(prev => {
+      const next = new Map(prev);
       cellEditHistory.forEach(entry => {
-        // Only add cells that have value changes (not just notes)
         if (entry.oldValue !== undefined && entry.newValue !== undefined && entry.oldValue !== entry.newValue) {
           const isIncrement = entry.newValue > entry.oldValue;
-          const iconColor = isIncrement ? '#ff5d2d' : '#2E76E1';
-          initialSavedCells.set(entry.cellKey, iconColor);
+          const iconColor = isIncrement ? 'var(--slds-g-color-warning-2)' : 'var(--color-accent-blue)';
+          next.set(entry.cellKey, iconColor);
         }
       });
-      setSavedEditedCells(initialSavedCells);
-    }
-  }, [cellEditHistory]); // Run when cellEditHistory changes
-  // Track unsaved notes for dirty cells (cells that are edited but not saved)
-  // Map key: `${rowId}-${monthKey}`, value: note text
-  const [unsavedNotes, setUnsavedNotes] = useState<Map<string, string>>(new Map());
+      return next;
+    });
+  }, [cellEditHistory]);
+
+  // Sync maps to parent on every change (parent only updates a ref — safe without debounce so unmount always has latest arrows/notes state)
+  useEffect(() => {
+    if (!onCellMapsSnapshotChange) return;
+    onCellMapsSnapshotChange({
+      editedCells: Array.from(editedCells.entries()),
+      savedEditedCells: Array.from(savedEditedCells.entries()),
+      impactedCells: Array.from(impactedCells.entries()),
+      unsavedNotes: Array.from(unsavedNotes.entries()),
+      savedImpactedCells: Array.from(savedImpactedCells),
+    });
+  }, [
+    editedCells,
+    savedEditedCells,
+    impactedCells,
+    unsavedNotes,
+    savedImpactedCells,
+    onCellMapsSnapshotChange,
+  ]);
   // Operation-based undo/redo history
   interface UndoRedoOperation {
     id: string;
@@ -334,7 +1010,12 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
 
   // Calculate measure values from children and aggregate time periods
   // Excludes locked cells from sums and aggregations
-  const calculateMeasureValues = useCallback((dataToCalculate: MeasureData[], skipTimeAggregationForRows?: Set<string>, lockedCellsSet?: Set<string>): MeasureData[] => {
+  const calculateMeasureValues = useCallback((
+    dataToCalculate: MeasureData[],
+    skipTimeAggregationForRows?: Set<string>,
+    lockedCellsSet?: Set<string>,
+    rollupMode: ParentTotalsRollupMode = parentTotalsRollupMode,
+  ): MeasureData[] => {
     const updated = JSON.parse(JSON.stringify(dataToCalculate));
     const skipSet = skipTimeAggregationForRows || new Set<string>();
     const lockedSet = lockedCellsSet || new Set<string>();
@@ -396,8 +1077,9 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
             if (isCellLocked(rowId, monthKey)) {
               continue;
             }
-            // Sum all children (including locked ones - they contribute their current value)
-            row.values[monthKey] = row.children.reduce(
+            // Sum rollup children only (visibleOnly excludes synthetic filtered-out aggregates)
+            const rollupKids = childrenForParentRollup(row.children, rollupMode);
+            row.values[monthKey] = rollupKids.reduce(
               (sum: number, child: GridRowType) => {
                 return sum + child.values[monthKey];
               },
@@ -430,7 +1112,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     }
     
     return updated;
-  }, [lockedCells]);
+  }, [lockedCells, parentTotalsRollupMode]);
 
   // Update local state when prop changes and recalculate measure values
   React.useEffect(() => {
@@ -440,7 +1122,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       skipSet.add(rowId);
     });
     
-    const calculatedData = calculateMeasureValues(data, skipSet, lockedCells);
+    const calculatedData = calculateMeasureValues(data, skipSet, lockedCells, parentTotalsRollupMode);
     
     // After recalculation, restore preserved values ONLY for the currently edited cell
     // This ensures that when data prop changes (e.g., from external source),
@@ -477,10 +1159,10 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     }
     
     setGridData(calculatedData);
-  }, [data, calculateMeasureValues]);
+  }, [data, calculateMeasureValues, lockedCells, parentTotalsRollupMode]);
 
-  // Expand default measures - only expand edited measures, keep others collapsed
-  // This effect only runs on initial load or when gridData/industry changes, not on every editedCells change
+  // Ensure edited measures are expanded at the measure row only (no auto-expand of nested children)
+  // Runs on gridData/industry/cellEditHistory changes, not on every editedCells change
   useEffect(() => {
     // Only run this on initial mount or when gridData/industry changes significantly
     // Don't reset expansion state when editedCells changes - let the handleCellChange expansion logic handle it
@@ -530,28 +1212,12 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       });
     }
     
-    // Expand only edited measures and all their children
+    // Expand edited measures only (not nested children — avoids opening the full subtree after edits)
     if (editedMeasureIds.size > 0) {
       editedMeasureIds.forEach(measureId => {
         const measure = gridData.find(m => m.id === measureId);
         if (measure) {
-          // Expand the measure itself
           expandedRowIds.add(measure.id);
-          
-          // Recursive function to expand all children
-          const expandAllChildren = (rows: GridRowType[]) => {
-            for (const row of rows) {
-              expandedRowIds.add(row.id);
-              if (row.children && row.children.length > 0) {
-                expandAllChildren(row.children);
-              }
-            }
-          };
-          
-          // Expand all children if measure has children
-          if (measure.children && measure.children.length > 0) {
-            expandAllChildren(measure.children);
-          }
         }
       });
     }
@@ -743,40 +1409,13 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
         latestMeasureId = getMeasureIdFromRowId(rowId);
       }
       
-      // Fully expand the latest edited measure if found (expand all rows within that measure)
+      // Expand the latest edited measure row only (keep nested rows collapsed)
       if (latestMeasureId) {
-        const measure = gridData.find(m => m.id === latestMeasureId);
-        if (measure) {
-          // Recursive function to collect all expandable row IDs within this measure
-          const collectExpandableIds = (rows: GridRowType[]): string[] => {
-            const ids: string[] = [];
-            rows.forEach(row => {
-              if (row.children && row.children.length > 0) {
-                ids.push(row.id);
-                ids.push(...collectExpandableIds(row.children));
-              }
-            });
-            return ids;
-          };
-          
-          // Collect all expandable IDs within this measure
-          const allExpandableIds = collectExpandableIds(measure.children || []);
-          
-          // Add the measure itself and all its expandable children
-          setExpandedRows(prev => {
-            const newSet = new Set(prev);
-            newSet.add(latestMeasureId!);
-            allExpandableIds.forEach(id => newSet.add(id));
-            return newSet;
-          });
-        } else {
-          // Fallback: just expand the measure row
-          setExpandedRows(prev => {
-            const newSet = new Set(prev);
-            newSet.add(latestMeasureId!);
-            return newSet;
-          });
-        }
+        setExpandedRows(prev => {
+          const newSet = new Set(prev);
+          newSet.add(latestMeasureId!);
+          return newSet;
+        });
       }
     }
   }, [gridData, editedCells, cellEditHistory]);
@@ -785,26 +1424,28 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
 
 
   const formatValue = (value: number, isQuantity?: boolean, measureName?: string): string => {
+    // Use comma-separated format with exactly 3 decimal places — no K/M/B units.
+    // This avoids mixed units within a column (e.g., some rows showing K, others M)
+    // and keeps all cells consistently formatted for easy decimal-point alignment.
     const formatted = value.toLocaleString('en-US', {
       minimumFractionDigits: 0,
-      maximumFractionDigits: 0, // No decimals in cell values
+      maximumFractionDigits: 0,
     });
-    
+
     // Add $ symbol for revenue/currency measures (but not for quantities or percentages)
     if (!isQuantity && measureName) {
       const nameLower = measureName.toLowerCase();
-      const isRevenue = nameLower.includes('revenue') || 
-                       nameLower.includes('spend') && !nameLower.includes('%') ||
-                       nameLower === 'revenue';
-      // Don't add $ for percentages, ROI multipliers, or quantities
+      const isRevenue = nameLower.includes('revenue') ||
+                        (nameLower.includes('spend') && !nameLower.includes('%')) ||
+                        nameLower === 'revenue';
       const isPercentage = nameLower.includes('%') || nameLower.includes('percent');
       const isROI = nameLower.includes('roi');
-      
+
       if (isRevenue && !isPercentage && !isROI) {
         return `$${formatted}`;
       }
     }
-    
+
     return formatted;
   };
 
@@ -904,7 +1545,9 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     if (searchTerm && searchTerm.trim()) {
       const searchTerms = extractSearchTerms(searchTerm);
       if (searchTerms.length > 0) {
-        const { timeTerms, otherTerms } = separateSearchTerms(searchTerms);
+        // Get available measures for term classification
+        const availableMeasures = gridData.map(m => ({ id: m.id, name: m.name }));
+        const { timeTerms, otherTerms } = separateSearchTerms(searchTerms, availableMeasures);
         console.log('[GRID] getVisibleTimeHeaders - Search terms:', { searchTerm, searchTerms, timeTerms, otherTerms });
         if (timeTerms.length > 0) {
           // Filter columns based on time period search
@@ -932,6 +1575,13 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   useEffect(() => {
     // Don't auto-expand while user is adjusting slider
     if (isSliderAdjustingRef.current) {
+      return;
+    }
+
+    // Don't auto-expand while time-period filtering is active.
+    // In a constrained layout (fewer columns), table-layout: auto can inflate scrollWidth
+    // measurements, causing stale wide widths to persist after filtering is cleared.
+    if (!showAllPeriods) {
       return;
     }
     
@@ -1044,7 +1694,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       clearTimeout(timeoutId);
       window.removeEventListener('resize', measureAndExpandColumns);
     };
-  }, [visibleTimeHeaders, columnWidth, expandedRows]);
+  }, [visibleTimeHeaders, columnWidth, expandedRows, showAllPeriods]);
 
   // Get visible time keys based on selected granularities and search - use visibleTimeHeaders
   const getVisibleTimeKeys = useCallback((): (keyof GridRowType['values'])[] => {
@@ -1055,7 +1705,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   const deepCopyRow = useCallback((row: GridRowType): GridRowType => {
     return {
       ...row,
-      values: { ...row.values },
+      values: row.values ? { ...row.values } : {},
       children: row.children ? row.children.map(child => deepCopyRow(child)) : undefined
     };
   }, []);
@@ -1092,6 +1742,32 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
         };
       }
       return { ...row, values: { ...row.values } }; // Copy to avoid stale references
+    }
+
+    // Panel filter summary rows are not dimension levels; keep them and filter descendants.
+    if (row.type === 'filterSummary') {
+      if (row.children && row.children.length > 0) {
+        const filteredChildren: GridRowType[] = [];
+        for (const child of row.children) {
+          const result = filterRowsByType(child, selectedTypes);
+          if (result !== null) {
+            if (Array.isArray(result)) {
+              filteredChildren.push(...result);
+            } else {
+              filteredChildren.push(result);
+            }
+          }
+        }
+        if (filteredChildren.length === 0) {
+          return null;
+        }
+        return {
+          ...row,
+          values: { ...row.values },
+          children: filteredChildren,
+        };
+      }
+      return { ...row, values: { ...row.values } };
     }
     
     // If row type is selected, show it and filter children normally
@@ -1427,33 +2103,12 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
         
         const measureId = getMeasureIdFromRowId(rowId);
         if (measureId) {
-          // Expand the measure and all its children immediately
-          const measure = gridData.find(m => m.id === measureId);
-          if (measure) {
-            const expandedIds = new Set<string>();
-            expandedIds.add(measureId);
-            
-            // Recursive function to collect all row IDs within this measure
-            const collectAllIds = (rows: GridRowType[]) => {
-              for (const row of rows) {
-                expandedIds.add(row.id);
-                if (row.children && row.children.length > 0) {
-                  collectAllIds(row.children);
-                }
-              }
-            };
-            
-            if (measure.children && measure.children.length > 0) {
-              collectAllIds(measure.children);
-            }
-            
-            // Update expanded rows state
-            setExpandedRows(prev => {
-              const newSet = new Set(prev);
-              expandedIds.forEach(id => newSet.add(id));
-              return newSet;
-            });
-          }
+          // Expand the measure row only so nested rows stay collapsed unless the user opens them
+          setExpandedRows(prev => {
+            const newSet = new Set(prev);
+            newSet.add(measureId);
+            return newSet;
+          });
         }
       }
       
@@ -1638,8 +2293,9 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       if (editedRowForPropagation.parentId) {
         const parentRow = findRowById(editedRowForPropagation.parentId, gridData) || gridData.find(m => m.id === editedRowForPropagation.parentId);
         if (parentRow && parentRow.children) {
-          // Calculate new parent value by summing all children (including the edited one)
-          const childrenSum = parentRow.children.reduce((sum, child) => {
+          const rollupSiblings = childrenForParentRollup(parentRow.children, parentTotalsRollupMode);
+          // Calculate new parent value by summing rollup children (including the edited one)
+          const childrenSum = rollupSiblings.reduce((sum, child) => {
             // Use the new value for the edited child, current value for others
             const childValue = child.id === rowId ? newValue : child.values[monthKey];
             return sum + childValue;
@@ -1666,15 +2322,16 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     // For measure rows, propagate to account level proportionally
     if (isMeasureRow) {
       const measureData = gridData.find(m => m.id === rowId);
-      if (measureData && measureData.children.length > 0) {
-        const accountDistribution = distributeProportionally(delta, measureData.children, monthKey, lockedCells);
+      const measureRollupKids = measureData ? childrenForParentRollup(measureData.children, parentTotalsRollupMode) : [];
+      if (measureData && measureRollupKids.length > 0) {
+        const accountDistribution = distributeProportionally(delta, measureRollupKids, monthKey, lockedCells);
         for (const [accountId, accountDelta] of accountDistribution.entries()) {
           const account = measureData.children.find(c => c.id === accountId);
           if (account) {
             const accountNewValue = account.values[monthKey] + accountDelta;
             storeOriginalValueIfImpacted(accountId, monthKey);
             allUpdates.push({ rowId: accountId, monthKey, newValue: accountNewValue });
-            const accountUpdates = propagateDownward(accountId, monthKey, accountDelta, gridData, lockedCells);
+            const accountUpdates = propagateDownward(accountId, monthKey, accountDelta, gridData, lockedCells, parentTotalsRollupMode);
             accountUpdates.forEach(u => storeOriginalValueIfImpacted(u.rowId, u.monthKey));
             allUpdates.push(...accountUpdates);
           }
@@ -1682,7 +2339,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       }
     } else {
       // Propagate downward for the edited cell
-      const downwardUpdates = propagateDownward(rowId, monthKey, delta, gridData, lockedCells);
+      const downwardUpdates = propagateDownward(rowId, monthKey, delta, gridData, lockedCells, parentTotalsRollupMode);
       downwardUpdates.forEach(u => storeOriginalValueIfImpacted(u.rowId, u.monthKey));
       allUpdates.push(...downwardUpdates);
       
@@ -1690,7 +2347,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       for (const timeUpdate of timeDistributionUpdates) {
         const timeDelta = timeUpdate.newValue - timeUpdate.oldValue;
         if (timeDelta !== 0) {
-          const timeDownwardUpdates = propagateDownward(rowId, timeUpdate.monthKey, timeDelta, gridData, lockedCells);
+          const timeDownwardUpdates = propagateDownward(rowId, timeUpdate.monthKey, timeDelta, gridData, lockedCells, parentTotalsRollupMode);
           timeDownwardUpdates.forEach(u => storeOriginalValueIfImpacted(u.rowId, u.monthKey));
           allUpdates.push(...timeDownwardUpdates);
         }
@@ -1715,20 +2372,21 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
             
             if (isMeasureRow) {
               const measureData = gridData.find(m => m.id === rowId);
-              if (measureData && measureData.children.length > 0) {
-                const accountDistribution = distributeProportionally(aggDelta, measureData.children, aggKey, lockedCells);
+              const aggRollupKids = measureData ? childrenForParentRollup(measureData.children, parentTotalsRollupMode) : [];
+              if (measureData && aggRollupKids.length > 0) {
+                const accountDistribution = distributeProportionally(aggDelta, aggRollupKids, aggKey, lockedCells);
                 for (const [accountId, accountDelta] of accountDistribution.entries()) {
                   const account = measureData.children.find(c => c.id === accountId);
                   if (account) {
                     const accountNewValue = account.values[aggKey] + accountDelta;
                     allUpdates.push({ rowId: accountId, monthKey: aggKey, newValue: accountNewValue });
-                    const accountUpdates = propagateDownward(accountId, aggKey, accountDelta, gridData, lockedCells);
+                    const accountUpdates = propagateDownward(accountId, aggKey, accountDelta, gridData, lockedCells, parentTotalsRollupMode);
                     allUpdates.push(...accountUpdates);
                   }
                 }
               }
             } else {
-              const aggDownwardUpdates = propagateDownward(rowId, aggKey, aggDelta, gridData, lockedCells);
+              const aggDownwardUpdates = propagateDownward(rowId, aggKey, aggDelta, gridData, lockedCells, parentTotalsRollupMode);
               allUpdates.push(...aggDownwardUpdates);
             }
           }
@@ -2073,7 +2731,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       console.log('[GRID] Skipping recalculation for currently edited measure row:', rowId);
     }
     
-    updatedData = calculateMeasureValues(updatedData, skipTimeAggregation, lockedCells);
+    updatedData = calculateMeasureValues(updatedData, skipTimeAggregation, lockedCells, parentTotalsRollupMode);
     
     // Track measure row cells as impacted if their values changed due to children being impacted
     for (const measure of updatedData) {
@@ -2216,7 +2874,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       isInternalUpdateRef.current = true; // Mark as internal update to prevent sync loop
       onDataChange(finalData);
     }
-  }, [gridData, updateValue, onDataChange, calculateMeasureValues, recalculateTimeAggregations, distributeQuarterToMonths, distributeYearToQuarters, historyIndex, editedCells, handleExpandMeasure, selectedCells, focusedCell, findRowById]);
+  }, [gridData, updateValue, onDataChange, calculateMeasureValues, recalculateTimeAggregations, distributeQuarterToMonths, distributeYearToQuarters, historyIndex, editedCells, handleExpandMeasure, selectedCells, focusedCell, findRowById, lockedCells, parentTotalsRollupMode]);
 
   // Collect all visible rows in order for keyboard navigation
   const getAllVisibleRows = useCallback((): GridRowType[] => {
@@ -2270,7 +2928,13 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     if (onGetVisibleTimeKeysReady) {
       onGetVisibleTimeKeysReady(getVisibleTimeKeys);
     }
-  }, [handleExpandAll, handleCollapseAll, onExpandAllRows, onCollapseAllRows, onGetVisibleRowsReady, onGetVisibleTimeKeysReady, getAllVisibleRows, getVisibleTimeKeys]);
+    if (onResetColumnWidths) {
+      onResetColumnWidths(() => {
+        columnWidthsRef.current.clear();
+        setColumnWidths(new Map());
+      });
+    }
+  }, [handleExpandAll, handleCollapseAll, onExpandAllRows, onCollapseAllRows, onGetVisibleRowsReady, onGetVisibleTimeKeysReady, getAllVisibleRows, getVisibleTimeKeys, onResetColumnWidths]);
 
   // Handle keyboard navigation
   // Note: handleSave is defined later, so we'll use a ref or move this callback after handleSave
@@ -2611,6 +3275,23 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     }
   }, [focusedCell, getAllVisibleRows, getVisibleTimeKeys, handleCellChange, editedCells, impactedCells, selectedCells, gridData, findRowById, expandedRows, onKeyboardSelect]);
 
+  // Intercept cell selection from mouse clicks to keep `focusedCell` in sync.
+  // This ensures Shift+Arrow keyboard selection works correctly after any mouse click,
+  // not only after editable cells receive DOM focus.
+  const handleCellSelectWithFocus = useCallback((cellKey: string, event: React.MouseEvent) => {
+    // Sync focusedCell so that subsequent Shift+Arrow navigation uses the clicked
+    // cell as the navigation cursor, regardless of whether it received DOM focus.
+    if (!event.shiftKey) {
+      const parts = cellKey.split('-');
+      if (parts.length >= 2) {
+        const monthKey = parts[parts.length - 1] as keyof GridRowType['values'];
+        const rowId = parts.slice(0, -1).join('-');
+        setFocusedCell({ rowId, monthKey });
+      }
+    }
+    onCellSelect?.(cellKey, event);
+  }, [onCellSelect]);
+
   // Expose cell change handler for programmatic updates (mass update)
   // Also expose a function to get current cell value from gridData
   useEffect(() => {
@@ -2637,6 +3318,30 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       });
     }
   }, [gridData, onGetCurrentCellValueReady]);
+
+  // Expose function to scroll to a specific measure
+  useEffect(() => {
+    if (onScrollToMeasureReady) {
+      onScrollToMeasureReady((measureId: string) => {
+        // Get visible rows to find the measure
+        const visibleRows = getAllVisibleRows();
+        const measureRow = visibleRows.find(row => row.id === measureId && row.type === 'measure');
+        
+        if (measureRow) {
+          // Get the first visible time key to scroll to the first cell of the measure row
+          const visibleTimeKeys = getVisibleTimeKeys();
+          if (visibleTimeKeys.length > 0) {
+            const cellKey = `${measureId}-${visibleTimeKeys[0]}`;
+            const cellElement = cellRefs.current.get(cellKey);
+            if (cellElement) {
+              // Scroll to the cell with smooth behavior, centered in view
+              cellElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+          }
+        }
+      });
+    }
+  }, [onScrollToMeasureReady, getAllVisibleRows, getVisibleTimeKeys]);
 
   // Auto-expand rows that match search (only when searchTerm changes, not gridData)
   useEffect(() => {
@@ -2771,10 +3476,37 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
         });
       }
       
+      // Get available measures for term classification
+      const availableMeasures = gridData.map(m => ({ id: m.id, name: m.name }));
+      
+      // Separate search terms into measure, dimension, time, and other terms
+      const { measureTerms, dimensionTerms, timeTerms, otherTerms } = separateSearchTerms(searchTerms, availableMeasures);
+      
       const filteredRows: GridRowType[] = [];
       
       for (const measure of gridData) {
         try {
+          // Filter by measure name if measure terms exist
+          if (measureTerms.length > 0) {
+            const measureNameLower = measure.name.toLowerCase();
+            const matchesMeasure = measureTerms.some(term => {
+              const termLower = term.toLowerCase();
+              // Check if term is contained in measure name or vice versa
+              if (measureNameLower.includes(termLower) || termLower.includes(measureNameLower)) {
+                return true;
+              }
+              // For multi-word terms, check if all words appear in measure name
+              const termWords = termLower.split(/\s+/).filter(w => w.length > 0);
+              if (termWords.length > 1) {
+                return termWords.every(word => measureNameLower.includes(word));
+              }
+              return false;
+            });
+            if (!matchesMeasure) {
+              continue; // Skip this measure if it doesn't match
+            }
+          }
+          
           let measureRow: GridRowType = deepCopyRow({
             id: measure.id,
             name: measure.name,
@@ -2786,13 +3518,24 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
             groupContext: measure.groupContext,
           });
 
-          // Apply search filtering
-          const { otherTerms } = separateSearchTerms(searchTerms);
-          if (otherTerms.length > 0) {
-            // Filter rows based on search (excluding time terms)
+          // Combine dimension terms and other terms for row filtering
+          const rowSearchTerms = [...dimensionTerms, ...otherTerms];
+          
+          // Get matching time period keys if there are time terms
+          const matchingTimeKeys = timeTerms.length > 0 ? getMatchingTimePeriodKeys(timeTerms) : undefined;
+          
+          // Filter rows if we have dimension/other terms OR time terms
+          if (rowSearchTerms.length > 0 || timeTerms.length > 0) {
+            // Filter rows based on search (dimension, other terms, and time terms)
             const filterRow = (row: GridRowType): GridRowType | null => {
               try {
-                const matchResult = rowMatchesSearch(row, otherTerms, measure.name);
+                const matchResult = rowMatchesSearch(
+                  row, 
+                  rowSearchTerms, 
+                  measure.name,
+                  timeTerms.length > 0 ? timeTerms : undefined,
+                  matchingTimeKeys
+                );
                 
                 // Process children
                 let filteredChildren: GridRowType[] = [];
@@ -2829,8 +3572,11 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
             if (filteredRow) {
               filteredRows.push(filteredRow);
             }
+          } else if (measureTerms.length > 0) {
+            // Only measure terms, show all rows for matching measures
+            filteredRows.push(measureRow);
           } else {
-            // Only time terms, show all rows
+            // No search terms, show all rows
             filteredRows.push(measureRow);
           }
         } catch (e) {
@@ -2872,6 +3618,114 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       }
     }
   }, [gridData, deepCopyRow, searchTerm]);
+
+  // Get the value for a measure row to use for sorting.
+  // The measure row itself has a YoY/MoM/Actual value — sort by that directly.
+  const getMeasureAggregateValue = useCallback((measure: GridRowType, columnKey: string): number => {
+    return getCellNumericValueForColumn(measure, columnKey);
+  }, []);
+
+  // Apply column filters on top of the memoized rows (remove non-matching rows)
+  const filteredMeasureRows = useMemo(() => {
+    let rows = memoizedMeasureRows;
+    if (!rows) return rows;
+
+    const visibleTimeKeyStrings = getVisibleTimeKeys().map(String);
+    const sortValueForCriterion = (row: GridRowType, columnKey: string) =>
+      getCellNumericValueForColumn(row, expandGlobalSortColumnKey(columnKey, visibleTimeKeyStrings));
+
+    // 1. Apply column filters
+    if (columnFilters.size > 0) {
+      rows = rows.map(r => filterRowTree(r)).filter((r): r is GridRowType => r !== null);
+    }
+
+    // 2. Apply sort — global multi-column sort takes precedence over single column sort
+    if (globalSortConfig && globalSortConfig.criteria.length > 0) {
+      // Multi-column sort: apply criteria in reverse order so first criterion is most significant
+      const { criteria, preserveHierarchy: ph, sortMeasures: sm } = globalSortConfig;
+      
+      // Sort measures if sortMeasures is true
+      if (sm && criteria.length > 0) {
+        const firstCriterion = criteria[criteria.length - 1]; // First criterion (most significant)
+        rows = [...rows].sort((a, b) => {
+          const av = sortValueForCriterion(a, firstCriterion.columnKey) || 0;
+          const bv = sortValueForCriterion(b, firstCriterion.columnKey) || 0;
+          // Ensure we're comparing signed numeric values correctly
+          // For descending: larger values first (bv - av), so +19 comes before -19
+          // For ascending: smaller values first (av - bv), so -19 comes before +19
+          return firstCriterion.direction === 'asc' ? av - bv : bv - av;
+        });
+      }
+      
+      const applyMultiSort = (row: GridRowType): GridRowType => {
+        if (!row.children || row.children.length === 0) return row;
+        let children = [...row.children];
+        // Apply criteria from last to first (stable sort: first criterion wins)
+        for (let i = criteria.length - 1; i >= 0; i--) {
+          const { columnKey, direction } = criteria[i];
+          children = children.sort((a, b) => {
+            const av = sortValueForCriterion(a, columnKey);
+            const bv = sortValueForCriterion(b, columnKey);
+            return direction === 'asc' ? av - bv : bv - av;
+          });
+        }
+        if (ph) {
+          return { ...row, children: children.map(c => applyMultiSort(c)) };
+        } else {
+          const flattenAll = (r: GridRowType): GridRowType[] => [r, ...(r.children ? r.children.flatMap(flattenAll) : [])];
+          const allDesc = row.children.flatMap(flattenAll);
+          let sortedFlat = allDesc;
+          for (let i = criteria.length - 1; i >= 0; i--) {
+            const { columnKey, direction } = criteria[i];
+            sortedFlat = sortedFlat.sort((a, b) => {
+              const av = sortValueForCriterion(a, columnKey);
+              const bv = sortValueForCriterion(b, columnKey);
+              return direction === 'asc' ? av - bv : bv - av;
+            });
+          }
+          return { ...row, children: sortedFlat.map(c => ({ ...c, children: undefined })) };
+        }
+      };
+      rows = rows.map(r => applyMultiSort(r));
+    } else if (sortConfig) {
+      // Single column sort — honor Global Sort panel flags even when criteria list is empty
+      const { columnKey, direction } = sortConfig;
+      const panelSm = globalSortConfig?.sortMeasures ?? false;
+      const panelPh = globalSortConfig?.preserveHierarchy ?? true;
+
+      if (panelSm) {
+        // Calculate aggregate YoY/MoM value for each measure
+        const measureAggregates = new Map<GridRowType, number>();
+        rows.forEach(row => {
+          measureAggregates.set(row, getMeasureAggregateValue(row, columnKey));
+        });
+        
+        // Sort measures by aggregate value
+        rows = [...rows].sort((a, b) => {
+          const av = measureAggregates.get(a) || 0;
+          const bv = measureAggregates.get(b) || 0;
+          
+          // Descending: bv - av (19 > 15 > 14 > 0 > -4 > -6 > -10 > -19)
+          // Ascending: av - bv (-19 < -10 < -6 < -4 < 0 < 14 < 15 < 19)
+          if (direction === 'desc') {
+            return bv - av;
+          } else {
+            return av - bv;
+          }
+        });
+      }
+      
+      rows = rows.map(r => sortRowTree(r, columnKey, direction, panelPh));
+    } else if (
+      globalSortConfig &&
+      !globalSortConfig.preserveHierarchy &&
+      (globalSortConfig.criteria?.length ?? 0) === 0
+    ) {
+      rows = rows.map(r => flattenMeasureChildrenInTreeOrder(r));
+    }
+
+    return rows;
+  }, [memoizedMeasureRows, columnFilters, filterRowTree, sortConfig, sortRowTree, globalSortConfig, getMeasureAggregateValue, flattenMeasureChildrenInTreeOrder, getVisibleTimeKeys]);
 
   // Calculate impacted measures count
   const impactedMeasuresCount = useMemo(() => {
@@ -3193,7 +4047,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
         if (originalValue !== currentValue) {
           // Calculate if it was an increment or decrement
           const isIncrement = originalValue !== 0 && currentValue > originalValue;
-          const iconColor = isIncrement ? '#ff5d2d' : '#2E76E1';
+          const iconColor = isIncrement ? 'var(--slds-g-color-warning-2)' : 'var(--color-accent-blue)';
           
           newMap.set(cellKey, iconColor);
           console.log('[SAVE] Adding cell to savedEditedCells:', cellKey, 'iconColor:', iconColor, 'originalValue:', originalValue, 'currentValue:', currentValue);
@@ -3286,60 +4140,227 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     return measureRow;
   }, [showOnlyImpactedKPI, editedCells, impactedCells]);
 
+  // Measure the main month header cell height for accurate sub-col sticky top offset.
+  // Using a single-row month cell avoids rowspan/table-row measurement quirks.
+  useEffect(() => {
+    const el = mainHeaderCellRef.current;
+    if (!el) return;
+    const obs = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        const h = entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
+        if (h > 0) setHeaderRowHeight(Math.round(h));
+      }
+    });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
   // Check if search is active (filtering columns)
-  const isFiltering = searchTerm && searchTerm.trim().length > 0;
+  const isFiltering = (searchTerm && searchTerm.trim().length > 0) || !showAllPeriods;
+
+  const frozenHeaderTitle = (
+    <div className="grid-header-title-container">
+      <span>Measures / Dimensions x Time</span>
+      {onSettingsClick && (
+        <button
+          className="grid-header-settings-button"
+          onClick={onSettingsClick}
+          title="Settings"
+          type="button"
+        >
+          <svg fill="currentColor" viewBox="0 0 24 24" width="14" height="14">
+            <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+          </svg>
+        </button>
+      )}
+    </div>
+  );
 
   return (
-    <div className="grid-container-wrapper">
-      <div className={`grid-container ${isFooterVisible ? 'has-footer' : ''}`} onKeyDown={handleKeyDown} tabIndex={0}>
-        <table className={`grid-table ${isFiltering ? 'filtered' : ''}`}>
+    <div className="grid-container-wrapper" ref={wrapperRef} style={{ position: 'relative' }}>
+      <div className={`grid-container ${isFooterVisible ? 'has-footer' : ''} ${subColumns.length > 0 ? 'has-sub-columns' : ''}`}>
+        <table
+          role="grid"
+          className={`grid-table ${isFiltering ? 'filtered' : ''} ${subColumns.length > 0 ? 'has-sub-columns' : ''} ${frozenColumns.length > 0 ? 'has-frozen-cols' : ''}`}
+          tabIndex={0}
+          onKeyDown={handleKeyDown}
+          aria-label="Planning grid"
+          style={{
+            ...(frozenColumns.length > 0 ? { '--first-col-width': `${totalFrozenWidth}px` } : {}),
+            '--header-row-height': `${headerRowHeight}px`,
+          } as React.CSSProperties}
+        >
           <thead className="grid-header">
             <tr>
-              <th>
-                <div className="grid-header-title-container">
-                  <span>Measures / Dimensions x Time</span>
-                  {onSettingsClick && (
-                    <button 
-                      className="grid-header-settings-button"
-                      onClick={onSettingsClick}
-                      title="Settings"
-                      type="button"
-                    >
-                      <svg fill="currentColor" viewBox="0 0 24 24" width="14" height="14">
-                        <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
-                      </svg>
-                    </button>
-                  )}
-                </div>
+              <th
+                rowSpan={subColumns.length > 0 ? 2 : 1}
+                style={frozenColumns.length > 0 ? {
+                  width: `${totalFrozenWidth}px`,
+                  minWidth: `${totalFrozenWidth}px`,
+                } : undefined}
+              >
+                {frozenHeaderTitle}
               </th>
-              {visibleTimeHeaders.map((header) => {
+              {visibleTimeHeaders.map((header, headerIndex) => {
                 const searchTerms = searchTerm && searchTerm.trim() ? extractSearchTerms(searchTerm) : [];
                 const dynamicWidth = columnWidths.get(header.key) || columnWidth;
+                const hasFilter = subColumns.length > 0 ? false : columnFilters.has(header.key);
+                const isActiveSort = subColumns.length > 0 ? false : sortConfig?.columnKey === header.key;
+                const sortDir = isActiveSort ? sortConfig!.direction : null;
+                const subColCount = subColumns.length > 0 ? 1 + subColumns.length : 1;
+                const isLastColumnGroup = headerIndex === visibleTimeHeaders.length - 1;
                 return (
-                  <th 
+                  <th
                     key={header.key}
                     data-column-key={header.key}
-                    style={{ minWidth: `${dynamicWidth}px`, width: `${dynamicWidth}px` }}
+                    colSpan={subColCount}
+                    className={isLastColumnGroup ? 'sub-col-last-column-group' : ''}
+                    style={{ minWidth: `${dynamicWidth * subColCount}px`, width: `${dynamicWidth * subColCount}px` }}
+                    ref={headerIndex === 0 ? mainHeaderCellRef : undefined}
                   >
-                    {searchTerms.length > 0 ? (
-                      <SearchHighlight text={header.label} searchTerms={searchTerms} />
-                    ) : (
-                      header.label
-                    )}
+                    <div className="col-header-content">
+                      <span className="col-header-label">
+                        {searchTerms.length > 0 ? (
+                          <SearchHighlight text={header.label} searchTerms={searchTerms} />
+                        ) : (
+                          header.label
+                        )}
+                      </span>
+                      {subColumns.length === 0 && (
+                        <div className="col-header-icons">
+                          {/* Sort button */}
+                          <button
+                            type="button"
+                            className={`col-sort-icon-btn${isActiveSort ? ' active' : ''}`}
+                            title="Sort column (ascending, descending, off)"
+                            onClick={e => handleSortClick(e, header.key)}
+                          >
+                            <ColHeaderSortGlyph dir={sortDir} muted={!isActiveSort} />
+                          </button>
+                          {/* Filter button */}
+                          <button
+                            type="button"
+                            ref={el => { if (el) filterBtnRefs.current.set(header.key, el); else filterBtnRefs.current.delete(header.key); }}
+                            className={`col-filter-icon-btn${hasFilter ? ' active' : ''}`}
+                            title={hasFilter ? 'Filter active — click to edit' : 'Filter column'}
+                            onClick={e => handleFilterIconClick(e, header.key)}
+                          >
+                            <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13">
+                              <path d="M4.25 5.61C6.27 8.2 10 13 10 13v6c0 .55.45 1 1 1h2c.55 0 1-.45 1-1v-6s3.72-4.8 5.74-7.39c.51-.66.04-1.61-.79-1.61H5.04c-.83 0-1.3.95-.79 1.61z"/>
+                            </svg>
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </th>
                 );
               })}
+              <ColumnFilterPopover
+                columnKey={openFilterKey ?? ''}
+                anchorEl={filterAnchorEl}
+                isOpen={openFilterKey !== null}
+                onClose={() => { setOpenFilterKey(null); setFilterAnchorEl(null); }}
+                currentFilter={openFilterKey ? columnFilters.get(openFilterKey) : undefined}
+                onApply={handleFilterApply}
+                availableMeasures={gridData.map(m => ({ id: m.id, name: m.name }))}
+              />
             </tr>
+            {/* Sub-column header row — one <th> per sub-column per time period */}
+            {subColumns.length > 0 && (
+              <tr className="sub-col-header-row">
+                {visibleTimeHeaders.map((header, headerIndex) => {
+                  const dynamicWidth = columnWidths.get(header.key) || columnWidth;
+                  const isLastColumnGroup = headerIndex === visibleTimeHeaders.length - 1;
+                  return (
+                    <React.Fragment key={`sub-hdr-${header.key}`}>
+                      <th
+                        data-column-key={`${header.key}-Actual`}
+                        className={`sub-col-header-item-th sub-col-header-item-actual ${isLastColumnGroup ? 'sub-col-last-column-group' : ''}`}
+                        style={{ minWidth: `${dynamicWidth}px`, width: `${dynamicWidth}px` }}
+                      >
+                        <div className="col-header-content sub-col-header-content">
+                          <span className="col-header-label">Actual</span>
+                          <div className="col-header-icons">
+                            <button
+                              type="button"
+                              className={`col-sort-icon-btn${sortConfig?.columnKey === `${header.key}-Actual` ? ' active' : ''}`}
+                              title="Sort column (ascending, descending, off)"
+                              onClick={e => handleSortClick(e, `${header.key}-Actual`)}
+                            >
+                              <ColHeaderSortGlyph
+                                dir={sortConfig?.columnKey === `${header.key}-Actual` ? sortConfig.direction : null}
+                                muted={sortConfig?.columnKey !== `${header.key}-Actual`}
+                              />
+                            </button>
+                            <button
+                              type="button"
+                              ref={el => { if (el) filterBtnRefs.current.set(`${header.key}-Actual`, el); else filterBtnRefs.current.delete(`${header.key}-Actual`); }}
+                              className={`col-filter-icon-btn${columnFilters.has(`${header.key}-Actual`) ? ' active' : ''}`}
+                              title={columnFilters.has(`${header.key}-Actual`) ? 'Filter active — click to edit' : 'Filter column'}
+                              onClick={e => handleFilterIconClick(e, `${header.key}-Actual`)}
+                            >
+                              <svg viewBox="0 0 24 24" fill="none" width="13" height="13"><path d="M3 6h18M7 12h10M11 18h2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                            </button>
+                          </div>
+                        </div>
+                      </th>
+                      {subColumns.map((sc, subColIndex) => {
+                        const isLastSubCol = subColIndex === subColumns.length - 1;
+                        const subColKey = `${header.key}-${sc.id}`;
+                        const isActiveSort = sortConfig?.columnKey === subColKey;
+                        const hasFilter = columnFilters.has(subColKey);
+                        // Approval Status sub-column is narrower
+                        const subColWidth = sc.id === 'approvalStatus' ? 110 : dynamicWidth;
+                        return (
+                          <th
+                            key={sc.id}
+                            data-column-key={subColKey}
+                            className={`sub-col-header-item-th ${isLastSubCol ? 'sub-col-last-in-group' : ''} ${isLastColumnGroup && isLastSubCol ? 'sub-col-last-column-group' : ''}`}
+                            style={{ minWidth: `${subColWidth}px`, width: `${subColWidth}px` }}
+                          >
+                            <div className="col-header-content sub-col-header-content">
+                              <span className="col-header-label">{sc.name}</span>
+                              <div className="col-header-icons">
+                                <button
+                                  type="button"
+                                  className={`col-sort-icon-btn${isActiveSort ? ' active' : ''}`}
+                                  title="Sort column (ascending, descending, off)"
+                                  onClick={e => handleSortClick(e, subColKey)}
+                                >
+                                  <ColHeaderSortGlyph
+                                    dir={isActiveSort && sortConfig ? sortConfig.direction : null}
+                                    muted={!isActiveSort}
+                                  />
+                                </button>
+                                <button
+                                  type="button"
+                                  ref={el => { if (el) filterBtnRefs.current.set(subColKey, el); else filterBtnRefs.current.delete(subColKey); }}
+                                  className={`col-filter-icon-btn${hasFilter ? ' active' : ''}`}
+                                  title={hasFilter ? 'Filter active — click to edit' : 'Filter column'}
+                                  onClick={e => handleFilterIconClick(e, subColKey)}
+                                >
+                                  <svg viewBox="0 0 24 24" fill="none" width="13" height="13"><path d="M3 6h18M7 12h10M11 18h2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                                </button>
+                              </div>
+                            </div>
+                          </th>
+                        );
+                      })}
+                    </React.Fragment>
+                  );
+                })}
+              </tr>
+            )}
           </thead>
           <tbody className="grid-body">
-            {!memoizedMeasureRows || memoizedMeasureRows.length === 0 ? (
+            {!filteredMeasureRows || filteredMeasureRows.length === 0 ? (
               <tr>
                 <td colSpan={visibleTimeHeaders.length + 1} className="grid-no-results">
-                  {searchTerm && searchTerm.trim() ? `No results found for '${searchTerm}'` : 'No data available'}
+                  {columnFilters.size > 0 ? 'No rows match the active column filters' : searchTerm && searchTerm.trim() ? `No results found for '${searchTerm}'` : 'No data available'}
                 </td>
               </tr>
             ) : (
-              memoizedMeasureRows.map((measureRow) => {
+              filteredMeasureRows.map((measureRow) => {
                 if (!measureRow) return null;
                 const measure = gridData.find(m => m.id === measureRow.id);
                 if (!measure) return null;
@@ -3366,10 +4387,17 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                 // But handle array case just in case (shouldn't happen)
                 const filteredRow = Array.isArray(filteredResult) ? measureRow : filteredResult;
                 
+                // Apply quick filter filtering
+                const rowForQuickFilter = deepCopyRow(filteredRow);
+                const quickFilteredRow = filterChildrenByQuickFilter(rowForQuickFilter);
+                if (!quickFilteredRow) {
+                  return null; // Row filtered out by quick filter
+                }
+                
                 return (
                   <GridRowComponent
                     key={`${measure.id}-read-${readCells.length > 0 ? [...readCells].sort().join('-') : 'none'}-${readCells.length}`}
-                    row={filteredRow}
+                    row={quickFilteredRow}
                     level={0}
                     isExpanded={expandedRows.has(measure.id)}
                     expandedRows={expandedRows}
@@ -3401,7 +4429,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                     readCells={readCells}
                     onCellContextMenu={onCellContextMenu}
                     selectedCells={selectedCells}
-                    onCellSelect={onCellSelect}
+                    onCellSelect={handleCellSelectWithFocus}
                     onCellMouseDown={onCellMouseDown}
                     onCellMouseMove={onCellMouseMove}
                     lastSelectedCell={lastSelectedCell}
@@ -3416,15 +4444,63 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                     sharedMeasureIds={sharedMeasureIds}
                     onExpandMeasure={handleExpandMeasure}
                     onCollapseMeasure={handleCollapseMeasure}
+                    isNewlyAdded={newlyAddedMeasureIds.includes(measure.id)}
+                    frozenColumns={frozenColumns}
+                    showAdditionalFrozenColumns={showAdditionalFrozenColumns}
+                    subColumns={subColumns}
+                    frozenColWidth={totalFrozenWidth}
+                    data={gridData}
+                    onApplyQuickFilter={handleApplyQuickFilter}
+                    quickFilter={quickFilters.get(measure.id) || null}
+                    getQuickFilter={(rowId: string) => quickFilters.get(rowId) || null}
+                    approvalRequests={approvalRequests}
+                    onApprovalAction={(approvalId, action, comment, approverRole) => {
+                      if (onApprovalActionDirect) {
+                        // Direct path: ForecastingGrid's handleApprovalAction handles multi-approver logic
+                        onApprovalActionDirect(approvalId, action, comment, approverRole);
+                      } else if (onApprovalUpdate) {
+                        // Legacy fallback
+                        const cellKey = approvalId.replace(/^approval-/, '');
+                        const approval = approvalRequests.get(cellKey);
+                        if (approval) {
+                          const newStatus: ApprovalRequest['status'] = action === 'submitForApproval' ? 'pending' : action;
+                          onApprovalUpdate(cellKey, { ...approval, status: newStatus, userInitiated: true });
+                        }
+                      }
+                    }}
+                    onApprovalStatusChangeViewHistory={onApprovalStatusChangeViewHistory}
+                    onApprovalStatusChangeMarkAsRead={onApprovalStatusChangeMarkAsRead}
+                    conditionalFormattingRules={conditionalFormattingRules}
+                    conditionalFormattingColorScaleMerge={conditionalFormattingColorScaleMerge}
+                    isDesignSystemRulesEnabled={isDesignSystemRulesEnabled}
+                    measureId={measure.id}
+                    allCellValues={allCellValues}
+                    allCellValuesByType={allCellValuesByType}
+                    parentTotalsRollupMode={parentTotalsRollupMode}
+                    planReviewGridLock={planReviewGridLock}
+                    planReviewRequesterStripes={planReviewRequesterStripes}
+                    approverMayOpenReviewPopover={approverMayOpenReviewPopover}
+                    approverOverrideCellKeys={approverOverrideCellKeys}
+                    pendingApproverEdit={pendingApproverEdit}
+                    onPendingApproverEditConsumed={onPendingApproverEditConsumed}
+                    onManagerOverrideForCell={onManagerOverrideForCell}
+                    flattenedSortShowAncestorPath={isFlattenedSortAncestorPathVisible}
                   />
               );
               }
               
               // No filtering - render normally
+              // Apply quick filter filtering
+              const rowForQuickFilterNoFilter = deepCopyRow(rowAfterImpactedFilter);
+              const quickFilteredRowNoFilter = filterChildrenByQuickFilter(rowForQuickFilterNoFilter);
+              if (!quickFilteredRowNoFilter) {
+                return null; // Row filtered out by quick filter
+              }
+              
               return (
                 <GridRowComponent
                   key={`${measure.id}-read-${readCells.length > 0 ? [...readCells].sort().join('-') : 'none'}-${readCells.length}`}
-                  row={rowAfterImpactedFilter}
+                  row={quickFilteredRowNoFilter}
                   level={0}
                   isExpanded={expandedRows.has(measure.id)}
                   expandedRows={expandedRows}
@@ -3443,6 +4519,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                   unsavedNotes={unsavedNotes}
                   savedImpactedCells={savedImpactedCells}
                   columnWidth={columnWidth}
+                  isNewlyAdded={newlyAddedMeasureIds.includes(measure.id)}
                   searchTerm={searchTerm}
                   onCellEditStateChange={handleCellEditStateChange}
                   editHistory={cellEditHistory}
@@ -3450,28 +4527,112 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                   lockedCells={lockedCells}
                   readCells={readCells}
                   onCellContextMenu={onCellContextMenu}
-                  selectedCells={selectedCells}
-                  onCellSelect={onCellSelect}
-                  onCellMouseDown={onCellMouseDown}
-                  onCellMouseMove={onCellMouseMove}
-                  lastSelectedCell={lastSelectedCell}
-                  onFillHandleDragStart={onFillHandleDragStart}
-                  onFillHandleDragMove={onFillHandleDragMove}
-                  onFillHandleDragEnd={onFillHandleDragEnd}
-                  readonlyMeasureIds={readonlyMeasureIds}
-                  isAdjustmentGroupSelected={isAdjustmentGroupSelected}
-                  onMeasureGroupChange={onMeasureGroupChange}
-                  measureGroupContext={measureGroupContext}
-                  onMeasureGroupContextChange={onMeasureGroupContextChange}
-                  sharedMeasureIds={sharedMeasureIds}
-                  onExpandMeasure={handleExpandMeasure}
-                  onCollapseMeasure={handleCollapseMeasure}
+                    selectedCells={selectedCells}
+                    onCellSelect={handleCellSelectWithFocus}
+                    onCellMouseDown={onCellMouseDown}
+                    onCellMouseMove={onCellMouseMove}
+                    lastSelectedCell={lastSelectedCell}
+                    onFillHandleDragStart={onFillHandleDragStart}
+                    onFillHandleDragMove={onFillHandleDragMove}
+                    onFillHandleDragEnd={onFillHandleDragEnd}
+                    readonlyMeasureIds={readonlyMeasureIds}
+                    isAdjustmentGroupSelected={isAdjustmentGroupSelected}
+                    onMeasureGroupChange={onMeasureGroupChange}
+                    measureGroupContext={measureGroupContext}
+                    onMeasureGroupContextChange={onMeasureGroupContextChange}
+                    sharedMeasureIds={sharedMeasureIds}
+                    onExpandMeasure={handleExpandMeasure}
+                    onCollapseMeasure={handleCollapseMeasure}
+                    frozenColumns={frozenColumns}
+                    showAdditionalFrozenColumns={showAdditionalFrozenColumns}
+                    subColumns={subColumns}
+                    frozenColWidth={totalFrozenWidth}
+                  data={gridData}
+                  onApplyQuickFilter={handleApplyQuickFilter}
+                  quickFilter={quickFilters.get(measure.id) || null}
+                  getQuickFilter={(rowId: string) => quickFilters.get(rowId) || null}
+                  approvalRequests={approvalRequests}
+                  onApprovalAction={(approvalId, action, comment, approverRole) => {
+                    if (onApprovalActionDirect) {
+                      onApprovalActionDirect(approvalId, action, comment, approverRole);
+                    } else if (onApprovalUpdate) {
+                      const cellKey = approvalId.replace(/^approval-/, '');
+                      const approval = approvalRequests.get(cellKey);
+                      if (approval) {
+                        const newStatus: ApprovalRequest['status'] = action === 'submitForApproval' ? 'pending' : action;
+                        onApprovalUpdate(cellKey, { ...approval, status: newStatus, userInitiated: true });
+                      }
+                    }
+                  }}
+                  onApprovalStatusChangeViewHistory={onApprovalStatusChangeViewHistory}
+                  onApprovalStatusChangeMarkAsRead={onApprovalStatusChangeMarkAsRead}
+                  conditionalFormattingRules={conditionalFormattingRules}
+                  conditionalFormattingColorScaleMerge={conditionalFormattingColorScaleMerge}
+                  isDesignSystemRulesEnabled={isDesignSystemRulesEnabled}
+                  measureId={measure.id}
+                  allCellValues={allCellValues}
+                  allCellValuesByType={allCellValuesByType}
+                  parentTotalsRollupMode={parentTotalsRollupMode}
+                  planReviewGridLock={planReviewGridLock}
+                  planReviewRequesterStripes={planReviewRequesterStripes}
+                  approverMayOpenReviewPopover={approverMayOpenReviewPopover}
+                  approverOverrideCellKeys={approverOverrideCellKeys}
+                  pendingApproverEdit={pendingApproverEdit}
+                  onPendingApproverEditConsumed={onPendingApproverEditConsumed}
+                    onManagerOverrideForCell={onManagerOverrideForCell}
+                    flattenedSortShowAncestorPath={isFlattenedSortAncestorPathVisible}
                 />
               );
-            })
-          )}
-        </tbody>
+              })
+            )}
+          </tbody>
       </table>
+      {frozenColumns.length > 0 && (
+        <button
+          type="button"
+          className="frozen-col-resize-handle-vertical"
+          aria-label="Resize frozen columns"
+          style={{
+            position: 'absolute',
+            left: `${totalFrozenWidth}px`,
+            top: 0,
+            bottom: 0,
+            width: '16px',
+            transform: 'translateX(-50%)',
+            cursor: 'col-resize',
+            zIndex: 100,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            pointerEvents: 'auto',
+          }}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const startX = e.clientX;
+            const startWidth = frozenColWidth;
+            frozenColResizingRef.current = true;
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+            const onMove = (mv: MouseEvent) => {
+              if (!frozenColResizingRef.current) return;
+              const delta = mv.clientX - startX;
+              setFrozenColWidth(Math.max(0, startWidth + delta));
+            };
+            const onUp = () => {
+              frozenColResizingRef.current = false;
+              document.body.style.cursor = '';
+              document.body.style.userSelect = '';
+              window.removeEventListener('mousemove', onMove);
+              window.removeEventListener('mouseup', onUp);
+            };
+            window.addEventListener('mousemove', onMove);
+            window.addEventListener('mouseup', onUp);
+          }}
+        >
+          <div className="frozen-col-resize-handle-pill" aria-hidden />
+        </button>
+      )}
         <GridFooter
           isVisible={isFooterVisible}
           onUndo={handleUndo}

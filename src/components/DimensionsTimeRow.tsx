@@ -1,7 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { TransformedRow } from '../utils/layoutTransform';
+import { MeasureData } from '../types';
 import { extractSearchTerms, separateSearchTerms, matchesNumber, matchesTimePeriod } from '../utils/searchUtils';
 import { SearchHighlight } from './SearchHighlight';
+import { CellDeltaSignIcon } from './CellDeltaSignIcon';
+import MoreNodeSettingsModal from './MoreNodeSettingsModal';
+import AddRemoveChildNodesModal from './AddRemoveChildNodesModal';
 import '../styles/components/Grid.css';
 
 interface DimensionsTimeRowProps {
@@ -21,6 +26,14 @@ interface DimensionsTimeRowProps {
   savedEditedCells?: Map<string, string>;
   columnWidth?: number;
   searchTerm?: string;
+  newlyAddedMeasureIds?: string[]; // IDs of newly added measures for animation effect
+  onAddChildNode?: (rowId: string) => void; // Callback to add a child node
+  onRemoveChildNode?: (rowId: string) => void; // Callback to remove a child node
+  onFilterChildrenNodes?: (rowId: string) => void; // Callback to filter children nodes
+  onEditNode?: (rowId: string) => void; // Callback to edit a node
+  onDeleteNode?: (rowId: string) => void; // Callback to delete a node
+  onReparentNode?: (rowId: string, parentNodeId: string | null) => void; // Callback to reparent a node
+  data?: MeasureData[]; // Full data structure for hierarchy operations
 }
 
 const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
@@ -40,6 +53,14 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
   savedEditedCells,
   columnWidth = 100,
   searchTerm = '',
+  newlyAddedMeasureIds = [],
+  onAddChildNode,
+  onRemoveChildNode,
+  onFilterChildrenNodes,
+  onEditNode,
+  onDeleteNode,
+  onReparentNode,
+  data = [],
 }) => {
   const hasChildren = row.children && row.children.length > 0;
   const [editingCell, setEditingCell] = useState<{ measureId: string } | null>(null);
@@ -48,6 +69,66 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
   const savedByEnterRef = useRef<boolean>(false);
   const [_hoveredMeasureId, setHoveredMeasureId] = useState<string | null>(null);
   const [_focusedCellKey, setFocusedCellKey] = useState<string | null>(null);
+  const [showDimensionMenu, setShowDimensionMenu] = useState(false);
+  const [dimensionMenuPosition, setDimensionMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const dimensionMenuRef = useRef<HTMLButtonElement>(null);
+  const [showMoreNodeSettingsModal, setShowMoreNodeSettingsModal] = useState(false);
+  const [showAddRemoveChildNodesModal, setShowAddRemoveChildNodesModal] = useState(false);
+
+  // Check if this node only has leaf children (no grandchildren)
+  const hasOnlyLeafChildren = hasChildren && row.children 
+    ? row.children.every(child => !child.children || child.children.length === 0)
+    : false;
+  
+  // Check if this is a leaf node (no children)
+  const isLeafNode = !hasChildren;
+  
+  // Show expand/collapse options only if node has grandchildren (not just direct children)
+  const showExpandCollapseOptions = hasChildren && !hasOnlyLeafChildren && !isLeafNode;
+
+  // Helper function to collect all descendant IDs recursively
+  const collectAllDescendantIds = (rows: TransformedRow[]): string[] => {
+    const ids: string[] = [];
+    for (const childRow of rows) {
+      if (childRow.children && childRow.children.length > 0) {
+        ids.push(childRow.id);
+        ids.push(...collectAllDescendantIds(childRow.children));
+      }
+    }
+    return ids;
+  };
+  
+  // Expand all children of this dimension row
+  const handleExpandAll = () => {
+    if (!hasChildren || !row.children) return;
+    const allIds = collectAllDescendantIds(row.children);
+    // Expand this row first if not already expanded
+    if (!isExpanded) {
+      onToggleExpand(row.id);
+    }
+    // Then expand all children that have children
+    allIds.forEach(id => {
+      if (!expandedRows.has(id)) {
+        onToggleExpand(id);
+      }
+    });
+  };
+  
+  // Collapse all children of this dimension row
+  const handleCollapseAll = () => {
+    if (!hasChildren || !row.children) return;
+    const allIds = collectAllDescendantIds(row.children);
+    // Collapse all children first
+    allIds.forEach(id => {
+      if (expandedRows.has(id)) {
+        onToggleExpand(id);
+      }
+    });
+    // Then collapse this row if expanded
+    if (isExpanded) {
+      onToggleExpand(row.id);
+    }
+  };
 
   useEffect(() => {
     if (editingCell && inputRef.current) {
@@ -55,6 +136,32 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
       inputRef.current.select();
     }
   }, [editingCell]);
+
+  // Update dimension menu position when showing
+  useEffect(() => {
+    if (showDimensionMenu && dimensionMenuRef.current) {
+      const rect = dimensionMenuRef.current.getBoundingClientRect();
+      setDimensionMenuPosition({
+        top: rect.bottom + 8,
+        left: rect.left
+      });
+    }
+  }, [showDimensionMenu]);
+
+  // Close dimension menu when clicking outside
+  useEffect(() => {
+    if (!showDimensionMenu) return;
+    
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.dimension-menu-dropdown') && !dimensionMenuRef.current?.contains(target)) {
+        setShowDimensionMenu(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showDimensionMenu]);
 
   const handleCellValueDoubleClick = (measureId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -186,7 +293,7 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
 
     if (isDirectlyEdited) {
       const isIncrement = deltaPercent !== null && deltaPercent > 0;
-      const deltaColor = isIncrement ? '#ff5d2d' : '#2E76E1';
+      const deltaColor = isIncrement ? 'var(--slds-g-color-warning-2)' : 'var(--color-accent-blue)';
       
       return (
         <div 
@@ -199,8 +306,9 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
           </div>
           <div className="cell-value-left-section" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             {deltaPercent !== null && Math.abs(deltaPercent) > 0.001 && (
-              <div className="cell-delta-badge" style={{ color: deltaColor }}>
-                {deltaPercent > 0 ? '+' : ''} {deltaPercent.toFixed(2)}%
+              <div className="cell-delta-badge">
+                <CellDeltaSignIcon deltaPercent={deltaPercent} />
+                {`${deltaPercent > 0 ? '+' : ''}${deltaPercent.toFixed(2)}%`}
               </div>
             )}
             <span 
@@ -231,9 +339,9 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
     
     // Saved edited cell: show only icon, no badge, normal value positioning
     if (isSavedEdited) {
-      const iconColor = savedIconColor || '#2E76E1'; // Use stored color or default blue
+      const iconColor = savedIconColor || 'var(--color-accent-blue)'; // Use stored color or default blue
       // Use saved icon color to determine arrow direction (orange = increase, blue = decrease)
-      const isIncrease = iconColor === '#ff5d2d' || iconColor === '#FF5D2D';
+      const isIncrease = iconColor === 'var(--slds-g-color-warning-2)' || iconColor === 'var(--slds-g-color-warning-2)';
       
       return (
         <div 
@@ -241,16 +349,8 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
           onDoubleClick={isEditable ? (e) => handleCellValueDoubleClick(measureId, e) : undefined}
           style={{ cursor: isEditable ? 'pointer' : 'default' }}
         >
-          <div className={`cell-value-left-icon ${isIncrease ? 'cell-arrow-increase' : 'cell-arrow-decrease'}`}>
-            {isIncrease ? (
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 6v10M12 6l4 4M12 6l-4 4" stroke="#ff5d2d" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-              </svg>
-            ) : (
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 18V8M12 18l4-4M12 18l-4-4" stroke="#2E76E1" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-              </svg>
-            )}
+          <div className="cell-value-left-icon cell-value-left-icon--compact-disc">
+            <CellDeltaSignIcon variant={isIncrease ? 'increase' : 'decrease'} />
           </div>
           <span 
             className={`cell-value cell-value-saved ${isIncrease ? 'cell-value-increase' : 'cell-value-decrease'} ${!isEditable ? 'cell-value-readonly' : ''}`}
@@ -279,7 +379,7 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
     if (isImpacted) {
       // Impacted cell: lighter yellow background, delta badge, no icon
       const isIncrement = deltaPercent !== null && deltaPercent > 0;
-      const deltaColor = isIncrement ? '#ff5d2d' : '#2E76E1';
+      const deltaColor = isIncrement ? 'var(--slds-g-color-warning-2)' : 'var(--color-accent-blue)';
       
       return (
         <div 
@@ -292,8 +392,9 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
           </div>
           <div className="cell-value-left-section" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             {deltaPercent !== null && Math.abs(deltaPercent) > 0.001 && (
-              <div className="cell-delta-badge" style={{ color: deltaColor }}>
-                {deltaPercent > 0 ? '+' : ''} {deltaPercent.toFixed(2)}%
+              <div className="cell-delta-badge">
+                <CellDeltaSignIcon deltaPercent={deltaPercent} />
+                {`${deltaPercent > 0 ? '+' : ''}${deltaPercent.toFixed(2)}%`}
               </div>
             )}
             <span 
@@ -357,19 +458,22 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
 
   return (
     <>
-      <tr className={rowClassName}>
-        <td className="grid-cell" style={{ width: '300px', minWidth: '300px' }}>
+      <tr role="row" className={rowClassName}>
+        <td role="rowheader" className="grid-cell" style={{ width: '300px', minWidth: '300px' }}>
           <div className="cell-content">
             <span className={`cell-indent level-${row.level}`}></span>
             {hasChildren && (
-              <div
+              <button
+                type="button"
                 className={`chevron-icon ${isExpanded ? 'expanded' : ''}`}
+                aria-expanded={isExpanded}
+                aria-label={isExpanded ? 'Collapse row' : 'Expand row'}
                 onClick={() => onToggleExpand(row.id)}
               >
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
-              </div>
+              </button>
             )}
             {!hasChildren && <span style={{ width: '16px', display: 'inline-block' }}></span>}
             {row.type === 'account' && (
@@ -384,7 +488,7 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
               <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginLeft: '4px', marginRight: '4px', width: '24px', height: '24px' }}>
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <g clipPath="url(#dimensionsTimeProductClip)">
-                    <rect width="24" height="24" rx="4" fill="#9050E9"/>
+                    <rect width="24" height="24" rx="4" fill="var(--color-dimension-product-icon)" />
                     <path d="M5.2798 15.8408H6.4798C6.7438 15.8408 6.9598 15.6248 6.9598 15.3608V7.92078C6.9598 7.65678 6.7438 7.44078 6.4798 7.44078H5.2798C5.0158 7.44078 4.7998 7.65678 4.7998 7.92078V15.3608C4.7998 15.6248 5.0158 15.8408 5.2798 15.8408ZM18.7198 7.44078H17.5198C17.2558 7.44078 17.0398 7.65678 17.0398 7.92078V15.3608C17.0398 15.6248 17.2558 15.8408 17.5198 15.8408H18.7198C18.9838 15.8408 19.1998 15.6248 19.1998 15.3608V7.92078C19.1998 7.65678 18.9838 7.44078 18.7198 7.44078ZM12.7198 15.8408C12.9838 15.8408 13.1998 15.6248 13.1998 15.3608V7.92078C13.1998 7.65678 12.9838 7.44078 12.7198 7.44078H11.2798C11.0158 7.44078 10.7998 7.65678 10.7998 7.92078V15.3608C10.7998 15.6248 11.0158 15.8408 11.2798 15.8408H12.7198ZM15.5998 15.8408C15.8638 15.8408 16.0798 15.6248 16.0798 15.3608V7.92078C16.0798 7.65678 15.8638 7.44078 15.5998 7.44078H15.1198C14.8558 7.44078 14.6398 7.65678 14.6398 7.92078V15.3608C14.6398 15.6248 14.8558 15.8408 15.1198 15.8408H15.5998ZM9.3598 15.8408C9.6238 15.8408 9.8398 15.6248 9.8398 15.3608V7.92078C9.8398 7.65678 9.6238 7.44078 9.3598 7.44078H8.8798C8.6158 7.44078 8.3998 7.65678 8.3998 7.92078V15.3608C8.3998 15.6248 8.6158 15.8408 8.8798 15.8408H9.3598ZM18.7198 17.2808H5.2798C5.0158 17.2808 4.7998 17.4968 4.7998 17.7608V18.2408C4.7998 18.5048 5.0158 18.7208 5.2798 18.7208H18.7198C18.9838 18.7208 19.1998 18.5048 19.1998 18.2408V17.7608C19.1998 17.4968 18.9838 17.2808 18.7198 17.2808ZM18.7198 4.80078H5.2798C5.0158 4.80078 4.7998 5.01678 4.7998 5.28078V5.76078C4.7998 6.02478 5.0158 6.24078 5.2798 6.24078H18.7198C18.9838 6.24078 19.1998 6.02478 19.1998 5.76078V5.28078C19.1998 5.01678 18.9838 4.80078 18.7198 4.80078Z" fill="white"/>
                   </g>
                   <defs>
@@ -434,6 +538,203 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
                 );
               })() : row.name}
             </span>
+            {/* 3-dot menu button for dimension rows */}
+            {(row.type === 'account' || row.type === 'category' || row.type === 'product') && (
+              <button
+                type="button"
+                ref={dimensionMenuRef}
+                aria-haspopup="menu"
+                aria-expanded={showDimensionMenu}
+                aria-label="Row actions"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowDimensionMenu(!showDimensionMenu);
+                }}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginLeft: 'auto',
+                  marginRight: '8px',
+                  padding: '4px',
+                  border: 'none',
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  borderRadius: '4px',
+                  transition: 'background-color 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'var(--slds-g-color-neutral-base-95)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="8" cy="3" r="1.5" fill="var(--slds-g-color-neutral-base-50)"/>
+                  <circle cx="8" cy="8" r="1.5" fill="var(--slds-g-color-neutral-base-50)"/>
+                  <circle cx="8" cy="13" r="1.5" fill="var(--slds-g-color-neutral-base-50)"/>
+                </svg>
+                {/* Dropdown menu rendered via portal */}
+                {showDimensionMenu && dimensionMenuPosition && createPortal(
+                  <div
+                    className="dimension-menu-dropdown"
+                    style={{
+                      position: 'fixed',
+                      top: dimensionMenuPosition.top,
+                      left: dimensionMenuPosition.left,
+                      backgroundColor: 'white',
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '6px',
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                      zIndex: 10000,
+                      minWidth: '160px',
+                      overflow: 'hidden'
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {showExpandCollapseOptions && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleExpandAll();
+                            setShowDimensionMenu(false);
+                          }}
+                          style={{
+                            padding: '10px 12px',
+                            fontSize: '13px',
+                            color: 'var(--color-on-surface-strong)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            transition: 'background-color 0.15s',
+                            width: '100%',
+                            border: 'none',
+                            background: 'var(--color-surface-white)',
+                            font: 'inherit',
+                            textAlign: 'left',
+                            appearance: 'none',
+                            WebkitAppearance: 'none',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = 'var(--slds-g-color-neutral-base-95)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = 'white';
+                          }}
+                        >
+                          <span>Expand All</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleCollapseAll();
+                            setShowDimensionMenu(false);
+                          }}
+                          style={{
+                            padding: '10px 12px',
+                            fontSize: '13px',
+                            color: 'var(--color-on-surface-strong)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            border: 'none',
+                            borderTop: '1px solid #e5e7eb',
+                            transition: 'background-color 0.15s',
+                            width: '100%',
+                            background: 'var(--color-surface-white)',
+                            font: 'inherit',
+                            textAlign: 'left',
+                            appearance: 'none',
+                            WebkitAppearance: 'none',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = 'var(--slds-g-color-neutral-base-95)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = 'white';
+                          }}
+                        >
+                          <span>Collapse All</span>
+                        </button>
+                      </>
+                    )}
+                    {hasChildren && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowDimensionMenu(false);
+                          setShowAddRemoveChildNodesModal(true);
+                        }}
+                        style={{
+                          padding: '10px 12px',
+                          fontSize: '13px',
+                          color: 'var(--color-on-surface-strong)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          border: 'none',
+                          borderTop: showExpandCollapseOptions ? '1px solid #e5e7eb' : 'none',
+                          transition: 'background-color 0.15s',
+                          width: '100%',
+                          background: 'var(--color-surface-white)',
+                          font: 'inherit',
+                          textAlign: 'left',
+                          appearance: 'none',
+                          WebkitAppearance: 'none',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = 'var(--slds-g-color-neutral-base-95)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = 'white';
+                        }}
+                      >
+                        <span>Quick Filter</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowDimensionMenu(false);
+                        setShowMoreNodeSettingsModal(true);
+                      }}
+                      style={{
+                        padding: '10px 12px',
+                        fontSize: '13px',
+                        color: 'var(--color-on-surface-strong)',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        border: 'none',
+                        borderTop: '1px solid #e5e7eb',
+                        transition: 'background-color 0.15s',
+                        width: '100%',
+                        background: 'var(--color-surface-white)',
+                        font: 'inherit',
+                        textAlign: 'left',
+                        appearance: 'none',
+                        WebkitAppearance: 'none',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = 'var(--slds-g-color-neutral-base-95)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'white';
+                      }}
+                    >
+                      <span>Node Settings</span>
+                    </button>
+                  </div>,
+                  document.body
+                )}
+              </button>
+            )}
           </div>
         </td>
         {measures.map((measure) => {
@@ -479,9 +780,16 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
           } else if (isSavedEdited) {
             // Lowest priority: no special class for saved edited cells (icon only)
           }
+          
+          // Add skeleton class for newly added measure columns
+          const isNewlyAddedColumn = newlyAddedMeasureIds.includes(measure.id);
+          if (isNewlyAddedColumn) {
+            cellClassName += ' newly-added-measure-column-cell';
+          }
 
           return (
             <td
+              role="gridcell"
               key={cellKey}
               style={{ minWidth: `${columnWidth}px`, width: `${columnWidth}px`, position: 'relative' }}
               ref={(el) => {
@@ -553,10 +861,67 @@ const DimensionsTimeRowComponent: React.FC<DimensionsTimeRowProps> = ({
               savedEditedCells={savedEditedCells}
               columnWidth={columnWidth}
               searchTerm={searchTerm}
+              newlyAddedMeasureIds={newlyAddedMeasureIds}
+              onAddChildNode={onAddChildNode}
+              onRemoveChildNode={onRemoveChildNode}
+              onFilterChildrenNodes={onFilterChildrenNodes}
+              onEditNode={onEditNode}
+              onDeleteNode={onDeleteNode}
+              onReparentNode={onReparentNode}
+              data={data}
             />
           ))}
         </>
       )}
+      {/* More Node Settings Modal */}
+      <MoreNodeSettingsModal
+        isOpen={showMoreNodeSettingsModal}
+        onClose={() => setShowMoreNodeSettingsModal(false)}
+        anchorElement={dimensionMenuRef.current}
+        onReplaceNode={() => {
+          if (onEditNode) {
+            onEditNode(row.id);
+          }
+        }}
+        onReparentNode={(parentNodeId) => {
+          if (onReparentNode) {
+            onReparentNode(row.id, parentNodeId);
+          }
+        }}
+        onDeleteNode={() => {
+          if (onDeleteNode) {
+            onDeleteNode(row.id);
+          }
+        }}
+        nodeName={row.name}
+        nodeId={row.id}
+        nodeType={row.type === 'account' ? 'account' : row.type === 'category' ? 'category' : row.type === 'product' ? 'product' : undefined}
+        data={data}
+      />
+      <AddRemoveChildNodesModal
+        isOpen={showAddRemoveChildNodesModal}
+        onClose={() => setShowAddRemoveChildNodesModal(false)}
+        anchorElement={dimensionMenuRef.current}
+        onAddChildNode={(nodeIds) => {
+          if (onAddChildNode) {
+            // For now, call for each node ID (can be optimized later)
+            nodeIds.forEach(nodeId => onAddChildNode(nodeId));
+          }
+        }}
+        onRemoveChildNode={(nodeIds) => {
+          if (onRemoveChildNode) {
+            // For now, call for each node ID (can be optimized later)
+            nodeIds.forEach(nodeId => onRemoveChildNode(nodeId));
+          }
+        }}
+        nodeName={row.name}
+        nodeType={row.type === 'account' ? 'account' : row.type === 'category' ? 'category' : row.type === 'product' ? 'product' : undefined}
+        childrenNodes={row.children ? row.children.map(child => ({
+          id: child.id,
+          name: child.name,
+          isSelected: true // All existing children are selected by default
+        })) : []}
+      />
     </>
   );
 };

@@ -1,18 +1,280 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { MeasureData, GridRow } from '../types';
-import ProductFilterPopover from './ProductFilterPopover';
-import CategoryFilterPopover from './CategoryFilterPopover';
-import TimeFilterPopover from './TimeFilterPopover';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { MeasureData, GridRow, ParentTotalsRollupMode } from '../types';
+import UnifiedFilterPopover from './UnifiedFilterPopover';
 import '../styles/components/FiltersPanel.css';
+
+const MONTHS = [
+  { key: 'jan2026', label: 'Jan 2026' },
+  { key: 'feb2026', label: 'Feb 2026' },
+  { key: 'mar2026', label: 'Mar 2026' },
+  { key: 'apr2026', label: 'Apr 2026' },
+  { key: 'may2026', label: 'May 2026' },
+  { key: 'jun2026', label: 'Jun 2026' },
+  { key: 'jul2026', label: 'Jul 2026' },
+  { key: 'aug2026', label: 'Aug 2026' },
+  { key: 'sep2026', label: 'Sep 2026' },
+  { key: 'oct2026', label: 'Oct 2026' },
+  { key: 'nov2026', label: 'Nov 2026' },
+  { key: 'dec2026', label: 'Dec 2026' },
+];
 
 interface Filter {
   id: string;
-  type: 'measures' | 'account' | 'category' | 'products' | 'time';
+  type: 'measures' | 'account' | 'category' | 'products' | 'time' | 'new';
   label: string;
   value: string;
   field?: string;
   operator?: string;
 }
+
+const FILTER_SETS_STORAGE_KEY = 'forecasting-saved-filter-sets-v1';
+
+interface FilterSetSnapshot {
+  filters: Filter[];
+  startPeriod: string;
+  endPeriod: string;
+  parentTotalsRollupMode: ParentTotalsRollupMode;
+  filterLogicValue: string;
+  showFilterLogic: boolean;
+}
+
+interface SavedFilterSet {
+  id: string;
+  name: string;
+  description: string;
+  snapshot: FilterSetSnapshot;
+}
+
+function loadSavedFilterSetsFromStorage(): SavedFilterSet[] {
+  try {
+    const raw = localStorage.getItem(FILTER_SETS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as { version?: number; sets?: SavedFilterSet[] };
+    if (!parsed?.sets || !Array.isArray(parsed.sets)) return [];
+    return parsed.sets.filter(
+      s => s && typeof s.id === 'string' && typeof s.name === 'string' && s.snapshot?.filters,
+    );
+  } catch {
+    return [];
+  }
+}
+
+function persistSavedFilterSetsToStorage(sets: SavedFilterSet[]) {
+  try {
+    localStorage.setItem(FILTER_SETS_STORAGE_KEY, JSON.stringify({ version: 1, sets }));
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+interface BasicFilterMultiSelectProps {
+  id: string;
+  labelId: string;
+  options: string[];
+  selected: Set<string>;
+  onChange: (values: string[]) => void;
+}
+
+/** Comma-separated values in filter state; empty selection = no filter (All). */
+const BasicFilterMultiSelect: React.FC<BasicFilterMultiSelectProps> = ({
+  id,
+  labelId,
+  options,
+  selected,
+  onChange,
+}) => {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  const onKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') setOpen(false);
+  }, []);
+
+  const toggleOption = (opt: string) => {
+    const next = new Set(selected);
+    if (next.has(opt)) next.delete(opt);
+    else next.add(opt);
+    onChange(Array.from(next));
+  };
+
+  const clearToAll = () => {
+    onChange([]);
+    setOpen(false);
+  };
+
+  const summary =
+    selected.size === 0
+      ? 'All'
+      : selected.size === 1
+        ? Array.from(selected)[0]
+        : selected.size === 2
+          ? `${Array.from(selected)[0]}, ${Array.from(selected)[1]}`
+          : `${selected.size} selected`;
+
+  return (
+    <div
+      className={`filters-basic-ms${open ? ' filters-basic-ms--open' : ''}`}
+      ref={wrapRef}
+      onKeyDown={onKeyDown}
+    >
+      <button
+        type="button"
+        id={id}
+        className="filters-basic-ms-trigger"
+        aria-labelledby={labelId}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen(o => !o)}
+      >
+        <span className="filters-basic-ms-trigger-text" title={selected.size > 1 ? Array.from(selected).join(', ') : undefined}>
+          {summary}
+        </span>
+        <svg className="filters-basic-ms-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
+          <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open && (
+        <div className="filters-basic-ms-dropdown" role="listbox" aria-multiselectable="true">
+          <div className="filters-basic-ms-dropdown-head">
+            <button type="button" className="filters-basic-ms-reset" onClick={clearToAll}>
+              All (no filter)
+            </button>
+          </div>
+          <div className="filters-basic-ms-list">
+            {options.length === 0 ? (
+              <div className="filters-basic-ms-empty">No options</div>
+            ) : (
+              options.map(opt => (
+                <label key={opt} className="filters-basic-ms-option">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(opt)}
+                    onChange={() => toggleOption(opt)}
+                  />
+                  <span className="filters-basic-ms-option-label">{opt}</span>
+                </label>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+interface FilterSetSelectProps {
+  id: string;
+  labelId: string;
+  value: string;
+  savedSets: SavedFilterSet[];
+  onChange: (id: string) => void;
+}
+
+/** Single-select filter set with name + description shown inside each list row. */
+const FilterSetSelect: React.FC<FilterSetSelectProps> = ({
+  id,
+  labelId,
+  value,
+  savedSets,
+  onChange,
+}) => {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  const onKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') setOpen(false);
+  }, []);
+
+  const selectedSet = value ? savedSets.find(s => s.id === value) : undefined;
+  const summary = value === '' ? 'Default' : (selectedSet?.name ?? 'Default');
+  const triggerTitle =
+    selectedSet?.description?.trim()
+      ? `${selectedSet.name} — ${selectedSet.description}`
+      : selectedSet?.name;
+
+  return (
+    <div
+      className={`filters-basic-ms filters-filter-set-ms${open ? ' filters-basic-ms--open' : ''}`}
+      ref={wrapRef}
+      onKeyDown={onKeyDown}
+    >
+      <button
+        type="button"
+        id={id}
+        className="filters-basic-ms-trigger"
+        aria-labelledby={labelId}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        title={triggerTitle}
+        onClick={() => setOpen(o => !o)}
+      >
+        <span className="filters-basic-ms-trigger-text">{summary}</span>
+        <svg className="filters-basic-ms-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
+          <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open && (
+        <div className="filters-filter-set-dd-panel" role="listbox" aria-labelledby={labelId}>
+          <button
+            type="button"
+            role="option"
+            aria-selected={value === ''}
+            className={`filters-filter-set-dd-option filters-filter-set-dd-option--none${value === '' ? ' filters-filter-set-dd-option--selected' : ''}`}
+            onClick={() => {
+              onChange('');
+              setOpen(false);
+            }}
+          >
+            <span className="filters-filter-set-dd-option-title">Default</span>
+          </button>
+          {savedSets.map(s => {
+            const desc = s.description?.trim();
+            return (
+              <button
+                key={s.id}
+                type="button"
+                role="option"
+                aria-selected={value === s.id}
+                className={`filters-filter-set-dd-option${value === s.id ? ' filters-filter-set-dd-option--selected' : ''}`}
+                onClick={() => {
+                  onChange(s.id);
+                  setOpen(false);
+                }}
+              >
+                <span className="filters-filter-set-dd-option-title">{s.name}</span>
+                {desc ? (
+                  <span className="filters-filter-set-dd-option-desc">{desc}</span>
+                ) : (
+                  <span className="filters-filter-set-dd-option-desc filters-filter-set-dd-option-desc--muted">
+                    No description
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
 
 interface FiltersPanelProps {
   isOpen: boolean;
@@ -30,12 +292,16 @@ interface FiltersPanelProps {
   onEndPeriodChange?: (period: string) => void;
   onApplyFilters?: (filteredData: MeasureData[]) => void;
   onActiveFilterCountChange?: (count: number) => void;
+  parentTotalsRollupMode?: ParentTotalsRollupMode;
+  onParentTotalsRollupModeChange?: (mode: ParentTotalsRollupMode) => void;
+  /** When non-empty, Basic Filters measure list only includes these measure ids (Reorder measures visibility). */
+  visibleMeasureIds?: Set<string>;
 }
 
 const FiltersPanel: React.FC<FiltersPanelProps> = ({ 
   isOpen, 
   onClose,
-  selectedMeasureSubgroup: _propSelectedMeasureSubgroup,
+  selectedMeasureSubgroup,
   onMeasureSubgroupChange: _onMeasureSubgroupChange,
   selectedDimensionLevels: propSelectedDimensionLevels,
   onDimensionLevelsChange: _onDimensionLevelsChange,
@@ -47,10 +313,15 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
   onStartPeriodChange,
   onEndPeriodChange,
   onApplyFilters,
-  onActiveFilterCountChange
+  onActiveFilterCountChange,
+  parentTotalsRollupMode: parentTotalsRollupModeProp = 'fullHierarchy',
+  onParentTotalsRollupModeChange,
+  visibleMeasureIds,
 }) => {
   // Track original values for Cancel functionality (only for filter cards)
   const [originalFilters, setOriginalFilters] = useState<Filter[]>([
+    { id: '1', type: 'measures', label: 'Filter by Measure', value: 'Equals All' },
+    { id: '2', type: 'account', label: 'Filter by Account', value: 'Equals All' },
     { id: '3', type: 'category', label: 'Filter by Category', value: 'Equals All' },
     { id: '4', type: 'products', label: 'Filter by Products', value: 'Equals All' },
     { id: '5', type: 'time', label: 'Filter by Time', value: 'Equals Jan 26 to Dec 26' },
@@ -64,11 +335,26 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
   const [localStartPeriod, setLocalStartPeriod] = useState(startPeriod);
   const [localEndPeriod, setLocalEndPeriod] = useState(endPeriod);
 
-  // Track if filters have changed (dirty state)
   const [isDirty, setIsDirty] = useState(false);
+
+  const [localParentTotalsRollupMode, setLocalParentTotalsRollupMode] =
+    useState<ParentTotalsRollupMode>(parentTotalsRollupModeProp);
+  const [originalParentTotalsRollupMode, setOriginalParentTotalsRollupMode] =
+    useState<ParentTotalsRollupMode>(parentTotalsRollupModeProp);
 
   // Track if Apply was clicked (to distinguish from Cancel/Close)
   const applyClickedRef = useRef(false);
+
+  const [filters, setFilters] = useState<Filter[]>([
+    { id: '1', type: 'measures', label: 'Filter by Measure', value: 'Equals All' },
+    { id: '2', type: 'account', label: 'Filter by Account', value: 'Equals All' },
+    { id: '3', type: 'category', label: 'Filter by Category', value: 'Equals All' },
+    { id: '4', type: 'products', label: 'Filter by Products', value: 'Equals All' },
+    { id: '5', type: 'time', label: 'Filter by Time', value: 'Equals Jan 26 to Dec 26' },
+  ]);
+
+  const [selectedFilterSetId, setSelectedFilterSetId] = useState('');
+  const [originalSelectedFilterSetId, setOriginalSelectedFilterSetId] = useState('');
 
   // Sync internal state with props
   useEffect(() => {
@@ -85,15 +371,13 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
       setOriginalFilters([...filters]);
       setOriginalStartPeriod(startPeriod);
       setOriginalEndPeriod(endPeriod);
+      setLocalParentTotalsRollupMode(parentTotalsRollupModeProp);
+      setOriginalParentTotalsRollupMode(parentTotalsRollupModeProp);
+      setOriginalSelectedFilterSetId(selectedFilterSetId);
       applyClickedRef.current = false;
     }
+    // Intentionally depend only on isOpen: snapshot filters/periods/rollup when the panel opens.
   }, [isOpen]);
-
-  const [filters, setFilters] = useState<Filter[]>([
-    { id: '3', type: 'category', label: 'Filter by Category', value: 'Equals All' },
-    { id: '4', type: 'products', label: 'Filter by Products', value: 'Equals All' },
-    { id: '5', type: 'time', label: 'Filter by Time', value: 'Equals Jan 26 to Dec 26' },
-  ]);
 
   // Check if filters are dirty (including filter cards and period changes)
   useEffect(() => {
@@ -103,8 +387,10 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
     const filtersChanged = JSON.stringify(filters) !== JSON.stringify(originalFilters);
     // Check period changes for dirty state
     const periodsChanged = localStartPeriod !== originalStartPeriod || localEndPeriod !== originalEndPeriod;
-    
-    setIsDirty(filtersChanged || periodsChanged);
+    const rollupChanged = localParentTotalsRollupMode !== originalParentTotalsRollupMode;
+    const filterSetSelectionChanged = selectedFilterSetId !== originalSelectedFilterSetId;
+
+    setIsDirty(filtersChanged || periodsChanged || rollupChanged || filterSetSelectionChanged);
   }, [
     isOpen,
     filters,
@@ -112,132 +398,255 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
     localStartPeriod,
     localEndPeriod,
     originalStartPeriod,
-    originalEndPeriod
+    originalEndPeriod,
+    localParentTotalsRollupMode,
+    originalParentTotalsRollupMode,
+    selectedFilterSetId,
+    originalSelectedFilterSetId,
   ]);
 
   // Calculate and notify active filter count
   useEffect(() => {
     if (!onActiveFilterCountChange) return;
 
-    let count = 0;
-
-    // Count active filter cards (category, product, time)
-    filters.forEach(filter => {
-      if (filter.type === 'category' || filter.type === 'products') {
-        if (filter.value !== 'Equals All' && filter.value !== 'All') {
-          count++;
-        }
-      } else if (filter.type === 'time') {
-        // Time filter is active if it's not the default range
-        if (filter.value !== 'Equals All' && filter.value !== 'All' && !filter.value.includes('Jan 26 to Dec 26')) {
-          count++;
-        }
-      }
-    });
-
-    // Count period filter (active if showAllPeriods is false or if start/end period is set)
-    if (!showAllPeriods || startPeriod || endPeriod) {
-      count++;
-    }
+    const EMPTY = new Set(['', 'All', 'Equals All', 'Equals Jan 26 to Dec 26']);
+    const count = filters.filter(f =>
+      f.type !== 'new' && f.value && !EMPTY.has(f.value) && !f.value.includes('Jan 26 to Dec 26')
+    ).length;
 
     onActiveFilterCountChange(count);
-  }, [filters, showAllPeriods, startPeriod, endPeriod, onActiveFilterCountChange]);
+  }, [filters, onActiveFilterCountChange]);
 
-  const [editingProductFilterId, setEditingProductFilterId] = useState<string | null>(null);
-  const [editingCategoryFilterId, setEditingCategoryFilterId] = useState<string | null>(null);
-  const [editingTimeFilterId, setEditingTimeFilterId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'basic' | 'advanced'>('basic');
+  const [savedFilterSets, setSavedFilterSets] = useState<SavedFilterSet[]>(() =>
+    loadSavedFilterSetsFromStorage(),
+  );
+  const [editingFilterId, setEditingFilterId] = useState<string | null>(null);
+  const [saveDropOpen, setSaveDropOpen] = useState(false);
+
+  // Derive unique measures (basic dropdown: only enabled measure categories), accounts, categories, and products from data
+  const { basicMeasureFilterOptions, allAccounts, allCategories, allProducts } = useMemo(() => {
+    const measureNames = new Set<string>();
+    const cats = new Set<string>();
+    const prods = new Set<string>();
+    const accts = new Set<string>();
+    const walk = (rows: GridRow[]) => {
+      rows.forEach(row => {
+        if (row.type === 'category') cats.add(row.name);
+        if (row.type === 'product') prods.add(row.name);
+        if (row.type === 'account') accts.add(row.name);
+        if (row.children) walk(row.children);
+      });
+    };
+    const subgroup = selectedMeasureSubgroup;
+    const filterByCategory =
+      subgroup != null && subgroup.size > 0
+        ? (m: MeasureData) =>
+            !m.groupContext || subgroup.has(m.groupContext)
+        : () => true;
+
+    const filterByVisibility =
+      visibleMeasureIds != null && visibleMeasureIds.size > 0
+        ? (m: MeasureData) => visibleMeasureIds.has(m.id)
+        : () => true;
+
+    data.forEach(m => {
+      const label = m.name?.trim() || m.id;
+      if (label && filterByCategory(m) && filterByVisibility(m)) measureNames.add(label);
+      walk(m.children || []);
+    });
+    return {
+      basicMeasureFilterOptions: Array.from(measureNames).sort(),
+      allAccounts: Array.from(accts).sort(),
+      allCategories: Array.from(cats).sort(),
+      allProducts: Array.from(prods).sort(),
+    };
+  }, [data, selectedMeasureSubgroup, visibleMeasureIds]);
+
+  // Basic filter: get selected values for a given type from filters state
+  const getBasicSelected = (type: Filter['type']): Set<string> => {
+    const f = filters.find(fi => fi.type === type);
+    if (!f || !f.value || f.value === 'Equals All' || f.value === 'All') return new Set();
+    // Advanced measure numeric filters use "|" — do not treat as basic multi-select tokens
+    if (type === 'measures' && f.value.includes('|')) return new Set();
+    return new Set(f.value.split(',').map(v => v.trim()).filter(Boolean));
+  };
+
+  const updateBasicMultiFilter = (type: Filter['type'], rowId: string, values: string[]) => {
+    const newValue = values.length === 0 ? 'Equals All' : values.join(', ');
+    setFilters(prev => {
+      const existing = prev.find(fi => fi.type === type);
+      if (type === 'measures') {
+        if (existing) return prev.map(fi => (fi.type === type ? { ...fi, value: newValue } : fi));
+        return [...prev, { id: rowId, type: 'measures', label: 'Filter by Measure', value: newValue }];
+      }
+      if (type === 'account') {
+        if (existing) return prev.map(fi => (fi.type === type ? { ...fi, value: newValue, operator: 'equals' } : fi));
+        return [...prev, { id: rowId, type: 'account', label: 'Filter by Account', value: newValue, operator: 'equals' }];
+      }
+      if (type === 'category') {
+        if (existing) return prev.map(fi => (fi.type === type ? { ...fi, value: newValue, operator: 'equals' } : fi));
+        return [...prev, { id: rowId, type: 'category', label: 'Filter by Category', value: newValue, operator: 'equals' }];
+      }
+      if (type === 'products') {
+        if (existing) return prev.map(fi => (fi.type === type ? { ...fi, value: newValue, operator: 'equals' } : fi));
+        return [...prev, { id: rowId, type: 'products', label: 'Filter by Products', value: newValue, operator: 'equals' }];
+      }
+      return prev;
+    });
+  };
+
+
+  // Basic filter: get time range from filters state
+  const getBasicTimeRange = (): { from: string; to: string } => {
+    const f = filters.find(fi => fi.type === 'time');
+    if (!f || !f.value || f.value.includes('Jan 26 to Dec 26') || f.value === 'Equals All') {
+      return { from: 'jan2026', to: 'dec2026' };
+    }
+    const parts = f.value.split(' to ');
+    return { from: parts[0]?.trim() || 'jan2026', to: parts[1]?.trim() || 'dec2026' };
+  };
+
+  const setBasicTimeRange = (from: string, to: string) => {
+    const display = `${MONTHS.find(m => m.key === from)?.label ?? from} to ${MONTHS.find(m => m.key === to)?.label ?? to}`;
+    setFilters(prev => {
+      const existing = prev.find(f => f.type === 'time');
+      const newValue = `Equals ${display.replace('2026', '26').replace('2026', '26')}`;
+      if (existing) return prev.map(f => f.type === 'time' ? { ...f, value: newValue } : f);
+      return [...prev, { id: 'basic-time', type: 'time', label: 'Filter by Time', value: newValue }];
+    });
+  };
+  const [showFilterSetModal, setShowFilterSetModal] = useState(false);
+  const [filterSetName, setFilterSetName] = useState('');
+  const [filterSetDesc, setFilterSetDesc] = useState('');
+  const [showFilterLogic, setShowFilterLogic] = useState(false);
+  const [filterLogicValue, setFilterLogicValue] = useState('');
   const filterCardRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+  const saveDropRef = useRef<HTMLDivElement | null>(null);
 
-  // Temporarily disabled - remove button is hidden
-  // const handleRemoveFilter = (filterId: string) => {
-  //   setFilters(filters.filter(f => f.id !== filterId));
-  //   if (editingProductFilterId === filterId) {
-  //     setEditingProductFilterId(null);
-  //   }
-  //   if (editingCategoryFilterId === filterId) {
-  //     setEditingCategoryFilterId(null);
-  //   }
-  //   if (editingTimeFilterId === filterId) {
-  //     setEditingTimeFilterId(null);
-  //   }
-  // };
+  useEffect(() => {
+    if (isOpen) setSavedFilterSets(loadSavedFilterSetsFromStorage());
+    else {
+      setShowFilterSetModal(false);
+      setFilterSetName('');
+      setFilterSetDesc('');
+      setSaveDropOpen(false);
+    }
+  }, [isOpen]);
+
+  const captureSnapshot = useCallback((): FilterSetSnapshot => ({
+    filters: JSON.parse(JSON.stringify(filters)) as Filter[],
+    startPeriod: localStartPeriod,
+    endPeriod: localEndPeriod,
+    parentTotalsRollupMode: localParentTotalsRollupMode,
+    filterLogicValue,
+    showFilterLogic,
+  }), [filters, localStartPeriod, localEndPeriod, localParentTotalsRollupMode, filterLogicValue, showFilterLogic]);
+
+  /** Load a saved set into the panel only; Apply commits to the grid and clears dirty state. */
+  const hydrateFromSnapshot = useCallback((snapshot: FilterSetSnapshot) => {
+    const f = JSON.parse(JSON.stringify(snapshot.filters)) as Filter[];
+    setFilters(f);
+    setLocalStartPeriod(snapshot.startPeriod);
+    setLocalEndPeriod(snapshot.endPeriod);
+    setLocalParentTotalsRollupMode(snapshot.parentTotalsRollupMode);
+    setFilterLogicValue(snapshot.filterLogicValue);
+    setShowFilterLogic(snapshot.showFilterLogic);
+  }, []);
+
+  const handleFilterSetSelectChange = useCallback(
+    (id: string) => {
+      setSelectedFilterSetId(id);
+      if (!id) return;
+      const fs = savedFilterSets.find(s => s.id === id);
+      if (fs) hydrateFromSnapshot(fs.snapshot);
+    },
+    [savedFilterSets, hydrateFromSnapshot],
+  );
+
+  const handleOverwriteCurrentFilterSet = useCallback(() => {
+    if (!selectedFilterSetId) return;
+    const snap = captureSnapshot();
+    const next = savedFilterSets.map(s =>
+      s.id === selectedFilterSetId ? { ...s, snapshot: snap } : s,
+    );
+    setSavedFilterSets(next);
+    persistSavedFilterSetsToStorage(next);
+    setSaveDropOpen(false);
+  }, [selectedFilterSetId, savedFilterSets, captureSnapshot]);
+
+  const handleSaveNewFilterSet = useCallback(() => {
+    const name = filterSetName.trim();
+    if (!name) return;
+    const snap = captureSnapshot();
+    const newId = `fs-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const newSet: SavedFilterSet = {
+      id: newId,
+      name,
+      description: filterSetDesc.trim(),
+      snapshot: snap,
+    };
+    const next = [...savedFilterSets, newSet];
+    setSavedFilterSets(next);
+    persistSavedFilterSetsToStorage(next);
+    setSelectedFilterSetId(newId);
+    setShowFilterSetModal(false);
+    setFilterSetName('');
+    setFilterSetDesc('');
+  }, [filterSetName, filterSetDesc, savedFilterSets, captureSnapshot]);
+
+  useEffect(() => {
+    if (!saveDropOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (!saveDropRef.current?.contains(e.target as Node)) setSaveDropOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [saveDropOpen]);
+
+  const handleRemoveFilter = (filterId: string) => {
+    setFilters(prev => prev.filter(f => f.id !== filterId));
+    if (editingFilterId === filterId) setEditingFilterId(null);
+  };
 
   const handleRemoveAll = () => {
     setFilters([]);
-    setEditingProductFilterId(null);
-    setEditingCategoryFilterId(null);
-    setEditingTimeFilterId(null);
+    setEditingFilterId(null);
   };
 
-  const handleProductFilterClick = (filterId: string) => {
-    setEditingProductFilterId(filterId);
-    setEditingCategoryFilterId(null);
-    setEditingTimeFilterId(null);
+  const handleAddFilter = () => {
+    const id = `filter-${Date.now()}`;
+    const newFilter: Filter = { id, type: 'new', label: 'New Filter', value: '' };
+    setFilters(prev => [...prev, newFilter]);
+    setTimeout(() => setEditingFilterId(id), 50);
   };
 
-  const handleCategoryFilterClick = (filterId: string) => {
-    setEditingCategoryFilterId(filterId);
-    setEditingProductFilterId(null);
-    setEditingTimeFilterId(null);
+  const handleFilterClick = (filterId: string) => {
+    setEditingFilterId(prev => prev === filterId ? null : filterId);
   };
 
-  // Removed unused handleTimeFilterClick - will be implemented when time filter popover is integrated
-
-  const handleProductFilterSave = (filterId: string, field: string, operator: string, selectedValues: string[]) => {
-    // Store the actual product names (comma-separated) in filter.value
-    const productValue = selectedValues.length > 0 
-      ? selectedValues.join(', ')
-      : 'All';
-    
-    setFilters(filters.map(f => 
-      f.id === filterId 
-        ? { ...f, value: productValue, field, operator }
+  const handleUnifiedFilterSave = (filterId: string, field: string, operator: string, selectedValues: string[]) => {
+    const typeMap: Record<string, Filter['type']> = { measure: 'measures', account: 'account', category: 'category', products: 'products', time: 'time' };
+    const newType: Filter['type'] = typeMap[field] ?? 'category';
+    const value = selectedValues.length > 0 ? selectedValues.join(', ') : 'All';
+    // For measure numeric filters, use the measure name as the card label
+    let label = { measure: 'Filter by Measure', account: 'Filter by Account', category: 'Filter by Category', products: 'Filter by Products', time: 'Filter by Time' }[field] ?? field;
+    if (field === 'measure' && value.includes('|')) {
+      const [mName] = value.split('|');
+      if (mName) label = mName;
+    }
+    setFilters(prev => prev.map(f =>
+      f.id === filterId
+        ? { ...f, type: newType, label, value, field, operator }
         : f
     ));
-    
-    setEditingProductFilterId(null);
+    setEditingFilterId(null);
   };
 
-  const handleProductFilterCancel = () => {
-    setEditingProductFilterId(null);
-  };
-
-  const handleCategoryFilterSave = (filterId: string, field: string, operator: string, selectedValues: string[]) => {
-    // Store the actual category names (comma-separated) in filter.value
-    const categoryValue = selectedValues.length > 0 
-      ? selectedValues.join(', ')
-      : 'All';
-    
-    setFilters(filters.map(f => 
-      f.id === filterId 
-        ? { ...f, value: categoryValue, field, operator }
-        : f
-    ));
-    
-    setEditingCategoryFilterId(null);
-  };
-
-  const handleCategoryFilterCancel = () => {
-    setEditingCategoryFilterId(null);
-  };
-
-  const handleTimeFilterSave = (filterId: string, field: string, operator: string, selectedValues: string[]) => {
-    // Store the actual time period values (comma-separated) in filter.value
-    const timeValue = selectedValues.length > 0 
-      ? selectedValues.join(', ')
-      : 'All';
-    
-    setFilters(filters.map(f => 
-      f.id === filterId 
-        ? { ...f, value: timeValue, field, operator }
-        : f
-    ));
-    
-    setEditingTimeFilterId(null);
-  };
-
-  const handleTimeFilterCancel = () => {
-    setEditingTimeFilterId(null);
+  const handleUnifiedFilterCancel = () => {
+    // Remove the card if it was brand-new (type 'new') and user cancelled
+    setFilters(prev => prev.filter(f => !(f.id === editingFilterId && f.type === 'new')));
+    setEditingFilterId(null);
   };
 
   // Handle cancel - revert all changes (filters and periods)
@@ -254,6 +663,8 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
     if (onEndPeriodChange && localEndPeriod !== originalEndPeriod) {
       onEndPeriodChange(originalEndPeriod);
     }
+    setLocalParentTotalsRollupMode(originalParentTotalsRollupMode);
+    setSelectedFilterSetId(originalSelectedFilterSetId);
     setIsDirty(false);
   };
 
@@ -265,163 +676,153 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
     onClose();
   };
 
-  // Removed unused handleSave and handleCancel - save/cancel handled in individual filter popovers
-
-  const getProductFilterValue = (filterId: string): string => {
-    const filter = filters.find(f => f.id === filterId);
-    if (!filter) return '';
-    
-    // If value is "Equals All" or "All", return empty string
-    if (filter.value === 'Equals All' || filter.value === 'All') {
-      return '';
+  /** Parse measure numeric filter: new `name|op|val` or legacy `name|subCol|op|val`. */
+  const parseMeasureNumericFilter = (encoded: string): { mName: string; op: string; rawVal: string } | null => {
+    const parts = encoded.split('|');
+    const ops = new Set(['gt', 'gte', 'lt', 'lte', 'eq', 'neq']);
+    if (parts.length >= 4 && ops.has(parts[2] ?? '')) {
+      return { mName: parts[0], op: parts[2], rawVal: parts.slice(3).join('|') };
     }
-    
-    // Return the value as-is (comma-separated product names)
+    if (parts.length === 3 && ops.has(parts[1] ?? '')) {
+      return { mName: parts[0], op: parts[1], rawVal: parts[2] };
+    }
+    return null;
+  };
+
+  const getFilterDisplayValue = (filter: Filter): string => {
+    if (filter.type === 'new' || !filter.value) return 'Click to configure…';
+    if (filter.value === 'Equals All' || filter.value === 'All') return 'Equals All';
+    // Measure numeric filter: "measureName|operator|value" (or legacy four-part with sub-column)
+    if (filter.type === 'measures' && filter.value.includes('|')) {
+      const parsed = parseMeasureNumericFilter(filter.value);
+      const opLabels: Record<string, string> = { gt: '>', gte: '≥', lt: '<', lte: '≤', eq: '=', neq: '≠' };
+      if (parsed) {
+        return `${parsed.mName} ${opLabels[parsed.op] ?? parsed.op} ${parsed.rawVal}`;
+      }
+    }
+    const items = filter.value.split(',').map(v => v.trim()).filter(Boolean);
+    if (items.length === 0) return 'Equals All';
+    if (items.length <= 2) return items.join(', ');
+    return `${items.length} items selected`;
+  };
+
+  const getFilterInitialValue = (filter: Filter): string => {
+    if (!filter.value || filter.value === 'Equals All' || filter.value === 'All' || filter.value.includes('Jan 26 to Dec 26')) return '';
     return filter.value;
   };
 
-  const getProductFilterField = (filterId: string): string => {
-    const filter = filters.find(f => f.id === filterId);
-    return filter?.field || 'products';
+  const getFilterInitialField = (filter: Filter): string => filter.field || (filter.type === 'new' ? 'category' : filter.type === 'measures' ? 'measure' : filter.type === 'account' ? 'account' : filter.type === 'products' ? 'products' : filter.type === 'time' ? 'time' : 'category');
+  const getFilterInitialOperator = (filter: Filter): string => filter.operator || 'equals';
+
+  // Helper: parse active filter values from filters state
+  const getActiveValues = (type: Filter['type']): string[] | null => {
+    const f = filters.find(fi => fi.type === type);
+    if (!f || !f.value || f.value === 'Equals All' || f.value === 'All') return null;
+    const vals = f.value.split(',').map(v => v.trim()).filter(Boolean);
+    return vals.length > 0 ? vals : null;
   };
 
-  const getProductFilterOperator = (filterId: string): string => {
-    const filter = filters.find(f => f.id === filterId);
-    return filter?.operator || 'equals';
-  };
-
-  const getCategoryFilterValue = (filterId: string): string => {
-    const filter = filters.find(f => f.id === filterId);
-    if (!filter) return '';
-    
-    // If value is "Equals All" or "All", return empty string
-    if (filter.value === 'Equals All' || filter.value === 'All') {
-      return '';
+  /** Respect UnifiedFilterPopover operators (Equals / Not Equals / Contains / Not Contains). */
+  const dimensionNameMatches = (name: string | undefined, selected: string[], operator: string | undefined): boolean => {
+    const n = (name ?? '').trim();
+    const normSelected = selected.map(s => s.trim()).filter(Boolean);
+    if (normSelected.length === 0) return true;
+    const op = operator || 'equals';
+    if (op === 'equals') {
+      return normSelected.some(s => n === s);
     }
-    
-    // Return the value as-is (comma-separated category names)
-    return filter.value;
-  };
-
-  const getCategoryFilterField = (filterId: string): string => {
-    const filter = filters.find(f => f.id === filterId);
-    return filter?.field || 'category';
-  };
-
-  const getCategoryFilterOperator = (filterId: string): string => {
-    const filter = filters.find(f => f.id === filterId);
-    return filter?.operator || 'equals';
-  };
-
-  const getCategoryFilterDisplayValue = (filter: Filter): string => {
-    if (filter.type !== 'category') return filter.value;
-    
-    // If value is "Equals All" or "All", show "Equals All"
-    if (filter.value === 'Equals All' || filter.value === 'All') {
-      return 'Equals All';
+    if (op === 'notEquals') {
+      return !normSelected.some(s => n === s);
     }
-    
-    // Otherwise, parse the comma-separated category names and show count
-    const categories = filter.value.split(',').map(v => v.trim()).filter(v => v.length > 0);
-    const count = categories.length;
-    
-    return count > 0 
-      ? `${count} ${count === 1 ? 'Item' : 'Items'} selected`
-      : 'Equals All';
-  };
-
-  const getTimeFilterValue = (filterId: string): string => {
-    const filter = filters.find(f => f.id === filterId);
-    if (!filter) return '';
-    
-    // If value is "Equals All" or "All", return empty string
-    if (filter.value === 'Equals All' || filter.value === 'All' || filter.value.includes('Jan 26 to Dec 26')) {
-      return '';
+    const lower = n.toLowerCase();
+    if (op === 'contains') {
+      return normSelected.some(s => lower.includes(s.toLowerCase()));
     }
-    
-    // Return the value as-is (comma-separated time period values)
-    return filter.value;
+    if (op === 'notContains') {
+      return !normSelected.some(s => lower.includes(s.toLowerCase()));
+    }
+    return normSelected.some(s => n === s);
   };
 
-  const getTimeFilterField = (filterId: string): string => {
-    const filter = filters.find(f => f.id === filterId);
-    return filter?.field || 'time';
+  const getActiveDimensionFilter = (
+    type: 'account' | 'category' | 'products',
+  ): { values: string[] | null; operator: string } => {
+    const f = filters.find(fi => fi.type === type);
+    if (!f || !f.value || f.value === 'Equals All' || f.value === 'All') {
+      return { values: null, operator: 'equals' };
+    }
+    const vals = f.value.split(',').map(v => v.trim()).filter(Boolean);
+    return { values: vals.length > 0 ? vals : null, operator: f.operator || 'equals' };
   };
 
-  const getTimeFilterOperator = (filterId: string): string => {
-    const filter = filters.find(f => f.id === filterId);
-    return filter?.operator || 'equals';
-  };
-
-  // Removed unused getTimeFilterDisplayValue - will be implemented when time filter display is needed
-
-  // Filter data based on all active filters (AND logic applied across all criteria)
+  // Filter data - AND logic across all active filter criteria
   const applyFilters = (dataToFilter: MeasureData[]): MeasureData[] => {
-    // Deep clone to avoid mutating original data
     let filtered: MeasureData[] = JSON.parse(JSON.stringify(dataToFilter));
 
-    // Get active filter values
-    const categoryFilter = filters.find(f => f.type === 'category');
-    const productFilter = filters.find(f => f.type === 'products');
-    
-    const selectedCategories = categoryFilter && categoryFilter.value !== 'Equals All' && categoryFilter.value !== 'All'
-      ? categoryFilter.value.split(',').map(c => c.trim())
-      : null;
-    
-    const selectedProducts = productFilter && productFilter.value !== 'Equals All' && productFilter.value !== 'All'
-      ? productFilter.value.split(',').map(p => p.trim())
-      : null;
+    const { values: selectedAccounts, operator: accountOp } = getActiveDimensionFilter('account');
+    const { values: selectedCategories, operator: categoryOp } = getActiveDimensionFilter('category');
+    const { values: selectedProducts, operator: productsOp } = getActiveDimensionFilter('products');
+    const selectedMeasures   = getActiveValues('measures');
+    const measureFilter = filters.find(fi => fi.type === 'measures' && fi.value && fi.value.includes('|'));
 
-    // Filter by dimension levels first
-    filtered = filtered.map((measure: MeasureData) => {
-      const filteredChildren = filterByDimensionLevels(measure.children || [], propSelectedDimensionLevels || new Set());
-      return {
+    // 1. Filter by measure
+    if (measureFilter && measureFilter.value.includes('|')) {
+      const parsed = parseMeasureNumericFilter(measureFilter.value);
+      const threshold = parsed ? parseFloat(parsed.rawVal) : NaN;
+      if (parsed && !isNaN(threshold) && parsed.mName) {
+        const op = parsed.op;
+        const passes = (v: number): boolean => {
+          if (op === 'gt')  return v > threshold;
+          if (op === 'gte') return v >= threshold;
+          if (op === 'lt')  return v < threshold;
+          if (op === 'lte') return v <= threshold;
+          if (op === 'eq')  return v === threshold;
+          if (op === 'neq') return v !== threshold;
+          return true;
+        };
+        const getMainCellValue = (row: any): number => row.values?.jan2026 ?? 0;
+        const filterRows = (rows: any[]): any[] => rows.filter(row => {
+          const val = getMainCellValue(row);
+          const childPass = row.children ? filterRows(row.children) : [];
+          return passes(val) || childPass.length > 0;
+        }).map(row => ({ ...row, children: row.children ? filterRows(row.children) : undefined }));
+
+        filtered = filtered.map(m => m.name === parsed.mName ? { ...m, children: filterRows(m.children || []) } : m);
+      }
+    } else if (selectedMeasures) {
+      filtered = filtered.filter(m => selectedMeasures.includes(m.name ?? m.id));
+    }
+
+    // 2. Filter by accounts
+    if (selectedAccounts) {
+      filtered = filtered.map(measure => ({
         ...measure,
-        children: filteredChildren
-      };
-    });
+        children: filterByAccounts(measure.children || [], selectedAccounts, accountOp),
+      }));
+    }
 
-    // Apply filters with AND logic - order matters for intelligent filtering
-    // 1. Filter by categories (if specified)
-    // This will limit which categories are shown
+    // 3. Filter by categories
     if (selectedCategories) {
-      filtered = filtered.map((measure: MeasureData) => {
-        const filteredChildren = filterByCategories(measure.children || [], selectedCategories);
-        return {
-          ...measure,
-          children: filteredChildren
-        };
-      });
+      filtered = filtered.map(measure => ({
+        ...measure,
+        children: filterByCategories(measure.children || [], selectedCategories, categoryOp),
+      }));
     }
 
-    // 2. Filter by products (if specified)
-    // If categories are also filtered, products will automatically be limited to those categories
-    // If products are selected but categories are not, show only those products (from any category)
+    // 4. Filter by products
     if (selectedProducts) {
-      filtered = filtered.map((measure: MeasureData) => {
-        // If categories are also filtered, products are already limited to those categories
-        // Just filter to the selected products
-        const filteredChildren = filterByProducts(measure.children || [], selectedProducts);
-        return {
-          ...measure,
-          children: filteredChildren
-        };
-      });
-    } else if (selectedCategories) {
-      // If only categories are selected (no product filter), show all products from selected categories
-      // This is already handled by filterByCategories which keeps all children
+      filtered = filtered.map(measure => ({
+        ...measure,
+        children: filterByProducts(measure.children || [], selectedProducts, productsOp),
+      }));
     }
 
-    // Filter by time periods (if showAllPeriods is false)
-    // Use prop values since they're already synced with parent
+    // 5. Filter by time periods (date-range from props)
     if (!showAllPeriods && (startPeriod || endPeriod)) {
-      filtered = filtered.map((measure: MeasureData) => {
-        const filteredChildren = filterByTimePeriods(measure.children || [], startPeriod, endPeriod);
-        return {
-          ...measure,
-          children: filteredChildren
-        };
-      });
+      filtered = filtered.map(measure => ({
+        ...measure,
+        children: filterByTimePeriods(measure.children || [], startPeriod, endPeriod),
+      }));
     }
 
     return filtered;
@@ -451,15 +852,15 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
   };
 
   // Helper function to filter by products
-  const filterByProducts = (rows: GridRow[], selectedProducts: string[]): GridRow[] => {
+  const filterByProducts = (rows: GridRow[], selectedProducts: string[], op: string): GridRow[] => {
     const result: GridRow[] = [];
     rows.forEach(row => {
       if (row.type === 'product') {
-        if (selectedProducts.includes(row.name)) {
+        if (dimensionNameMatches(row.name, selectedProducts, op)) {
           result.push(row);
         }
       } else {
-        const filteredChildren = row.children ? filterByProducts(row.children, selectedProducts) : [];
+        const filteredChildren = row.children ? filterByProducts(row.children, selectedProducts, op) : [];
         if (filteredChildren.length > 0) {
           result.push({
             ...row,
@@ -472,18 +873,18 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
   };
 
   // Helper function to filter by categories
-  const filterByCategories = (rows: GridRow[], selectedCategories: string[]): GridRow[] => {
+  const filterByCategories = (rows: GridRow[], selectedCategories: string[], op: string): GridRow[] => {
     const result: GridRow[] = [];
     rows.forEach(row => {
       if (row.type === 'category') {
-        if (selectedCategories.includes(row.name)) {
+        if (dimensionNameMatches(row.name, selectedCategories, op)) {
           result.push({
             ...row,
             children: row.children // Keep all children
           });
         }
       } else {
-        const filteredChildren = row.children ? filterByCategories(row.children, selectedCategories) : [];
+        const filteredChildren = row.children ? filterByCategories(row.children, selectedCategories, op) : [];
         if (filteredChildren.length > 0) {
           result.push({
             ...row,
@@ -496,18 +897,18 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
   };
 
   // Helper function to filter by accounts
-  const filterByAccounts = (rows: GridRow[], selectedAccounts: string[]): GridRow[] => {
+  const filterByAccounts = (rows: GridRow[], selectedAccounts: string[], op: string): GridRow[] => {
     const result: GridRow[] = [];
     rows.forEach(row => {
       if (row.type === 'account') {
-        if (selectedAccounts.includes(row.name)) {
+        if (dimensionNameMatches(row.name, selectedAccounts, op)) {
           result.push({
             ...row,
             children: row.children // Keep all children
           });
         }
       } else {
-        const filteredChildren = row.children ? filterByAccounts(row.children, selectedAccounts) : [];
+        const filteredChildren = row.children ? filterByAccounts(row.children, selectedAccounts, op) : [];
         if (filteredChildren.length > 0) {
           result.push({
             ...row,
@@ -570,179 +971,290 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
     });
   };
 
-  const getProductFilterDisplayValue = (filter: Filter): string => {
-    if (filter.type !== 'products') return filter.value;
-    
-    // If value is "Equals All" or "All", show "Equals All"
-    if (filter.value === 'Equals All' || filter.value === 'All') {
-      return 'Equals All';
-    }
-    
-    // Otherwise, parse the comma-separated product names and show count
-    const products = filter.value.split(',').map(v => v.trim()).filter(v => v.length > 0);
-    const count = products.length;
-    
-    return count > 0 
-      ? `${count} ${count === 1 ? 'Item' : 'Items'} selected`
-      : 'Equals All';
-  };
+  useEffect(() => {
+    if (!showFilterSetModal) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowFilterSetModal(false);
+        setFilterSetName('');
+        setFilterSetDesc('');
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [showFilterSetModal]);
 
   if (!isOpen) return null;
+
+  const basicTimeRange = getBasicTimeRange();
 
   return (
     <div className="filters-panel">
       {/* Panel Header */}
       <div className="filters-panel-header">
-        <div className="filters-panel-title-section">
-          <button className="filters-panel-back-button" onClick={handleClose} aria-label="Back">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path fillRule="evenodd" clipRule="evenodd" d="M14.8618 1.23047H1.20022C0.738686 1.23047 0.523301 1.75355 0.800224 2.09201L6.76946 9.07662C6.95407 9.29201 7.04638 9.5997 7.04638 9.87662V14.3074C7.04638 14.5535 7.29253 14.7689 7.53869 14.7689H8.46176C8.70792 14.7689 8.89253 14.5535 8.89253 14.3074V9.87662C8.89253 9.56893 9.01561 9.29201 9.23099 9.07662L15.2618 2.09201C15.5387 1.75355 15.3233 1.23047 14.8618 1.23047V1.23047Z" fill="#0250D9"/>
-            </svg>
-          </button>
-          <p className="filters-panel-title">Filters</p>
+        {isDirty ? (
+          <>
+            <button type="button" className="filters-header-cancel-btn" onClick={handleClose}>Cancel</button>
+            <div className="filters-panel-header-actions">
+              <div className="filters-header-save-wrap" ref={saveDropRef}>
+                <button
+                  type="button"
+                  className="filters-header-save-btn"
+                  onClick={() => {
+                    applyClickedRef.current = true;
+                    if (onStartPeriodChange && localStartPeriod !== originalStartPeriod) onStartPeriodChange(localStartPeriod);
+                    if (onEndPeriodChange && localEndPeriod !== originalEndPeriod) onEndPeriodChange(localEndPeriod);
+                    if (onApplyFilters && data.length > 0) onApplyFilters(applyFilters(data));
+                    onParentTotalsRollupModeChange?.(localParentTotalsRollupMode);
+                    setOriginalParentTotalsRollupMode(localParentTotalsRollupMode);
+                    setOriginalFilters([...filters]);
+                    setOriginalStartPeriod(localStartPeriod);
+                    setOriginalEndPeriod(localEndPeriod);
+                    setOriginalSelectedFilterSetId(selectedFilterSetId);
+                    setIsDirty(false);
+                    onClose();
+                  }}
+                >
+                  Apply
+                </button>
+                <button
+                  type="button"
+                  className="filters-header-save-chevron"
+                  aria-label="Filter set save options"
+                  onClick={() => setSaveDropOpen(p => !p)}
+                >
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <path d="M3 5l4 4 4-4" stroke="var(--color-surface-white)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+                {saveDropOpen && (
+                  <div className="filters-save-dropdown">
+                    <button
+                      type="button"
+                      className="filters-save-dropdown-option"
+                      disabled={!selectedFilterSetId}
+                      title={!selectedFilterSetId ? 'Choose a filter set above, or use Save As to create one' : undefined}
+                      onClick={handleOverwriteCurrentFilterSet}
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      className="filters-save-dropdown-option"
+                      onClick={() => {
+                        setSaveDropOpen(false);
+                        setShowFilterSetModal(true);
+                      }}
+                    >
+                      Save As
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="filters-panel-title-row">
+              <svg className="filters-panel-icon" width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+                <path d="M3.2 4.2C4.6 5.95 7.2 9.15 7.2 9.15v4.2c0 .38.31.69.69.69h1.38c.38 0 .69-.31.69-.69v-4.2s2.58-3.2 3.98-4.95c.35-.44.03-1.08-.53-1.08H3.73c-.56 0-.88.64-.53 1.08z" fill="currentColor"/>
+              </svg>
+              <p className="filters-panel-title">Filters</p>
+            </div>
+            <button type="button" className="filters-panel-close" onClick={handleClose} aria-label="Close">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </>
+        )}
+      </div>
+
+      <fieldset className="filters-parent-totals">
+        <legend className="filters-parent-totals-legend" id="parent-totals-legend">Parent row totals</legend>
+        <div
+          className="filters-parent-totals-radios"
+          role="radiogroup"
+          aria-labelledby="parent-totals-legend"
+        >
+          <label className="filters-parent-totals-radio-label">
+            <input
+              type="radio"
+              name="parentTotalsRollup"
+              value="fullHierarchy"
+              className="filters-parent-totals-radio-input"
+              checked={localParentTotalsRollupMode === 'fullHierarchy'}
+              onChange={() => setLocalParentTotalsRollupMode('fullHierarchy')}
+            />
+            <span className="filters-parent-totals-radio-text">Include filtered-out row values in parent totals</span>
+          </label>
+          <label className="filters-parent-totals-radio-label">
+            <input
+              type="radio"
+              name="parentTotalsRollup"
+              value="visibleOnly"
+              className="filters-parent-totals-radio-input"
+              checked={localParentTotalsRollupMode === 'visibleOnly'}
+              onChange={() => setLocalParentTotalsRollupMode('visibleOnly')}
+            />
+            <span className="filters-parent-totals-radio-text">Exclude filtered-out row values in parent totals</span>
+          </label>
         </div>
-        <div className="filters-panel-actions">
-          <button className="filters-panel-close" onClick={handleClose} aria-label="Close">
-            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+      </fieldset>
+
+      <div className="filters-filter-set">
+        <div className="filters-filter-set-inner">
+          <label id="filters-filter-set-label" className="filters-basic-label" htmlFor="filters-filter-set-select">
+            Filter set
+          </label>
+          <FilterSetSelect
+            id="filters-filter-set-select"
+            labelId="filters-filter-set-label"
+            value={selectedFilterSetId}
+            savedSets={savedFilterSets}
+            onChange={handleFilterSetSelectChange}
+          />
         </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="filters-tabs" role="tablist">
+        <button
+          role="tab"
+          aria-selected={activeTab === 'basic'}
+          className={`filters-tab${activeTab === 'basic' ? ' filters-tab--active' : ''}`}
+          onClick={() => setActiveTab('basic')}
+        >
+          Basic Filters
+        </button>
+        <button
+          role="tab"
+          aria-selected={activeTab === 'advanced'}
+          className={`filters-tab${activeTab === 'advanced' ? ' filters-tab--active' : ''}`}
+          onClick={() => setActiveTab('advanced')}
+        >
+          Advanced Filters
+        </button>
       </div>
 
       {/* Panel Body */}
       <div className="filters-panel-body">
-          {/* Start and End Period Inputs */}
-          {!showAllPeriods && (
-            <>
-              <div className="filters-field">
-                <label className="filters-field-label">Start</label>
-                <div className="filters-input-wrapper">
-                  <input
-                    type="date"
-                    className="filters-date-input"
-                    placeholder="Start"
-                    value={localStartPeriod}
-                    onChange={(e) => {
-                      const newValue = e.target.value;
-                      setLocalStartPeriod(newValue);
-                      // Don't apply immediately - wait for Apply button
-                    }}
-                  />
+
+        {/* ── BASIC FILTERS TAB ──────────────────────────────────────────────── */}
+        {activeTab === 'basic' && (
+          <div className="filters-basic">
+
+            {/* Measures */}
+            <div className="filters-basic-group">
+              <span className="filters-basic-label" id="basic-measures-label">Measures</span>
+              <BasicFilterMultiSelect
+                id="basic-measures"
+                labelId="basic-measures-label"
+                options={basicMeasureFilterOptions}
+                selected={getBasicSelected('measures')}
+                onChange={vals => updateBasicMultiFilter('measures', 'basic-measures', vals)}
+              />
+            </div>
+
+            {/* Accounts */}
+            <div className="filters-basic-group">
+              <span className="filters-basic-label" id="basic-accounts-label">Accounts</span>
+              <BasicFilterMultiSelect
+                id="basic-accounts"
+                labelId="basic-accounts-label"
+                options={allAccounts}
+                selected={getBasicSelected('account')}
+                onChange={vals => updateBasicMultiFilter('account', 'basic-account', vals)}
+              />
+            </div>
+
+            {/* Category */}
+            <div className="filters-basic-group">
+              <span className="filters-basic-label" id="basic-category-label">Category</span>
+              <BasicFilterMultiSelect
+                id="basic-category"
+                labelId="basic-category-label"
+                options={allCategories}
+                selected={getBasicSelected('category')}
+                onChange={vals => updateBasicMultiFilter('category', 'basic-category', vals)}
+              />
+            </div>
+
+            {/* Products */}
+            <div className="filters-basic-group">
+              <span className="filters-basic-label" id="basic-products-label">Products</span>
+              <BasicFilterMultiSelect
+                id="basic-products"
+                labelId="basic-products-label"
+                options={allProducts}
+                selected={getBasicSelected('products')}
+                onChange={vals => updateBasicMultiFilter('products', 'basic-products', vals)}
+              />
+            </div>
+
+            {/* Time Range */}
+            <div className="filters-basic-group">
+              <label className="filters-basic-label">Time Period</label>
+              <div className="filters-basic-time-row">
+                <div className="filters-basic-time-field">
+                  <span className="filters-basic-time-lbl">From</span>
+                  <select
+                    className="filters-basic-select"
+                    value={basicTimeRange.from}
+                    onChange={e => setBasicTimeRange(e.target.value, basicTimeRange.to)}
+                  >
+                    {MONTHS.map(m => (
+                      <option key={m.key} value={m.key}>{m.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="filters-basic-time-field">
+                  <span className="filters-basic-time-lbl">To</span>
+                  <select
+                    className="filters-basic-select"
+                    value={basicTimeRange.to}
+                    onChange={e => setBasicTimeRange(basicTimeRange.from, e.target.value)}
+                  >
+                    {MONTHS.map(m => (
+                      <option key={m.key} value={m.key}>{m.label}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
+            </div>
 
-              <div className="filters-field filters-field-end-period">
-                <label className="filters-field-label">End</label>
-                <div className="filters-input-wrapper">
-                  <input
-                    type="date"
-                    className="filters-date-input"
-                    placeholder="End"
-                    value={localEndPeriod}
-                    onChange={(e) => {
-                      const newValue = e.target.value;
-                      setLocalEndPeriod(newValue);
-                      // Don't apply immediately - wait for Apply button
-                    }}
-                  />
-                </div>
-              </div>
-            </>
-          )}
-
-        {/* AND Logic Explanation */}
-        <div className="filters-and-logic-info">
-          <svg className="filters-info-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M8 1C4.13401 1 1 4.13401 1 8C1 11.866 4.13401 15 8 15C11.866 15 15 11.866 15 8C15 4.13401 11.866 1 8 1ZM8 11.5C7.58579 11.5 7.25 11.1642 7.25 10.75C7.25 10.3358 7.58579 10 8 10C8.41421 10 8.75 10.3358 8.75 10.75C8.75 11.1642 8.41421 11.5 8 11.5ZM7.25 8.75V4.5C7.25 4.08579 7.58579 3.75 8 3.75C8.41421 3.75 8.75 4.08579 8.75 4.5V8.75C8.75 9.16421 8.41421 9.5 8 9.5C7.58579 9.5 7.25 9.16421 7.25 8.75Z" fill="#5867E8"/>
-          </svg>
-          <span className="filters-and-logic-text">All filter criteria are combined using AND logic</span>
-        </div>
-
-        {/* Cancel and Apply Buttons Header */}
-        {isDirty && (
-          <div className="filters-apply-actions-header">
-            <button 
-              className="filters-cancel-button"
-              onClick={handleCancel}
-            >
-              Cancel
-            </button>
-            <button 
-              className="filters-apply-button"
-              onClick={() => {
-                // Mark that Apply was clicked
-                applyClickedRef.current = true;
-                
-                // Apply period changes
-                if (onStartPeriodChange && localStartPeriod !== originalStartPeriod) {
-                  onStartPeriodChange(localStartPeriod);
-                }
-                if (onEndPeriodChange && localEndPeriod !== originalEndPeriod) {
-                  onEndPeriodChange(localEndPeriod);
-                }
-                
-                // Apply filter card changes
-                // Filter the data and pass it back
-                if (onApplyFilters && data.length > 0) {
-                  const filteredData = applyFilters(data);
-                  onApplyFilters(filteredData);
-                }
-                
-                // Update original filter values and period values
-                setOriginalFilters([...filters]);
-                setOriginalStartPeriod(localStartPeriod);
-                setOriginalEndPeriod(localEndPeriod);
-                setIsDirty(false);
-              }}
-            >
-              Apply
-            </button>
           </div>
         )}
+
+        {/* ── ADVANCED FILTERS TAB ───────────────────────────────────────────── */}
+        {activeTab === 'advanced' && (<>
 
         {/* Filter Cards */}
         {filters.length > 0 && (
           <div className="filters-list">
-            {filters.map((filter) => {
-              const isProductFilter = filter.type === 'products';
-              const isCategoryFilter = filter.type === 'category';
-              const isClickable = isProductFilter || isCategoryFilter;
-              
+            {filters.map((filter, index) => {
+              const isNew = filter.type === 'new';
               return (
-                <div 
-                  key={filter.id} 
-                  className="filter-card"
-                  ref={(el) => {
-                    if (isProductFilter || isCategoryFilter) {
-                      filterCardRefs.current[filter.id] = el;
-                    }
-                  }}
+                <div
+                  key={filter.id}
+                  className={`filter-card${isNew ? ' filter-card-new' : ''}`}
+                  ref={(el) => { filterCardRefs.current[filter.id] = el; }}
                 >
-                  <div 
-                    className={`filter-card-content ${isClickable ? 'filter-card-clickable' : ''}`}
-                    onClick={isClickable ? () => {
-                      if (isProductFilter) {
-                        handleProductFilterClick(filter.id);
-                      } else if (isCategoryFilter) {
-                        handleCategoryFilterClick(filter.id);
-                      }
-                    } : undefined}
+                  {showFilterLogic && (
+                    <span className="filter-card-number">{index + 1}</span>
+                  )}
+                  <div
+                    className="filter-card-content filter-card-clickable"
+                    onClick={() => handleFilterClick(filter.id)}
                   >
-                    <p className="filter-card-label">{filter.label}</p>
-                    <p className="filter-card-value">
-                      {isProductFilter 
-                        ? getProductFilterDisplayValue(filter) 
-                        : isCategoryFilter
-                        ? getCategoryFilterDisplayValue(filter)
-                        : filter.value}
-                    </p>
+                    <p className="filter-card-label">{isNew ? 'New Filter*' : filter.label}</p>
+                    <p className="filter-card-value">{getFilterDisplayValue(filter)}</p>
                   </div>
-                  {/* Delete icon (non-functional) */}
-                  <button 
-                    className="filter-card-remove" 
+                  <button
+                    className="filter-card-remove"
                     aria-label={`Remove ${filter.label}`}
                     type="button"
+                    onClick={(e) => { e.stopPropagation(); handleRemoveFilter(filter.id); }}
                   >
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -756,7 +1268,7 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
 
         {/* Action Links */}
         <div className="filters-actions">
-          <button className="filters-link" onClick={() => {/* TODO: Implement add filter */}}>
+          <button className="filters-link" onClick={handleAddFilter}>
             Add Filter
           </button>
           {filters.length > 0 && (
@@ -765,50 +1277,133 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
             </button>
           )}
         </div>
+
+        {/* Add Filter Logic */}
+        {!showFilterLogic ? (
+          <div className="filters-logic-row">
+            <button className="filters-link filters-logic-link" onClick={() => setShowFilterLogic(true)}>
+              Add Filter Logic
+            </button>
+          </div>
+        ) : (
+          <div className="filters-logic-editor">
+            <div className="filters-logic-editor-header">
+              <label className="filters-logic-editor-title" htmlFor="filter-logic-input">Filter Logic</label>
+              <button
+                className="filters-logic-editor-remove"
+                title="Remove filter logic"
+                onClick={() => { setShowFilterLogic(false); setFilterLogicValue(''); }}
+              >
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="13" height="13">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <input
+              id="filter-logic-input"
+              className="filters-logic-input"
+              type="text"
+              placeholder="e.g. 1 AND (2 OR 3)"
+              value={filterLogicValue}
+              onChange={e => setFilterLogicValue(e.target.value)}
+              autoFocus
+            />
+            <p className="filters-logic-hint">Use filter numbers with AND, OR, NOT and brackets.</p>
+          </div>
+        )}
+
+        </>)}
+        {/* end advanced tab */}
+
       </div>
 
-      {/* Product Filter Popover */}
-      {editingProductFilterId && (
-        <ProductFilterPopover
-          isOpen={true}
-          onClose={handleProductFilterCancel}
-          onSave={(field, operator, selectedValues) => handleProductFilterSave(editingProductFilterId, field, operator, selectedValues)}
-          onCancel={handleProductFilterCancel}
-          initialField={getProductFilterField(editingProductFilterId)}
-          initialOperator={getProductFilterOperator(editingProductFilterId)}
-          initialValue={getProductFilterValue(editingProductFilterId)}
-          data={data}
-          anchorElement={filterCardRefs.current[editingProductFilterId]}
-        />
-      )}
+      {/* Unified Filter Popover */}
+      {editingFilterId && (() => {
+        const filter = filters.find(f => f.id === editingFilterId);
+        if (!filter) return null;
+        return (
+          <UnifiedFilterPopover
+            isOpen={true}
+            onClose={() => setEditingFilterId(null)}
+            onSave={(field, operator, selectedValues) => handleUnifiedFilterSave(editingFilterId, field, operator, selectedValues)}
+            onCancel={handleUnifiedFilterCancel}
+            initialField={getFilterInitialField(filter)}
+            initialOperator={getFilterInitialOperator(filter)}
+            initialValue={getFilterInitialValue(filter)}
+            data={data}
+            anchorElement={filterCardRefs.current[editingFilterId]}
+          />
+        );
+      })()}
 
-      {/* Category Filter Popover */}
-      {editingCategoryFilterId && (
-        <CategoryFilterPopover
-          isOpen={true}
-          onClose={handleCategoryFilterCancel}
-          onSave={(field, operator, selectedValues) => handleCategoryFilterSave(editingCategoryFilterId, field, operator, selectedValues)}
-          onCancel={handleCategoryFilterCancel}
-          initialField={getCategoryFilterField(editingCategoryFilterId)}
-          initialOperator={getCategoryFilterOperator(editingCategoryFilterId)}
-          initialValue={getCategoryFilterValue(editingCategoryFilterId)}
-          data={data}
-          anchorElement={filterCardRefs.current[editingCategoryFilterId]}
-        />
-      )}
-
-      {/* Time Filter Popover */}
-      {editingTimeFilterId && (
-        <TimeFilterPopover
-          isOpen={true}
-          onClose={handleTimeFilterCancel}
-          onSave={(field, operator, selectedValues) => handleTimeFilterSave(editingTimeFilterId, field, operator, selectedValues)}
-          onCancel={handleTimeFilterCancel}
-          initialField={getTimeFilterField(editingTimeFilterId)}
-          initialOperator={getTimeFilterOperator(editingTimeFilterId)}
-          initialValue={getTimeFilterValue(editingTimeFilterId)}
-          anchorElement={filterCardRefs.current[editingTimeFilterId]}
-        />
+      {showFilterSetModal && (
+        <div
+          className="filters-filterset-modal-backdrop"
+          role="presentation"
+          onMouseDown={e => {
+            if (e.target === e.currentTarget) {
+              setShowFilterSetModal(false);
+              setFilterSetName('');
+              setFilterSetDesc('');
+            }
+          }}
+        >
+          <div
+            className="filters-filterset-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="filters-filterset-modal-title"
+            onMouseDown={e => e.stopPropagation()}
+          >
+            <p className="filters-filterset-title" id="filters-filterset-modal-title">
+              Save As
+            </p>
+            <div className="filters-filterset-field">
+              <label className="filters-filterset-label" htmlFor="filters-filterset-name">Name</label>
+              <input
+                id="filters-filterset-name"
+                className="filters-filterset-input"
+                type="text"
+                placeholder="e.g. Q1 Engine Products"
+                value={filterSetName}
+                onChange={e => setFilterSetName(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="filters-filterset-field">
+              <label className="filters-filterset-label" htmlFor="filters-filterset-desc">Description (optional)</label>
+              <textarea
+                id="filters-filterset-desc"
+                className="filters-filterset-textarea"
+                placeholder="Brief description of this filter set"
+                value={filterSetDesc}
+                onChange={e => setFilterSetDesc(e.target.value)}
+                rows={2}
+              />
+            </div>
+            <div className="filters-filterset-actions">
+              <button
+                type="button"
+                className="filters-filterset-cancel"
+                onClick={() => {
+                  setShowFilterSetModal(false);
+                  setFilterSetName('');
+                  setFilterSetDesc('');
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="filters-filterset-save"
+                disabled={!filterSetName.trim()}
+                onClick={handleSaveNewFilterSet}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

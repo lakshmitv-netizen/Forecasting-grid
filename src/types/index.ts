@@ -1,4 +1,7 @@
-export type RowType = 'measure' | 'account' | 'category' | 'product';
+export type RowType = 'measure' | 'account' | 'category' | 'product' | 'filterSummary';
+
+/** How parent row totals aggregate when panel filters inject "filtered out" summary siblings. */
+export type ParentTotalsRollupMode = 'fullHierarchy' | 'visibleOnly';
 
 export interface GridRow {
   id: string;
@@ -8,6 +11,10 @@ export interface GridRow {
   type: RowType;
   children?: GridRow[];
   groupContext?: string; // Which measure group this row belongs to (for duplicated measures)
+  /** Synthetic rows: aggregate of nodes excluded by panel filters */
+  filterSummaryRole?: 'filteredOut';
+  /** Dimension level of excluded siblings (for icon / parity with real dimension rows) */
+  filteredOutDimension?: 'account' | 'category' | 'product';
   values: {
     year: number; // FY26 - sum of all months
     q1: number;   // Q1 - sum of Jan, Feb, Mar
@@ -53,5 +60,27 @@ export interface MeasureData {
   };
   children: GridRow[];
   groupContext?: string; // Which measure group this instance belongs to (for duplicated measures)
+}
+
+export interface ApprovalRequest {
+  id: string;
+  cellKey: string;           // rowId-timeKey
+  measureId: string;
+  rowId: string;
+  timeKey: string;           // "jan2026", "feb2026", etc.
+  oldValue: number;
+  newValue: number;
+  variancePct: number;
+  requesterNote: string;     // The adjustment note from the requester
+  requesterId: string;
+  requesterName: string;
+  approverId: string;
+  approverName: string;
+  status: 'notSubmitted' | 'pending' | 'approved' | 'approvedWithCondition' | 'rejected';
+  approverComment?: string;
+  approvers?: import('./approvalRequest').ApproverState[];
+  userInitiated?: boolean;
+  createdAt: Date;
+  resolvedAt?: Date;
 }
 

@@ -61,8 +61,8 @@
 
 .grid-footer-button-outline {
   background-color: var(--color-surface-white);
-  color: #066AFE !important;
-  border-color: #066AFE !important;
+  color: var(--slds-g-color-accent-1) !important;
+  border-color: var(--slds-g-color-accent-1) !important;
   border-width: 1px !important;
   border-style: solid !important;
   font-weight: 700 !important;
@@ -74,15 +74,15 @@
 }
 
 .grid-footer-button-brand {
-  background-color: #066AFE !important;
-  color: #FFFFFF !important;
-  border-color: #066AFE !important;
+  background-color: var(--slds-g-color-accent-1) !important;
+  color: var(--slds-g-color-surface-1) !important;
+  border-color: var(--slds-g-color-accent-1) !important;
   border-radius: 9999px !important;
   font-weight: 700 !important;
 }
 
 .grid-footer-button-brand:hover {
-  background-color: #0250D9 !important;
+  background-color: var(--slds-g-color-accent-2) !important;
 }
 
 .grid-footer-button:disabled {
@@ -94,7 +94,7 @@
   display: flex;
   align-items: center;
   margin-right: -1px;
-  border: 1px solid #5c5c5c;
+  border: 1px solid var(--slds-g-color-neutral-base-40);
   border-radius: 9999px;
 }
 
@@ -113,6 +113,7 @@
 
 .grid-footer-icon-button:first-child {
   border-radius: 9999px 0 0 9999px;
+  border-right: 1px solid var(--slds-g-color-border-base-4);
 }
 
 .grid-footer-icon-button:last-child {
@@ -165,18 +166,18 @@
 .grid-footer-warning-text {
   font-family: var(--font-family-base);
   font-size: 14px;
-  font-weight: 590;
+  font-weight: 600;
   line-height: 19px;
-  color: #8C4B02;
+  color: var(--slds-g-color-warning-1);
   white-space: nowrap;
 }
 
 .grid-footer-separator {
   font-family: var(--font-family-base);
   font-size: 14px;
-  font-weight: 590;
+  font-weight: 600;
   line-height: 19px;
-  color: #000000;
+  color: var(--slds-g-color-neutral-base-10);
 }
 
 .grid-footer-checkbox-label {

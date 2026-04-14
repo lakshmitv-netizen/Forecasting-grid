@@ -1,16 +1,16 @@
 /* Discussion Thread Styles */
 
 .discussion-thread {
-  background: #ffffff;
-  border: 1px solid #e5e5e5;
+  background: var(--slds-g-color-surface-1);
+  border: 1px solid var(--slds-g-color-neutral-base-90);
   border-radius: 8px;
   padding: 12px;
   margin-bottom: 12px;
 }
 
 .discussion-thread.resolved {
-  background: #f8fdf8;
-  border-color: #d4edda;
+  background: var(--slds-g-color-success-container-1);
+  border-color: var(--slds-g-color-success-container-1);
 }
 
 .discussion-thread-main {
@@ -22,12 +22,12 @@
   width: 32px;
   height: 32px;
   min-width: 32px;
-  background: #0176d3;
+  background: var(--slds-g-color-accent-1);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #ffffff;
+  color: var(--slds-g-color-surface-1);
 }
 
 .discussion-thread-avatar.small {
@@ -51,17 +51,17 @@
 .discussion-thread-username {
   font-size: 13px;
   font-weight: 600;
-  color: #181818;
+  color: var(--slds-g-color-neutral-base-10);
 }
 
 .discussion-thread-timestamp {
-  font-size: 11px;
-  color: #706e6b;
+  font-size: 12px;
+  color: var(--slds-g-color-neutral-base-40);
 }
 
 .discussion-thread-message {
   font-size: 13px;
-  color: #3e3e3c;
+  color: var(--slds-g-color-neutral-base-20);
   line-height: 1.5;
   margin: 0 0 8px 0;
   word-wrap: break-word;
@@ -78,7 +78,7 @@
   background: none;
   border: none;
   font-size: 12px;
-  color: #0176d3;
+  color: var(--slds-g-color-accent-1);
   cursor: pointer;
   padding: 0;
   font-weight: 500;
@@ -90,8 +90,8 @@
 }
 
 .discussion-thread-resolved-badge {
-  font-size: 11px;
-  color: #2e844a;
+  font-size: 12px;
+  color: var(--slds-g-color-success-1);
   font-weight: 500;
 }
 
@@ -99,7 +99,7 @@
 .discussion-thread-replies {
   margin-top: 12px;
   padding-left: 42px;
-  border-left: 2px solid #e5e5e5;
+  border-left: 2px solid var(--slds-g-color-neutral-base-90);
   margin-left: 16px;
 }
 
@@ -126,7 +126,7 @@
 .discussion-thread-reply-input textarea {
   width: 100%;
   padding: 8px 12px;
-  border: 1px solid #c9c9c9;
+  border: 1px solid var(--slds-g-color-border-base-4);
   border-radius: 6px;
   font-size: 13px;
   font-family: inherit;
@@ -136,11 +136,11 @@
 }
 
 .discussion-thread-reply-input textarea:focus {
-  border-color: #0176d3;
+  border-color: var(--slds-g-color-accent-1);
 }
 
 .discussion-thread-reply-input textarea::placeholder {
-  color: #706e6b;
+  color: var(--slds-g-color-neutral-base-40);
 }
 
 .discussion-thread-reply-actions {
@@ -152,36 +152,36 @@
 
 .discussion-thread-cancel-btn {
   background: none;
-  border: 1px solid #c9c9c9;
+  border: 1px solid var(--slds-g-color-border-base-4);
   border-radius: 4px;
   padding: 6px 12px;
   font-size: 12px;
-  color: #3e3e3c;
+  color: var(--slds-g-color-neutral-base-20);
   cursor: pointer;
   transition: background 0.2s;
 }
 
 .discussion-thread-cancel-btn:hover {
-  background: #f3f2f2;
+  background: var(--slds-g-color-surface-container-1);
 }
 
 .discussion-thread-submit-btn {
-  background: #0176d3;
+  background: var(--slds-g-color-accent-1);
   border: none;
   border-radius: 4px;
   padding: 6px 12px;
   font-size: 12px;
-  color: #ffffff;
+  color: var(--slds-g-color-surface-1);
   cursor: pointer;
   transition: background 0.2s;
 }
 
 .discussion-thread-submit-btn:hover {
-  background: #014486;
+  background: var(--slds-g-color-brand-base-30);
 }
 
 .discussion-thread-submit-btn:disabled {
-  background: #c9c9c9;
+  background: var(--slds-g-color-neutral-base-80);
   cursor: not-allowed;
 }
 
@@ -193,7 +193,7 @@
 .discussion-new-thread textarea {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #c9c9c9;
+  border: 1px solid var(--slds-g-color-border-base-4);
   border-radius: 6px;
   font-size: 13px;
   font-family: inherit;
@@ -204,11 +204,11 @@
 }
 
 .discussion-new-thread textarea:focus {
-  border-color: #0176d3;
+  border-color: var(--slds-g-color-accent-1);
 }
 
 .discussion-new-thread textarea::placeholder {
-  color: #706e6b;
+  color: var(--slds-g-color-neutral-base-40);
 }
 
 .discussion-new-thread-actions {
@@ -218,23 +218,23 @@
 }
 
 .discussion-new-thread-submit {
-  background: #0176d3;
+  background: var(--slds-g-color-accent-1);
   border: none;
   border-radius: 4px;
   padding: 8px 16px;
   font-size: 13px;
-  color: #ffffff;
+  color: var(--slds-g-color-surface-1);
   cursor: pointer;
   transition: background 0.2s;
   font-weight: 500;
 }
 
 .discussion-new-thread-submit:hover {
-  background: #014486;
+  background: var(--slds-g-color-brand-base-30);
 }
 
 .discussion-new-thread-submit:disabled {
-  background: #c9c9c9;
+  background: var(--slds-g-color-neutral-base-80);
   cursor: not-allowed;
 }
 
@@ -242,20 +242,20 @@
 .discussion-section {
   margin-top: 24px;
   padding-top: 16px;
-  border-top: 1px solid #e5e5e5;
+  border-top: 1px solid var(--slds-g-color-neutral-base-90);
 }
 
 .discussion-section-title {
   font-size: 16px;
   font-weight: normal;
-  color: #181818;
+  color: var(--slds-g-color-neutral-base-10);
   margin: 0 0 16px 0;
 }
 
 .discussion-empty {
   text-align: center;
   padding: 20px;
-  color: #706e6b;
+  color: var(--slds-g-color-neutral-base-40);
   font-size: 13px;
 }
 

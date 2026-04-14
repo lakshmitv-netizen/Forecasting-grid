@@ -4,7 +4,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: var(--color-overlay-scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -14,7 +14,7 @@
 .readonly-measures-modal {
   background-color: var(--color-surface-white);
   border-radius: var(--border-radius-1);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 20px color-mix(in srgb, var(--slds-g-color-neutral-base-10) 15%, transparent);
   width: 90%;
   max-width: 600px;
   max-height: 90vh;
@@ -81,7 +81,7 @@
 .readonly-measures-warning-icon {
   width: 16px;
   height: 16px;
-  color: #ff9800;
+  color: var(--slds-g-color-warning-2);
   flex-shrink: 0;
   margin-top: 2px;
 }
@@ -164,9 +164,9 @@
   transition: all 0.15s !important;
   border: 1px solid !important;
   min-width: 100px !important;
-  background-color: #0250D9 !important;
-  color: white !important;
-  border-color: #0250D9 !important;
+  background-color: var(--slds-g-color-accent-1) !important;
+  color: var(--color-surface-white) !important;
+  border-color: var(--slds-g-color-accent-1) !important;
 }
 
 .readonly-measures-btn-close:hover {

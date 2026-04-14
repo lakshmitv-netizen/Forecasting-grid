@@ -1,5 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
+import ReactDOM from 'react-dom';
 import { MeasureData } from '../types';
+// Icon imports - using public folder paths (SVGs with built-in colored backgrounds)
+const CategoryIcon = '/category.svg';
 import '../styles/components/CategoryFilterPopover.css';
 
 /**
@@ -245,36 +248,34 @@ const CategoryFilterPopover: React.FC<CategoryFilterPopoverProps> = ({
   };
   
   if (!isOpen) return null;
-  
-  // Calculate popover position relative to viewport (fixed positioning)
-  // Position popover to the left of the filter card, aligned so nubbin originates from the category block
+
   const getPopoverPosition = () => {
-    if (!anchorElement) return { top: 0, left: 0 };
-    
+    if (!anchorElement) return { top: 8, left: 8 };
     const rect = anchorElement.getBoundingClientRect();
-    const popoverWidth = 320; // Width of the popover
-    const popoverHeight = 320; // Reduced height - value selection area scrolls
-    
-    // Calculate the vertical center of the filter card
-    const filterCardCenterY = rect.top + (rect.height / 2);
-    
-    // Position popover so that its vertical center (where nubbin is at 50%) aligns with filter card center
-    // This makes the nubbin point directly at the center of the category filter block
-    const topPosition = filterCardCenterY - (popoverHeight / 2);
-    
-    // Ensure it doesn't go above viewport, but allow some overflow at bottom if needed
-    const finalTopPosition = Math.max(8, topPosition);
-    
-    return {
-      top: finalTopPosition,
-      left: rect.left - popoverWidth - 8 // Position to the left with 8px gap
-    };
+    const popoverWidth = 320;
+    const popoverHeight = 370;
+    const gap = 8;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    // Prefer left of anchor; fall back to right if not enough space
+    const leftOfAnchor = rect.left - popoverWidth - gap;
+    const rightOfAnchor = rect.right + gap;
+    const left = leftOfAnchor >= gap ? leftOfAnchor
+      : rightOfAnchor + popoverWidth <= vw - gap ? rightOfAnchor
+      : Math.max(gap, vw - popoverWidth - gap);
+
+    // Vertically centre on anchor, then clamp
+    const idealTop = rect.top + rect.height / 2 - popoverHeight / 2;
+    const top = Math.min(Math.max(gap, idealTop), vh - popoverHeight - gap);
+
+    return { top, left };
   };
-  
+
   const position = getPopoverPosition();
   const selectedCount = selectedValues.length;
-  
-  return (
+
+  const popoverContent = (
     <>
       {/* Backdrop overlay */}
       <div className="category-filter-popover-backdrop" onClick={handleCancel} />
@@ -302,6 +303,7 @@ const CategoryFilterPopover: React.FC<CategoryFilterPopoverProps> = ({
                 setIsOperatorDropdownOpen(false);
               }}
             >
+              <img src={CategoryIcon} alt="Category" style={{ width: '16px', height: '16px', marginRight: '8px', flexShrink: 0 }} />
               <span className="category-filter-dropdown-value">
                 {fieldOptions.find(f => f.value === selectedField)?.label || selectedField}
               </span>
@@ -320,6 +322,7 @@ const CategoryFilterPopover: React.FC<CategoryFilterPopoverProps> = ({
                       setIsFieldDropdownOpen(false);
                     }}
                   >
+                    <img src={CategoryIcon} alt="Category" style={{ width: '16px', height: '16px', marginRight: '8px', flexShrink: 0 }} />
                     {option.label}
                   </div>
                 ))}
@@ -470,6 +473,8 @@ const CategoryFilterPopover: React.FC<CategoryFilterPopoverProps> = ({
       </div>
     </>
   );
+
+  return ReactDOM.createPortal(popoverContent, document.body);
 };
 
 export default CategoryFilterPopover;

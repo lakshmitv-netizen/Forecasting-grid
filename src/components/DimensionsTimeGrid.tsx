@@ -32,6 +32,8 @@ interface DimensionsTimeGridProps {
   onCellSelect?: (cellKey: string, event: React.MouseEvent) => void; // Callback when a cell is clicked for selection
   onCellMouseDown?: (cellKey: string, event: React.MouseEvent) => void; // Callback for mouse down (drag selection)
   onCellMouseMove?: (cellKey: string) => void; // Callback for mouse move (drag selection)
+  newlyAddedMeasureIds?: string[]; // IDs of newly added measures for animation effect
+  onScrollToMeasureReady?: (handler: (measureId: string) => void) => void; // Callback to expose function to scroll to a measure column
 }
 
 const DimensionsTimeGrid: React.FC<DimensionsTimeGridProps> = ({
@@ -53,7 +55,9 @@ const DimensionsTimeGrid: React.FC<DimensionsTimeGridProps> = ({
   selectedCells: _selectedCells,
   onCellSelect: _onCellSelect,
   onCellMouseDown: _onCellMouseDown,
-  onCellMouseMove: _onCellMouseMove
+  onCellMouseMove: _onCellMouseMove,
+  newlyAddedMeasureIds = [],
+  onScrollToMeasureReady
 }) => {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [focusedCell, setFocusedCell] = useState<{ rowId: string; measureId: string } | null>(initialFocusedCell || null);
@@ -62,6 +66,7 @@ const DimensionsTimeGrid: React.FC<DimensionsTimeGridProps> = ({
   const [impactedCells, setImpactedCells] = useState<Map<string, number>>(new Map());
   const [savedEditedCells] = useState<Map<string, string>>(new Map()); // TODO: Implement save functionality
   const [gridData, setGridData] = useState<MeasureData[]>(data);
+  const tableWrapperRef = useRef<HTMLDivElement>(null);
 
   // Debug: Log when onEditHistory prop changes
   useEffect(() => {
@@ -128,6 +133,19 @@ const DimensionsTimeGrid: React.FC<DimensionsTimeGridProps> = ({
     collectRowIds(transformedRows);
     setExpandedRows(allRowIds);
   }, [transformedRows]);
+
+  // Expose scroll function to parent
+  useEffect(() => {
+    if (onScrollToMeasureReady) {
+      onScrollToMeasureReady((measureId: string) => {
+        // Find the header cell for this measure
+        const headerCell = document.querySelector(`th.newly-added-measure-column[data-measure-id="${measureId}"]`);
+        if (headerCell && tableWrapperRef.current) {
+          headerCell.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }
+      });
+    }
+  }, [onScrollToMeasureReady]);
 
   // Aggregate time hierarchies from multiple children into one parent time hierarchy
   const aggregateTimeHierarchies = useCallback((
@@ -1516,7 +1534,7 @@ const DimensionsTimeGrid: React.FC<DimensionsTimeGridProps> = ({
     console.warn('[DimensionsTimeGrid] No gridData available');
     return (
       <div className="grid-container-wrapper" style={{ minHeight: '200px', backgroundColor: '#f5f5f5', padding: '20px' }}>
-        <div className="grid-container" tabIndex={0}>
+        <div className="grid-container">
           <div className="grid-wrapper">
             <div style={{ padding: '20px', textAlign: 'center', color: '#d32f2f', fontSize: '16px', fontWeight: 'bold' }}>
               ⚠️ No data available. gridData is empty or undefined.
@@ -1532,7 +1550,7 @@ const DimensionsTimeGrid: React.FC<DimensionsTimeGridProps> = ({
     console.warn('[DimensionsTimeGrid] No measures available');
     return (
       <div className="grid-container-wrapper" style={{ minHeight: '200px', backgroundColor: '#f5f5f5', padding: '20px' }}>
-        <div className="grid-container" tabIndex={0}>
+        <div className="grid-container">
           <div className="grid-wrapper">
             <div style={{ padding: '20px', textAlign: 'center', color: '#d32f2f', fontSize: '16px', fontWeight: 'bold' }}>
               ⚠️ No measures available. measures array is empty.
@@ -1547,9 +1565,14 @@ const DimensionsTimeGrid: React.FC<DimensionsTimeGridProps> = ({
   try {
     return (
       <div className="grid-container-wrapper" style={{ minHeight: '100px' }}>
-        <div className="grid-container" tabIndex={0} style={{ minHeight: '100px' }}>
-          <div className="grid-wrapper" style={{ minHeight: '100px' }}>
-            <table className={`grid-table dimensions-time-table ${isFiltering ? 'filtered' : ''}`} style={{ minHeight: '100px' }}>
+        <div className="grid-container" style={{ minHeight: '100px' }}>
+          <div className="grid-wrapper" ref={tableWrapperRef} style={{ minHeight: '100px' }}>
+            <table
+              role="grid"
+              aria-label="Dimensions and measures"
+              className={`grid-table dimensions-time-table ${isFiltering ? 'filtered' : ''}`}
+              style={{ minHeight: '100px' }}
+            >
           <thead className="grid-header">
             <tr>
               <th style={{ width: '300px', minWidth: '300px' }}>
@@ -1572,9 +1595,12 @@ const DimensionsTimeGrid: React.FC<DimensionsTimeGridProps> = ({
               {measures && measures.length > 0 && measures.map((measure) => {
                 const searchTerms = searchTerm && searchTerm.trim() ? extractSearchTerms(searchTerm) : [];
                 const { otherTerms } = searchTerms.length > 0 ? separateSearchTerms(searchTerms) : { otherTerms: [] };
+                const isNewlyAdded = newlyAddedMeasureIds.includes(measure.id);
                 return (
                   <th 
-                    key={measure.id} 
+                    key={measure.id}
+                    className={isNewlyAdded ? 'newly-added-measure-column' : ''}
+                    data-measure-id={measure.id}
                     style={{ 
                       minWidth: `${columnWidth}px`, 
                       width: `${columnWidth}px`,
@@ -1596,7 +1622,7 @@ const DimensionsTimeGrid: React.FC<DimensionsTimeGridProps> = ({
           <tbody className="grid-body">
             {!rowsToRender || rowsToRender.length === 0 ? (
               <tr>
-                <td colSpan={measures.length + 1} style={{ padding: '20px', textAlign: 'center', color: '#666', backgroundColor: '#fff' }}>
+                <td colSpan={measures.length + 1} style={{ padding: '20px', textAlign: 'center', color: 'var(--color-interactive-border)', backgroundColor: 'var(--color-surface-white)' }}>
                   No data available. transformedRows: {transformedRows?.length || 0}, filteredRows: {filteredRows?.length || 0}. Please check the console for errors.
                 </td>
               </tr>
@@ -1620,6 +1646,8 @@ const DimensionsTimeGrid: React.FC<DimensionsTimeGridProps> = ({
                   savedEditedCells={savedEditedCells}
                   columnWidth={columnWidth}
                   searchTerm={searchTerm}
+                  newlyAddedMeasureIds={newlyAddedMeasureIds}
+                  data={gridData}
                 />
               ))
             )}
@@ -1634,7 +1662,7 @@ const DimensionsTimeGrid: React.FC<DimensionsTimeGridProps> = ({
     console.error('[DimensionsTimeGrid] Error stack:', error instanceof Error ? error.stack : 'No stack');
     return (
       <div className="grid-container-wrapper" style={{ minHeight: '200px', backgroundColor: '#ffebee', padding: '20px' }}>
-        <div className="grid-container" tabIndex={0}>
+        <div className="grid-container">
           <div className="grid-wrapper">
             <div style={{ padding: '20px', textAlign: 'center', color: '#d32f2f', fontSize: '16px', fontWeight: 'bold' }}>
               ⚠️ Error rendering DimensionsTimeGrid. Check console for details.

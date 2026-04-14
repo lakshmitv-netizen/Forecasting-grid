@@ -1,10 +1,59 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { MeasureData } from '../types';
+import { MeasureData, GridRow } from '../types';
 import { extractCellInfo, CellInfo } from '../utils/cellInfoUtils';
-import { CellEditHistoryEntry } from '../types/editHistory';
+import { CellEditHistoryEntry, editHistoryEntryAffectsCell } from '../types/editHistory';
+import { ApprovalRequest, ALL_APPROVER_ROLES, APPROVER_ROSTER } from '../types/approvalRequest';
 import CellEditHistoryCard from './CellEditHistoryCard';
 import GenericCommentCard from './GenericCommentCard';
+import RequestApprovalConfirmModal from './RequestApprovalConfirmModal';
+import ScopedNotification from './ScopedNotification';
+import { getPlanWideValueCellKeys } from '../utils/planWideCellKeys';
+import { filterPlanWideKeysByAutoCriteria, hasActiveAutoCriteria } from '../utils/bulkCriteriaCellKeys';
 import '../styles/components/CellDetailsHistoryPanel.css';
+
+const BULK_TIME_PERIOD_OPTIONS: { key: string; label: string }[] = [
+  { key: 'jan2026', label: 'Jan 2026' },
+  { key: 'feb2026', label: 'Feb 2026' },
+  { key: 'mar2026', label: 'Mar 2026' },
+  { key: 'apr2026', label: 'Apr 2026' },
+  { key: 'may2026', label: 'May 2026' },
+  { key: 'jun2026', label: 'Jun 2026' },
+  { key: 'jul2026', label: 'Jul 2026' },
+  { key: 'aug2026', label: 'Aug 2026' },
+  { key: 'sep2026', label: 'Sep 2026' },
+  { key: 'oct2026', label: 'Oct 2026' },
+  { key: 'nov2026', label: 'Nov 2026' },
+  { key: 'dec2026', label: 'Dec 2026' },
+];
+
+type AutoCriteriaField = 'Account' | 'Category' | 'Product' | 'Measure' | 'Time';
+
+const AUTO_CRITERIA_FIELDS: AutoCriteriaField[] = ['Account', 'Category', 'Product', 'Measure', 'Time'];
+
+function operatorsForAutoField(field: AutoCriteriaField): string[] {
+  if (field === 'Time') return ['between', 'is any of'];
+  return ['is any of', 'is none of'];
+}
+
+function shortTimeLabel(label: string): string {
+  return label.replace(/\s+2026$/, ' 26');
+}
+
+function createDefaultAutoCriteriaRow(): {
+  id: string;
+  field: AutoCriteriaField;
+  operator: string;
+  value: string;
+  value2: string;
+} {
+  return {
+    id: `criteria-${Date.now()}-${Math.random()}`,
+    field: 'Account',
+    operator: 'is any of',
+    value: '',
+    value2: '',
+  };
+}
 
 interface CellDetailsHistoryPanelProps {
   isOpen: boolean;
@@ -17,16 +66,23 @@ interface CellDetailsHistoryPanelProps {
   onAddNote?: (rowId: string, monthKey: string, note: string) => void;
   selectedCells?: Set<string>; // Set of selected cell keys
   onClearSelection?: () => void; // Callback to clear selection
-  onMassUpdate?: (cellKeys: string[], rule: string, value: string, note?: string, disaggregationRule?: string) => void; // Callback for mass update
+  onMassUpdate?: (cellKeys: string[], rule: string, value: string, note?: string, disaggregationRule?: string, submitToApprovers?: string[]) => void; // Callback for mass update
+  approvalRequests?: Map<string, ApprovalRequest>; // For showing per-approver breakdown in single-cell view
   selectedCellsOrder?: string[]; // Ordered array of selected cell keys (preserves selection order)
   getSelectedCellsOrder?: () => string[]; // Function to get current order from ref (always current)
-  initialTab?: 'single' | 'multi'; // Initial tab to show when panel opens
+  initialTab?: 'single' | 'multi' | 'details'; // Initial tab to show when panel opens
+  detailsFocusSection?: 'approval' | 'explainability' | null;
+  preselectAction?: string | null; // Optional action to preselect when opening multi-cell form
+  preselectActionSignal?: number; // Increment to force-apply preselected action
   onSetFocusedCell?: (cell: { rowId: string; monthKey?: string; measureId?: string }) => void; // Callback to set focused cell
   onSingleCellUpdate?: (rowId: string, monthKey: string, newValue: number, adjustmentNote?: string) => void; // Callback for single cell update
   onToggleCellLock?: (cellKey: string) => void; // Callback to toggle cell lock
   isCellLocked?: (cellKey: string) => boolean; // Function to check if cell is locked
   getCellValue?: (rowId: string, monthKey: string) => number | undefined; // Function to get current cell value
   onSelectSingleCell?: (cellKey: string) => void; // Callback to select a single cell (for View All Changes)
+  isApprovalView?: boolean; // When true: show only approval timeline; hide numerical edit history
+  /** After full-grid “Request Approval” submit — lock bulk request UI and show notice. */
+  planWideApprovalSubmitted?: boolean;
 }
 
 const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({ 
@@ -41,7 +97,10 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
   selectedCells = new Set(),
   onClearSelection,
   onMassUpdate,
-  initialTab = 'single',
+  initialTab = 'multi',
+  detailsFocusSection = null,
+  preselectAction = null,
+  preselectActionSignal = 0,
   onSetFocusedCell,
   onSingleCellUpdate,
   onToggleCellLock: _onToggleCellLock,
@@ -49,9 +108,14 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
   getCellValue,
   onSelectSingleCell,
   selectedCellsOrder = [],
-  getSelectedCellsOrder
+  getSelectedCellsOrder,
+  approvalRequests = new Map(),
+  isApprovalView = false,
+  planWideApprovalSubmitted = false,
 }) => {
-  const [activeTab, setActiveTab] = useState<'single' | 'multi'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'single' | 'multi' | 'details'>(initialTab);
+  const [isExplainabilityOpen, setIsExplainabilityOpen] = useState(true);
+  const [isApprovalDetailsOpen, setIsApprovalDetailsOpen] = useState(true);
   
   // Update activeTab when panel opens or initialTab prop changes
   useEffect(() => {
@@ -59,11 +123,25 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
       // When panel opens or initialTab changes while open, always set the tab based on initialTab prop
       setActiveTab(initialTab);
     } else {
-      // Reset to single tab when panel closes
-      setActiveTab('single');
+      setActiveTab(initialTab);
     }
   }, [isOpen, initialTab]);
-  
+
+  useEffect(() => {
+    if (!isOpen) {
+      setIsExplainabilityOpen(true);
+      setIsApprovalDetailsOpen(true);
+      return;
+    }
+    if (activeTab === 'details' && detailsFocusSection === 'approval') {
+      setIsApprovalDetailsOpen(true);
+      setIsExplainabilityOpen(false);
+    } else if (activeTab === 'details' && detailsFocusSection === 'explainability') {
+      setIsApprovalDetailsOpen(false);
+      setIsExplainabilityOpen(true);
+    }
+  }, [isOpen, activeTab, detailsFocusSection]);
+
   const [isHierarchyPopoverOpen, setIsHierarchyPopoverOpen] = useState(false);
   const [_nubbinLeft, _setNubbinLeft] = useState<number | null>(null); // Kept for potential future use
   const [panelNoteText, setPanelNoteText] = useState('');
@@ -105,6 +183,32 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
   const [selectAction, setSelectAction] = useState<string>('Bulk Edit');
   const [rule, setRule] = useState<string>('Increase');
   const [value, setValue] = useState<string>('20%');
+  // "Submit to" approver selection (shown when submitting for approval)
+  const [submitToApprovers, setSubmitToApprovers] = useState<string[]>([...ALL_APPROVER_ROLES]);
+  const [requestNote, setRequestNote] = useState<string>('');
+  const [approvalStatusValue, setApprovalStatusValue] = useState<string>('');
+  const [requestApprovalConfirmOpen, setRequestApprovalConfirmOpen] = useState(false);
+  
+  // Reset value when rule changes or when switching from approval to regular cells
+  useEffect(() => {
+    const approvalCellKeys = Array.from(selectedCells).filter(key => key.endsWith('-approval'));
+    const isAllApprovalCells = selectedCells.size > 0 && approvalCellKeys.length === selectedCells.size;
+    
+    if (isAllApprovalCells && rule === 'Set to') {
+      // Reset to empty for approval status selection
+      const approvalStatuses = ['approved', 'pending', 'rejected', 'notSubmitted'];
+      if (!approvalStatuses.includes(value.toLowerCase())) {
+        setValue('');
+      }
+    } else {
+      // Reset to default for regular cells
+      const approvalStatuses = ['approved', 'pending', 'rejected', 'notSubmitted'];
+      if (approvalStatuses.includes(value.toLowerCase())) {
+        setValue('20%');
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCells, rule]);
   const [bulkNote, setBulkNote] = useState<string>('');
   const [isSelectCellsDropdownOpen, setIsSelectCellsDropdownOpen] = useState(false);
   const [isSelectActionDropdownOpen, setIsSelectActionDropdownOpen] = useState(false);
@@ -117,6 +221,16 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
   // Single cell update form state
   const [singleCellNewValue, setSingleCellNewValue] = useState<string>('');
   const [singleCellAdjustmentNote, setSingleCellAdjustmentNote] = useState<string>('');
+  const [approvalActionMode, setApprovalActionMode] = useState<'request' | 'provide'>('request');
+  const [isProvideApprovalExpanded, setIsProvideApprovalExpanded] = useState(false);
+  const [provideApprovalDecision, setProvideApprovalDecision] = useState<string>('');
+  const [provideApprovalNote, setProvideApprovalNote] = useState<string>('');
+
+  useEffect(() => {
+    if (approvalActionMode !== 'provide') {
+      setIsProvideApprovalExpanded(false);
+    }
+  }, [approvalActionMode]);
   
   // Replies state - keyed by entry ID
   interface CardReply {
@@ -133,6 +247,33 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
     if (!focusedCell) return null;
     return extractCellInfo(focusedCell, data, layout);
   }, [focusedCell, data, layout]);
+
+  /** Canonical grid key for approval / value cells (matches `cellEditHistory` / selection). */
+  const focusedValueCellKey = React.useMemo(() => {
+    if (!focusedCell) return null;
+    if (layout === 'Dimensions / Time x Measures' || layout === 'Time / Dimensions x Measures') {
+      let baseDimensionId = focusedCell.rowId;
+      if (baseDimensionId.startsWith('dimension-')) {
+        const parts = baseDimensionId.split('-');
+        let dimensionEndIndex = parts.length;
+        for (let i = 1; i < parts.length; i++) {
+          if (
+            parts[i] === 'year' ||
+            ['q1', 'q2', 'q3', 'q4'].includes(parts[i]) ||
+            parts[i].match(/^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\d{4}$/)
+          ) {
+            dimensionEndIndex = i;
+            break;
+          }
+        }
+        baseDimensionId = parts.slice(0, dimensionEndIndex).join('-');
+      }
+      if (!focusedCell.measureId) return null;
+      return `${baseDimensionId}-${focusedCell.measureId}`;
+    }
+    if (!focusedCell.monthKey) return null;
+    return `${focusedCell.rowId}-${focusedCell.monthKey}`;
+  }, [focusedCell, layout]);
   
   const hasFocusedCell = focusedCell !== null && focusedCell !== undefined;
 
@@ -177,16 +318,24 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
     const draftsArray = draftEditHistory ? Array.from(draftEditHistory.values()) : [];
     const allHistory = [...draftsArray, ...editHistory];
     
+    const timeKeyForBulkMatch =
+      layout === 'Dimensions / Time x Measures' || layout === 'Time / Dimensions x Measures'
+        ? undefined
+        : focusedCell.monthKey;
+
     const filtered = allHistory
-      .filter(entry => {
-        // Exact match
-        const exactMatch = entry.cellKey === cellKey;
-        
-        if (exactMatch) {
+      .filter((entry) => {
+        if (
+          editHistoryEntryAffectsCell(
+            entry,
+            cellKey,
+            focusedCell.rowId,
+            timeKeyForBulkMatch as string | undefined
+          )
+        ) {
           return true;
         }
         
-        // For transformed layouts, also check if rowId and measureId match
         if (layout === 'Dimensions / Time x Measures' || layout === 'Time / Dimensions x Measures') {
           const rowMeasureMatch = entry.rowId === focusedCell.rowId && entry.measureId === focusedCell.measureId;
           if (rowMeasureMatch) {
@@ -383,42 +532,52 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
   // Multi-cell options
   const selectCellsOptions = ['Manually', 'Automatically'];
   
-  // Criteria state for automatic selection
   interface SelectionCriteria {
     id: string;
-    field: string; // 'KPI', 'Product', 'Time', 'Cell Value'
-    operator: string; // 'Equal to', 'Contains', 'Between', 'Greater than', etc.
+    field: AutoCriteriaField;
+    operator: string;
     value: string;
+    value2: string;
   }
   
   const [criteria, setCriteria] = useState<SelectionCriteria[]>([]);
+  const [criteriaValuePickerId, setCriteriaValuePickerId] = useState<string | null>(null);
+  const criteriaPickerRef = useRef<HTMLDivElement>(null);
   
   const addCriteria = () => {
-    setCriteria([...criteria, {
-      id: `criteria-${Date.now()}-${Math.random()}`,
-      field: 'KPI',
-      operator: 'Equal to',
-      value: ''
-    }]);
+    setCriteria(prev => [...prev, createDefaultAutoCriteriaRow()]);
   };
   
   const removeCriteria = (id: string) => {
-    setCriteria(criteria.filter(c => c.id !== id));
+    setCriteria(prev => prev.filter(c => c.id !== id));
+    setCriteriaValuePickerId(cur => (cur === id ? null : cur));
   };
   
   const updateCriteria = (id: string, updates: Partial<SelectionCriteria>) => {
-    setCriteria(criteria.map(c => c.id === id ? { ...c, ...updates } : c));
+    setCriteria(prev => prev.map(c => (c.id === id ? { ...c, ...updates } : c)));
   };
-  
-  const fieldOptions = ['KPI', 'Product', 'Time', 'Cell Value'];
-  const operatorOptions: Record<string, string[]> = {
-    'KPI': ['Equal to', 'Not equal to', 'Contains'],
-    'Product': ['Equal to', 'Not equal to', 'Contains', 'Starts with', 'Ends with'],
-    'Time': ['Equal to', 'Between', 'Before', 'After'],
-    'Cell Value': ['Equal to', 'Not equal to', 'Greater than', 'Less than', 'Between']
+
+  const parseCriteriaTokens = (raw: string): string[] =>
+    raw
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+
+  const toggleCriteriaToken = (id: string, token: string) => {
+    setCriteria(prev =>
+      prev.map(c => {
+        if (c.id !== id) return c;
+        const set = new Set(parseCriteriaTokens(c.value));
+        if (set.has(token)) set.delete(token);
+        else set.add(token);
+        return { ...c, value: Array.from(set).join(', ') };
+      }),
+    );
   };
   const selectActionOptions = [
     'Bulk Edit',
+    'Request Approval',
+    'Edit Approval Status',
     'Copy',
     'Copy Formula',
     'Copy Trend',
@@ -434,9 +593,108 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
     action.toLowerCase().includes(actionSearchTerm.toLowerCase())
   );
 
+  const bulkSelectionOptions = useMemo(() => {
+    const accounts = new Set<string>();
+    const categories = new Set<string>();
+    const products = new Set<string>();
+    const walk = (rows: GridRow[] | undefined) => {
+      rows?.forEach(row => {
+        if (row.type === 'account') accounts.add(row.name);
+        if (row.type === 'category') categories.add(row.name);
+        if (row.type === 'product') products.add(row.name);
+        if (row.children) walk(row.children);
+      });
+    };
+    data.forEach(m => walk(m.children));
+    const measures = Array.from(
+      new Set(data.map(m => (m.name?.trim() || m.id)).filter(Boolean) as string[]),
+    ).sort();
+    return {
+      accounts: Array.from(accounts).sort(),
+      categories: Array.from(categories).sort(),
+      products: Array.from(products).sort(),
+      measures,
+      timePeriods: BULK_TIME_PERIOD_OPTIONS,
+    };
+  }, [data]);
+
+  /** All hierarchical month cells — used when Request Approval runs without a manual multi-cell selection (plan scope). */
+  const planWideValueCellKeys = useMemo(() => getPlanWideValueCellKeys(data), [data]);
+
+  const resolvedBulkTargetKeys = useMemo(() => {
+    if (selectCells === 'Manually') {
+      const currentOrder = getSelectedCellsOrder ? getSelectedCellsOrder() : (selectedCellsOrder || []);
+      return currentOrder.length > 0
+        ? currentOrder.filter(key => selectedCells.has(key))
+        : Array.from(selectedCells);
+    }
+    if (!hasActiveAutoCriteria(criteria)) {
+      return [];
+    }
+    return filterPlanWideKeysByAutoCriteria(planWideValueCellKeys, data, criteria);
+  }, [
+    selectCells,
+    criteria,
+    data,
+    planWideValueCellKeys,
+    getSelectedCellsOrder,
+    selectedCellsOrder,
+    selectedCells,
+  ]);
+
+  /** Exclude value cells already in pending approval — avoids re-opening confirm after submit or empty confirm body. */
+  const requestApprovalEligibleKeys = useMemo(
+    () =>
+      resolvedBulkTargetKeys.filter(cellKey => {
+        const req = approvalRequests.get(cellKey);
+        return !req || req.status !== 'pending';
+      }),
+    [resolvedBulkTargetKeys, approvalRequests],
+  );
+
+  useEffect(() => {
+    if (
+      requestApprovalConfirmOpen &&
+      selectAction === 'Request Approval' &&
+      requestApprovalEligibleKeys.length === 0
+    ) {
+      setRequestApprovalConfirmOpen(false);
+    }
+  }, [requestApprovalConfirmOpen, selectAction, requestApprovalEligibleKeys.length]);
+
+  useEffect(() => {
+    if (!criteriaValuePickerId) {
+      criteriaPickerRef.current = null;
+      return;
+    }
+    const onDocMouseDown = (e: MouseEvent) => {
+      if (criteriaPickerRef.current?.contains(e.target as Node)) return;
+      setCriteriaValuePickerId(null);
+    };
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
+  }, [criteriaValuePickerId]);
+
+  useEffect(() => {
+    if (!isOpen || preselectActionSignal <= 0 || !preselectAction) return;
+    setSelectCells('Manually');
+    setSelectAction(preselectAction);
+    if (preselectAction === 'Request Approval') {
+      setRule('');
+      setValue('');
+      setRequestNote('');
+      setSubmitToApprovers([...ALL_APPROVER_ROLES]);
+    }
+  }, [isOpen, preselectAction, preselectActionSignal]);
+
+  useEffect(() => {
+    if (!isOpen) setRequestApprovalConfirmOpen(false);
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   return (
+    <>
     <div className="cell-details-history-panel">
       {/* Panel Header */}
       <div className="cell-details-history-panel-header">
@@ -446,7 +704,7 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
               <path fillRule="evenodd" clipRule="evenodd" d="M12.7383 12.216L12.4614 12.4929C12.1537 12.8006 11.7537 12.9544 11.3229 12.9544H10.5229C9.78444 12.9544 8.98444 12.3698 8.98444 11.3544V10.5852C8.98444 9.96983 9.26137 9.6006 9.41521 9.38522L12.7383 6.0006C12.8306 5.90829 12.9229 5.69291 12.9229 5.56983V3.01599C12.9229 2.21599 12.246 1.53906 11.446 1.53906H3.56907C2.76908 1.53906 2.09215 2.27752 2.09215 3.01599H1.59985C1.046 3.01599 0.615234 3.47752 0.615234 4.03137C0.615234 4.58522 1.046 5.01599 1.59985 5.01599H2.09215V7.01599H1.59985C1.046 7.01599 0.615234 7.44676 0.615234 8.0006C0.615234 8.55445 1.046 8.98522 1.59985 8.98522H2.09215V10.9852H1.59985C1.046 10.9852 0.615234 11.4468 0.615234 11.9698C0.615234 12.5237 1.046 12.9544 1.59985 12.9544H2.09215C2.09215 13.9391 2.76908 14.4314 3.56907 14.4314H11.446C12.246 14.4314 12.9229 13.7544 12.9229 12.9544V12.3083C12.9229 12.1544 12.8614 12.1237 12.7383 12.216V12.216ZM10.2153 5.262C10.2153 5.53892 9.99987 5.75431 9.72295 5.75431H4.79988C4.52296 5.75431 4.30758 5.53892 4.30758 5.262V4.76969C4.30758 4.49277 4.52296 4.27738 4.79988 4.27738H9.72295C9.99987 4.27738 10.2153 4.49277 10.2153 4.76969V5.262ZM7.99988 11.2317C7.99988 11.5086 7.78449 11.724 7.50757 11.724H4.79988C4.52296 11.724 4.30758 11.5086 4.30758 11.2317V10.7394C4.30758 10.4624 4.52296 10.2471 4.79988 10.2471H7.50757C7.78449 10.2471 7.99988 10.4624 7.99988 10.7394V11.2317ZM8.73834 8.24728C8.73834 8.5242 8.52295 8.73959 8.24603 8.73959H4.79988C4.52296 8.73959 4.30758 8.5242 4.30758 8.24728V7.75497C4.30758 7.47805 4.52296 7.26267 4.79988 7.26267H8.24603C8.52295 7.26267 8.73834 7.47805 8.73834 7.75497V8.24728ZM15.2306 6.89245L14.9229 6.58476C14.7383 6.40014 14.4306 6.40014 14.246 6.58476L10.4922 10.4617C10.4614 10.4617 10.4614 10.5232 10.4614 10.5232V11.354C10.4614 11.4155 10.4614 11.4771 10.523 11.4771H11.323C11.3537 11.4771 11.3845 11.4463 11.4153 11.4463L15.1999 7.63091C15.446 7.41553 15.446 7.10784 15.2306 6.89245V6.89245Z" fill="#0250D9"/>
             </svg>
           </div>
-          <p className="cell-details-history-panel-title">Edit Information</p>
+          <p className="cell-details-history-panel-title">Actions</p>
         </div>
         <div className="cell-details-history-panel-actions">
           <button className="cell-details-history-panel-close" onClick={onClose} aria-label="Close">
@@ -469,152 +727,184 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
           className={`cell-details-history-tab ${activeTab === 'multi' ? 'active' : ''}`}
           onClick={() => setActiveTab('multi')}
         >
-          {selectedCells.size === 1 ? 'Edit Cell' : 'Bulk Edit'}
+          {selectedCells.size === 1 ? 'Cell Actions' : 'Bulk Action'}
+        </button>
+        <button
+          className={`cell-details-history-tab ${activeTab === 'details' ? 'active' : ''}`}
+          onClick={() => setActiveTab('details')}
+        >
+          Details
         </button>
       </div>
 
       {/* Panel Body */}
       <div className="cell-details-history-panel-body">
-        {/* UPDATE TAB */}
-        {activeTab === 'multi' && selectedCells.size !== 1 ? (
+        {/* DETAILS TAB */}
+        {activeTab === 'details' ? (
+          <div className="cell-details-history-content">
+            <div className="cell-details-history-tab-content">
+              {selectedCells.size !== 1 && (
+                <div className="cell-details-history-empty-state-inline">
+                  <p className="cell-details-history-empty-text">
+                    Select a cell to know more about its value.
+                  </p>
+                </div>
+              )}
+
+              {selectedCells.size === 1 && (
+                <>
+                  {/* Cell Info Header - keep consistent with single-cell history tab */}
+                  {cellInfo && (
+                    <div className="cell-details-history-header-compact">
+                      <span className="cell-details-history-header-value">{cellInfo.measureName || 'N/A'}</span>
+                      <span className="cell-details-history-header-separator">·</span>
+                      <span className="cell-details-history-header-value">{cellInfo.timePeriod || 'N/A'}</span>
+                      <span className="cell-details-history-header-separator">·</span>
+                      <span className="cell-details-history-header-value">
+                        {cellInfo.dimensionPath.length > 0 ? cellInfo.dimensionPath[cellInfo.dimensionPath.length - 1] : 'N/A'}
+                      </span>
+                      <div
+                        className="cell-details-history-hierarchy-info-wrapper"
+                        onMouseEnter={() => setIsHierarchyPopoverOpen(true)}
+                        onMouseLeave={() => setIsHierarchyPopoverOpen(false)}
+                      >
+                        <button
+                          ref={hierarchyButtonRef}
+                          className="cell-details-history-hierarchy-button-compact"
+                          onFocus={() => setIsHierarchyPopoverOpen(true)}
+                          onBlur={() => setIsHierarchyPopoverOpen(false)}
+                          aria-label="Show hierarchy"
+                        >
+                          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </button>
+                        {isHierarchyPopoverOpen && (
+                          <div ref={popoverRef} className="cell-details-history-hierarchy-popover">
+                            <div className="cell-details-history-hierarchy-popover-nubbin"></div>
+                            <div className="cell-details-history-hierarchy-popover-content">
+                              {cellInfo.dimensionPath.length > 0 ? (
+                                <span className="cell-details-history-hierarchy-path">
+                                  {cellInfo.dimensionPath.join(' > ')}
+                                </span>
+                              ) : (
+                                <span className="cell-details-history-hierarchy-path">No hierarchy available</span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    className="cell-details-history-accordion-header"
+                    onClick={() => setIsExplainabilityOpen(prev => !prev)}
+                    aria-expanded={isExplainabilityOpen}
+                  >
+                    <svg
+                      className={`cell-details-history-accordion-chevron ${isExplainabilityOpen ? 'open' : ''}`}
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 6l6 6-6 6" />
+                    </svg>
+                    <span className="cell-details-history-accordion-title">Information</span>
+                  </button>
+                  {isExplainabilityOpen && (
+                    <div className="cell-details-history-accordion-body">
+                      <p className="cell-details-history-accordion-placeholder">
+                        Explainability content will appear here.
+                      </p>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    className="cell-details-history-accordion-header"
+                    onClick={() => setIsApprovalDetailsOpen(prev => !prev)}
+                    aria-expanded={isApprovalDetailsOpen}
+                  >
+                    <svg
+                      className={`cell-details-history-accordion-chevron ${isApprovalDetailsOpen ? 'open' : ''}`}
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 6l6 6-6 6" />
+                    </svg>
+                    <span className="cell-details-history-accordion-title">Approval Details</span>
+                  </button>
+                  {isApprovalDetailsOpen && (
+                    <div className="cell-details-history-accordion-body">
+                      {(() => {
+                        if (!focusedValueCellKey) {
+                          return <p className="cell-details-history-accordion-placeholder">No approval context available.</p>;
+                        }
+                        const approvalCellKey = focusedValueCellKey;
+                        const approval = approvalRequests.get(approvalCellKey);
+                        if (!approval) {
+                          return <p className="cell-details-history-accordion-placeholder">No approval request found for this cell.</p>;
+                        }
+                        const approverRows = approval.approvers && approval.approvers.length > 0
+                          ? approval.approvers
+                          : [{
+                              role: approval.approverName || 'Approver',
+                              name: approval.approverName || 'Approver',
+                              initials: (approval.approverName || 'A')
+                                .split(' ')
+                                .map((p: string) => p[0])
+                                .join('')
+                                .toUpperCase()
+                                .slice(0, 2),
+                              status: approval.status === 'notSubmitted' ? 'pending' : approval.status,
+                              comment: approval.approverComment,
+                            }];
+
+                        const statusLabel = (status: 'pending' | 'approved' | 'approvedWithCondition' | 'rejected') => {
+                          if (status === 'approved') return 'Approved';
+                          if (status === 'approvedWithCondition') return 'Cond. Approved';
+                          if (status === 'rejected') return 'Rejected';
+                          return 'Pending';
+                        };
+
+                        return (
+                          <div className="cdh-approval-mini-dashboard">
+                            {approverRows.map((a, idx) => (
+                              <div key={`${a.name}-${a.role}-${idx}`} className="cdh-approval-mini-row">
+                                <div className="cdh-approval-mini-left">
+                                  <span className="cdh-approval-mini-avatar">{a.initials}</span>
+                                  <div className="cdh-approval-mini-meta">
+                                    <span className="cdh-approval-mini-name">{a.name}</span>
+                                    <span className="cdh-approval-mini-role">{a.role}</span>
+                                  </div>
+                                </div>
+                                <span className={`cdh-approver-badge cdh-approver-badge--${a.status === 'approvedWithCondition' ? 'pending' : a.status}`}>
+                                  {statusLabel(a.status)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        ) : activeTab === 'multi' && selectedCells.size !== 1 ? (
+          /* UPDATE TAB */
           /* Update > Bulk Edit UI (No selection or multiple cells) */
           <div className="cell-details-history-content">
             <div className="cell-details-history-tab-content">
               <div className="cell-details-history-multi-cell-form">
-                {/* Select Cells */}
-                <div className="cell-details-history-multi-field">
-                  <label className="cell-details-history-multi-label">Select Cells</label>
-                  <div className="cell-details-history-dropdown-wrapper" ref={selectCellsDropdownRef}>
-                    <div 
-                      className={`cell-details-history-dropdown-trigger ${isSelectCellsDropdownOpen ? 'open' : ''}`}
-                      onClick={() => setIsSelectCellsDropdownOpen(!isSelectCellsDropdownOpen)}
-                    >
-                      <span className="cell-details-history-dropdown-value">
-                        {selectCells}
-                      </span>
-                      <svg className="cell-details-history-dropdown-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </div>
-                    {isSelectCellsDropdownOpen && (
-                      <div className="cell-details-history-dropdown-list">
-                        {selectCellsOptions.map((option, index) => (
-                          <div
-                            key={index}
-                            className={`cell-details-history-dropdown-option ${selectCells === option ? 'selected' : ''}`}
-                            onClick={() => {
-                              setSelectCells(option);
-                              setIsSelectCellsDropdownOpen(false);
-                            }}
-                          >
-                            {option}
-          </div>
-                        ))}
-                        {selectedCells.size > 0 && onClearSelection && (
-                          <div
-                            className="cell-details-history-dropdown-option"
-                            onClick={() => {
-                              onClearSelection();
-                              setIsSelectCellsDropdownOpen(false);
-                            }}
-                            style={{ color: '#0050D9', fontWeight: 500 }}
-                          >
-                            Clear Selection
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  {selectCells === 'Manually' && (
-                    <div className="cell-details-history-multi-helper-text">
-                      {selectedCells.size > 0 ? (
-                        `${selectedCells.size} cell${selectedCells.size === 1 ? '' : 's'} selected`
-                      ) : (
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#5C5C5C', flexWrap: 'wrap' }}>
-                          Hold <span className="cell-details-history-shift-key">Shift</span> key and select multiple cells
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Criteria UI for Automatic Selection */}
-                {selectCells === 'Automatically' && (
-                  <div className="cell-details-history-criteria-section">
-                    <div className="cell-details-history-criteria-header">
-                      <h3 className="cell-details-history-criteria-title">Cell Selection Criteria</h3>
-                    </div>
-                    <div className="cell-details-history-criteria-list">
-                      {criteria.map((criterion) => (
-                        <div key={criterion.id} className="cell-details-history-criteria-card">
-                          <div className="cell-details-history-criteria-content">
-                            <div className="cell-details-history-criteria-field">
-                              <select
-                                value={criterion.field}
-                                onChange={(e) => updateCriteria(criterion.id, { field: e.target.value, operator: operatorOptions[e.target.value][0] || '' })}
-                                className="cell-details-history-criteria-select"
-                              >
-                                {fieldOptions.map(opt => (
-                                  <option key={opt} value={opt}>{opt}</option>
-                                ))}
-                              </select>
-                            </div>
-                            <div className="cell-details-history-criteria-operator">
-                              <select
-                                value={criterion.operator}
-                                onChange={(e) => updateCriteria(criterion.id, { operator: e.target.value })}
-                                className="cell-details-history-criteria-select"
-                              >
-                                {operatorOptions[criterion.field]?.map(opt => (
-                                  <option key={opt} value={opt}>{opt}</option>
-                                ))}
-                              </select>
-                            </div>
-                            <div className="cell-details-history-criteria-value">
-                              <input
-                                type="text"
-                                value={criterion.value}
-                                onChange={(e) => updateCriteria(criterion.id, { value: e.target.value })}
-                                placeholder="Enter value"
-                                className="cell-details-history-criteria-input"
-                              />
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => removeCriteria(criterion.id)}
-                            className="cell-details-history-criteria-delete"
-                            aria-label="Delete criterion"
-                          >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-                            </svg>
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="cell-details-history-criteria-actions">
-                      <button
-                        onClick={addCriteria}
-                        className="cell-details-history-criteria-add-btn"
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M12 5v14M5 12h14" />
-                        </svg>
-                        Add Condition
-                      </button>
-                      <button
-                        onClick={addCriteria}
-                        className="cell-details-history-criteria-add-btn"
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M12 5v14M5 12h14" />
-                        </svg>
-                        Add Group
-                      </button>
-                    </div>
-                  </div>
-                )}
-
                 {/* Select Action */}
                 <div className="cell-details-history-multi-field">
                   <label className="cell-details-history-multi-label">Select Action</label>
@@ -658,10 +948,23 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                                   // Reset rule when switching actions
                                   if (option === 'Bulk Edit') {
                                     setRule('Increase');
+                                    setRequestNote('');
                                   } else if (option === 'Set Disaggregation Mechanism') {
                                     setRule('');
+                                    setRequestNote('');
+                                  } else if (option === 'Request Approval') {
+                                    setRule('');
+                                    setValue('');
+                                    setSubmitToApprovers([...ALL_APPROVER_ROLES]);
+                                  } else if (option === 'Edit Approval Status') {
+                                    setRule('');
+                                    setValue('');
+                                    setApprovalStatusValue('');
+                                    setRequestNote('');
+                                    setSubmitToApprovers([...ALL_APPROVER_ROLES]);
                                   } else {
                                     setRule('');
+                                    setRequestNote('');
                                   }
                                 }}
                               >
@@ -678,6 +981,264 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                     )}
                   </div>
                 </div>
+
+                {selectAction === 'Request Approval' && planWideApprovalSubmitted && (
+                  <div className="cell-details-history-scoped-notification-wrap">
+                    <ScopedNotification
+                      variant="inline"
+                      className="scoped-notification--plan-submitted"
+                      message="Plan already submitted for approval."
+                    />
+                  </div>
+                )}
+                <div className="cell-details-history-multi-field">
+                  <label className="cell-details-history-multi-label">Select Cells</label>
+                  <div className="cell-details-history-dropdown-wrapper" ref={selectCellsDropdownRef}>
+                    <div 
+                      className={`cell-details-history-dropdown-trigger ${isSelectCellsDropdownOpen ? 'open' : ''}`}
+                      onClick={() => setIsSelectCellsDropdownOpen(!isSelectCellsDropdownOpen)}
+                    >
+                      <span className="cell-details-history-dropdown-value">
+                        {selectCells}
+                      </span>
+                      <svg className="cell-details-history-dropdown-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+                    {isSelectCellsDropdownOpen && (
+                      <div className="cell-details-history-dropdown-list">
+                        {selectCellsOptions.map((option, index) => (
+                          <div
+                            key={index}
+                            className={`cell-details-history-dropdown-option ${selectCells === option ? 'selected' : ''}`}
+                            onClick={() => {
+                              setSelectCells(option);
+                              if (option === 'Automatically') {
+                                setCriteria([createDefaultAutoCriteriaRow()]);
+                                setCriteriaValuePickerId(null);
+                              }
+                              setIsSelectCellsDropdownOpen(false);
+                            }}
+                          >
+                            {option}
+          </div>
+                        ))}
+                        {selectedCells.size > 0 && onClearSelection && (
+                          <div
+                            className="cell-details-history-dropdown-option"
+                            onClick={() => {
+                              onClearSelection();
+                              setIsSelectCellsDropdownOpen(false);
+                            }}
+                            style={{ color: '#0050D9', fontWeight: 500 }}
+                          >
+                            Clear Selection
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {selectCells === 'Manually' && (
+                    <div className="cell-details-history-multi-helper-text">
+                      {selectedCells.size > 0 ? (
+                        `${selectedCells.size} cell${selectedCells.size === 1 ? '' : 's'} selected`
+                      ) : (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#5C5C5C', flexWrap: 'wrap' }}>
+                          Hold <span className="cell-details-history-shift-key">Shift</span> key and select multiple cells
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Criteria UI for Automatic Selection — Field | Op | Value rows */}
+                {selectCells === 'Automatically' && (
+                  <div className="cell-details-history-criteria-section">
+                    <div className="cell-details-history-criteria-header">
+                      <h3 className="cell-details-history-criteria-title">Cell Selection Criteria</h3>
+                    </div>
+                    <div className="cell-details-history-criteria-grid-header" aria-hidden="true">
+                      <span>Field</span>
+                      <span>Operation</span>
+                      <span>Value</span>
+                      <span className="cell-details-history-criteria-grid-header-spacer" />
+                    </div>
+                    <div className="cell-details-history-criteria-list">
+                      {criteria.map((criterion) => {
+                        const ops = operatorsForAutoField(criterion.field);
+                        const isTimeBetween = criterion.field === 'Time' && criterion.operator === 'between';
+                        const optionList: string[] =
+                          criterion.field === 'Account'
+                            ? bulkSelectionOptions.accounts
+                            : criterion.field === 'Category'
+                              ? bulkSelectionOptions.categories
+                              : criterion.field === 'Product'
+                                ? bulkSelectionOptions.products
+                                : criterion.field === 'Measure'
+                                  ? bulkSelectionOptions.measures
+                                  : bulkSelectionOptions.timePeriods.map(t => t.label);
+                        const selectedTokens = parseCriteriaTokens(criterion.value);
+                        const summaryText = isTimeBetween
+                          ? criterion.value && criterion.value2
+                            ? `${shortTimeLabel(criterion.value)} — ${shortTimeLabel(criterion.value2)}`
+                            : 'Select periods…'
+                          : selectedTokens.length > 0
+                            ? selectedTokens.map(t => shortTimeLabel(t)).join(', ')
+                            : 'Select…';
+
+                        return (
+                        <div key={criterion.id} className="cell-details-history-criteria-card">
+                            <div className="cell-details-history-criteria-content-row">
+                              <div className="cell-details-history-criteria-field cell-details-history-criteria-field--compact">
+                              <select
+                                value={criterion.field}
+                                  onChange={(e) => {
+                                    const f = e.target.value as AutoCriteriaField;
+                                    const nextOps = operatorsForAutoField(f);
+                                    updateCriteria(criterion.id, {
+                                      field: f,
+                                      operator: nextOps[0],
+                                      value: '',
+                                      value2: '',
+                                    });
+                                    setCriteriaValuePickerId(null);
+                                  }}
+                                className="cell-details-history-criteria-select"
+                                  aria-label="Field"
+                              >
+                                  {AUTO_CRITERIA_FIELDS.map(f => (
+                                    <option key={f} value={f}>{f}</option>
+                                ))}
+                              </select>
+                            </div>
+                              <div className="cell-details-history-criteria-operator cell-details-history-criteria-operator--compact">
+                              <select
+                                value={criterion.operator}
+                                  onChange={(e) => {
+                                    const op = e.target.value;
+                                    updateCriteria(criterion.id, {
+                                      operator: op,
+                                      ...(op !== 'between' ? { value2: '' } : {}),
+                                    });
+                                    setCriteriaValuePickerId(null);
+                                  }}
+                                className="cell-details-history-criteria-select"
+                                  aria-label="Operation"
+                              >
+                                  {ops.map(op => (
+                                    <option key={op} value={op}>{op}</option>
+                                ))}
+                              </select>
+                            </div>
+                              <div className="cell-details-history-criteria-value cell-details-history-criteria-value--compact">
+                                {isTimeBetween ? (
+                                  <div className="cell-details-history-criteria-between-row">
+                                    <select
+                                      className="cell-details-history-criteria-select"
+                                value={criterion.value}
+                                onChange={(e) => updateCriteria(criterion.id, { value: e.target.value })}
+                                      aria-label="Start period"
+                                    >
+                                      <option value="">Start</option>
+                                      {bulkSelectionOptions.timePeriods.map(t => (
+                                        <option key={t.key} value={t.label}>{shortTimeLabel(t.label)}</option>
+                                      ))}
+                                    </select>
+                                    <select
+                                      className="cell-details-history-criteria-select"
+                                      value={criterion.value2}
+                                      onChange={(e) => updateCriteria(criterion.id, { value2: e.target.value })}
+                                      aria-label="End period"
+                                    >
+                                      <option value="">End</option>
+                                      {bulkSelectionOptions.timePeriods.map(t => (
+                                        <option key={t.key} value={t.label}>{shortTimeLabel(t.label)}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                ) : (
+                                  <div
+                                    className="cell-details-history-criteria-value-with-picker"
+                                    ref={(el) => {
+                                      if (criteriaValuePickerId === criterion.id) {
+                                        criteriaPickerRef.current = el;
+                                      }
+                                    }}
+                                  >
+                                    <span
+                                      className={
+                                        !criterion.value.trim()
+                                          ? 'cell-details-history-criteria-value-summary cell-details-history-criteria-value-summary--placeholder'
+                                          : 'cell-details-history-criteria-value-summary'
+                                      }
+                                    >
+                                      {summaryText}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      className="cell-details-history-criteria-browse-btn"
+                                      aria-label="Choose values"
+                                      disabled={optionList.length === 0}
+                                      onMouseDown={(e) => e.preventDefault()}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (optionList.length === 0) return;
+                                        setCriteriaValuePickerId(prev =>
+                                          prev === criterion.id ? null : criterion.id,
+                                        );
+                                      }}
+                                    >
+                                      ···
+                                    </button>
+                                    {criteriaValuePickerId === criterion.id && optionList.length > 0 && (
+                                      <div
+                                        className="cell-details-history-criteria-picker"
+                                        onMouseDown={(e) => e.stopPropagation()}
+                                      >
+                                        {optionList.map((opt) => (
+                                          <label key={opt} className="cell-details-history-criteria-picker-option">
+                                            <input
+                                              type="checkbox"
+                                              checked={selectedTokens.includes(opt)}
+                                              onChange={() => toggleCriteriaToken(criterion.id, opt)}
+                                            />
+                                            <span>{shortTimeLabel(opt)}</span>
+                                          </label>
+                                        ))}
+                            </div>
+                                    )}
+                                  </div>
+                                )}
+                          </div>
+                          <button
+                                type="button"
+                            onClick={() => removeCriteria(criterion.id)}
+                            className="cell-details-history-criteria-delete"
+                                aria-label="Delete condition"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                            </svg>
+                          </button>
+                        </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="cell-details-history-criteria-actions">
+                      <button
+                        type="button"
+                        onClick={addCriteria}
+                        className="cell-details-history-criteria-add-btn"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M12 5v14M5 12h14" />
+                        </svg>
+                        Add condition
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Rule - only show for Bulk Edit */}
                 {selectAction === 'Bulk Edit' && (
@@ -755,13 +1316,72 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                 {selectAction === 'Bulk Edit' && (
                   <div className="cell-details-history-multi-field">
                     <label className="cell-details-history-multi-label">Value</label>
-                    <input
-                      type="text"
-                      className="cell-details-history-multi-input"
-                      value={value}
-                      onChange={(e) => setValue(e.target.value)}
-                      placeholder="Enter value"
-                    />
+                    {/* Check if all selected cells are approval cells */}
+                    {(() => {
+                      const approvalCellKeys = Array.from(selectedCells).filter(key => key.endsWith('-approval'));
+                      const isAllApprovalCells = selectedCells.size > 0 && approvalCellKeys.length === selectedCells.size;
+                      
+                      if (isAllApprovalCells && rule === 'Set to') {
+                        // Show dropdown for approval status values
+                        return (
+                          <>
+                          <select
+                            className="cell-details-history-multi-input"
+                            value={value}
+                            onChange={(e) => setValue(e.target.value)}
+                          >
+                            <option value="">Select approval status</option>
+                            <option value="approved">Approved</option>
+                            <option value="approvedWithCondition">Approved with Condition</option>
+                            <option value="pending">Pending — Submit for Approval</option>
+                            <option value="rejected">Rejected</option>
+                            <option value="notSubmitted">Not Submitted</option>
+                          </select>
+                          {/* "Submit to" panel – shown only when submitting for approval */}
+                          {value === 'pending' && (
+                            <div className="cdh-submit-to-panel">
+                              <p className="cdh-submit-to-label">Submit to</p>
+                              <div className="cdh-submit-to-roles">
+                                {ALL_APPROVER_ROLES.map(role => (
+                                  <label key={role} className="cdh-submit-to-role">
+                                    <input
+                                      type="checkbox"
+                                      checked={submitToApprovers.includes(role)}
+                                      onChange={e => {
+                                        if (e.target.checked) {
+                                          setSubmitToApprovers(prev => [...prev, role]);
+                                        } else {
+                                          setSubmitToApprovers(prev => prev.filter(r => r !== role));
+                                        }
+                                      }}
+                                    />
+                                    <span className="cdh-submit-to-role-initials" style={{ background: role === 'Finance' ? '#dbeafe' : role === 'Supply Chain' ? '#d1fae5' : role === 'Sales Ops' ? '#fef3c7' : '#ede9fe' }}>
+                                      {APPROVER_ROSTER[role].initials}
+                                    </span>
+                                    <span className="cdh-submit-to-role-text">
+                                      <span className="cdh-submit-to-role-name">{APPROVER_ROSTER[role].name}</span>
+                                      <span className="cdh-submit-to-role-dept">{role}</span>
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          </>
+                        );
+                      } else {
+                        // Show text input for regular cells
+                        return (
+                          <input
+                            type="text"
+                            className="cell-details-history-multi-input"
+                            value={value}
+                            onChange={(e) => setValue(e.target.value)}
+                            placeholder="Enter value"
+                          />
+                        );
+                      }
+                    })()}
                   </div>
                 )}
 
@@ -793,6 +1413,115 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                   </div>
                 )}
 
+                {selectAction === 'Request Approval' && (
+                  <>
+                    <div className="cell-details-history-multi-field">
+                      <label className="cell-details-history-multi-label">Submit to</label>
+                      <div className="cdh-submit-to-panel">
+                        <div className="cdh-submit-to-roles">
+                          {ALL_APPROVER_ROLES.map(role => (
+                            <label
+                              key={role}
+                              className={`cdh-submit-to-role${planWideApprovalSubmitted ? ' cdh-submit-to-role--disabled' : ''}`}
+                            >
+                              <input
+                                type="checkbox"
+                                disabled={planWideApprovalSubmitted}
+                                checked={submitToApprovers.includes(role)}
+                                onChange={e => {
+                                  if (e.target.checked) {
+                                    setSubmitToApprovers(prev => [...prev, role]);
+                                  } else {
+                                    setSubmitToApprovers(prev => prev.filter(r => r !== role));
+                                  }
+                                }}
+                              />
+                              <span className="cdh-submit-to-role-initials" style={{ background: role === 'Finance' ? '#dbeafe' : role === 'Supply Chain' ? '#d1fae5' : role === 'Sales Ops' ? '#fef3c7' : '#ede9fe' }}>
+                                {APPROVER_ROSTER[role].initials}
+                              </span>
+                              <span className="cdh-submit-to-role-text">
+                                <span className="cdh-submit-to-role-name">{APPROVER_ROSTER[role].name}</span>
+                                <span className="cdh-submit-to-role-dept">{role}</span>
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="cell-details-history-multi-field">
+                      <label className="cell-details-history-multi-label">Request note</label>
+                      <textarea
+                        className="cell-details-history-multi-textarea"
+                        value={requestNote}
+                        onChange={(e) => setRequestNote(e.target.value)}
+                        placeholder="Add request note (optional)"
+                        rows={4}
+                      />
+                    </div>
+                  </>
+                )}
+
+                {selectAction === 'Edit Approval Status' && (
+                  <>
+                    <div className="cell-details-history-multi-field">
+                      <label className="cell-details-history-multi-label">Approval status</label>
+                      <select
+                        className="cell-details-history-multi-input"
+                        value={approvalStatusValue}
+                        onChange={(e) => setApprovalStatusValue(e.target.value)}
+                      >
+                        <option value="">Select approval status</option>
+                        <option value="approved">Approved</option>
+                        <option value="approvedWithCondition">Approved with Condition</option>
+                        <option value="pending">Pending</option>
+                        <option value="rejected">Rejected</option>
+                        <option value="notSubmitted">Not Submitted</option>
+                      </select>
+                    </div>
+                    {approvalStatusValue === 'pending' && (
+                      <div className="cell-details-history-multi-field">
+                        <label className="cell-details-history-multi-label">Submit to</label>
+                        <div className="cdh-submit-to-panel">
+                          <div className="cdh-submit-to-roles">
+                            {ALL_APPROVER_ROLES.map(role => (
+                              <label key={role} className="cdh-submit-to-role">
+                                <input
+                                  type="checkbox"
+                                  checked={submitToApprovers.includes(role)}
+                                  onChange={e => {
+                                    if (e.target.checked) {
+                                      setSubmitToApprovers(prev => [...prev, role]);
+                                    } else {
+                                      setSubmitToApprovers(prev => prev.filter(r => r !== role));
+                                    }
+                                  }}
+                                />
+                                <span className="cdh-submit-to-role-initials" style={{ background: role === 'Finance' ? '#dbeafe' : role === 'Supply Chain' ? '#d1fae5' : role === 'Sales Ops' ? '#fef3c7' : '#ede9fe' }}>
+                                  {APPROVER_ROSTER[role].initials}
+                                </span>
+                                <span className="cdh-submit-to-role-text">
+                                  <span className="cdh-submit-to-role-name">{APPROVER_ROSTER[role].name}</span>
+                                  <span className="cdh-submit-to-role-dept">{role}</span>
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    <div className="cell-details-history-multi-field">
+                      <label className="cell-details-history-multi-label">Status note</label>
+                      <textarea
+                        className="cell-details-history-multi-textarea"
+                        value={requestNote}
+                        onChange={(e) => setRequestNote(e.target.value)}
+                        placeholder="Add status note (optional)"
+                        rows={4}
+                      />
+                    </div>
+                  </>
+                )}
+
                 {/* Update and Cancel Buttons */}
                 <div className="cell-details-history-multi-actions">
                   <button 
@@ -804,6 +1533,11 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                       setRule('Increase');
                       setValue('20%');
                       setBulkNote('');
+                      setRequestNote('');
+                      setApprovalStatusValue('');
+                      setSubmitToApprovers([...ALL_APPROVER_ROLES]);
+                      setCriteria([]);
+                      setCriteriaValuePickerId(null);
                       // Clear selection
                       if (onClearSelection) {
                         onClearSelection();
@@ -815,36 +1549,42 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                   <button 
                     className="cell-details-history-multi-update-btn"
                     onClick={() => {
-                      if (selectedCells.size > 0 && onMassUpdate) {
-                        // ROOT CAUSE FIX: Use selectedCellsOrder directly, filtering to only include currently selected cells
-                        // This preserves the EXACT order in which cells were selected
-                        // ROOT CAUSE FIX: Use getSelectedCellsOrder if available (always current), otherwise use prop
-                        // This ensures we always get the latest order, not a stale state value
-                        const currentOrder = getSelectedCellsOrder ? getSelectedCellsOrder() : (selectedCellsOrder || []);
-                        let orderedKeys = currentOrder.length > 0
-                          ? currentOrder.filter(key => selectedCells.has(key)) // Preserve order, only include selected
-                          : Array.from(selectedCells); // Fallback if order not available
-                        
-                        console.log('[CellDetailsHistoryPanel] Bulk edit - orderedKeys:', orderedKeys);
-                        console.log('[CellDetailsHistoryPanel] Bulk edit - currentOrder (from ref/prop):', currentOrder);
-                        console.log('[CellDetailsHistoryPanel] Bulk edit - selectedCellsOrder prop:', selectedCellsOrder);
-                        console.log('[CellDetailsHistoryPanel] Bulk edit - selectedCells Set:', Array.from(selectedCells));
+                      if (!onMassUpdate || resolvedBulkTargetKeys.length === 0) return;
+                      const orderedKeys = resolvedBulkTargetKeys;
                         
                         if (selectAction === 'Bulk Edit' && value.trim()) {
-                          // Pass orderedKeys directly - it's already in the correct order
-                          onMassUpdate(orderedKeys, rule, value.trim(), bulkNote.trim() || undefined);
+                          onMassUpdate(orderedKeys, rule, value.trim(), bulkNote.trim() || undefined, undefined, value.trim() === 'pending' ? submitToApprovers : undefined);
+                        } else if (selectAction === 'Request Approval') {
+                        if (requestApprovalEligibleKeys.length === 0) return;
+                        setRequestApprovalConfirmOpen(true);
+                        } else if (selectAction === 'Edit Approval Status' && approvalStatusValue) {
+                          const approvalKeys = orderedKeys.map(key => key.endsWith('-approval') ? key : `${key}-approval`);
+                          onMassUpdate(
+                            approvalKeys,
+                            'Set to',
+                            approvalStatusValue,
+                            requestNote.trim() || undefined,
+                            undefined,
+                            approvalStatusValue === 'pending' ? submitToApprovers : undefined
+                          );
                         } else if (selectAction === 'Set Disaggregation Mechanism' && rule) {
-                          // Pass disaggregation rule when Set Disaggregation Mechanism is selected
                           onMassUpdate(orderedKeys, '', '', bulkNote.trim() || undefined, rule);
-                        }
                       }
                     }}
                     disabled={
-                      (selectAction === 'Bulk Edit' && (selectedCells.size === 0 || !value.trim())) ||
-                      (selectAction === 'Set Disaggregation Mechanism' && (selectedCells.size === 0 || !rule))
+                      (selectAction === 'Bulk Edit' && (!value.trim() || resolvedBulkTargetKeys.length === 0)) ||
+                      (selectAction === 'Request Approval' &&
+                        (planWideApprovalSubmitted ||
+                          submitToApprovers.length === 0 ||
+                          requestApprovalEligibleKeys.length === 0)) ||
+                      (selectAction === 'Edit Approval Status' &&
+                        (!approvalStatusValue ||
+                          (approvalStatusValue === 'pending' && submitToApprovers.length === 0) ||
+                          resolvedBulkTargetKeys.length === 0)) ||
+                      (selectAction === 'Set Disaggregation Mechanism' && (!rule || resolvedBulkTargetKeys.length === 0))
                     }
                   >
-                    Update
+                    {selectAction === 'Request Approval' ? 'Request' : 'Update'}
                   </button>
                 </div>
               </div>
@@ -867,6 +1607,7 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
             )}
             <div className="cell-details-history-tab-content">
               <div className="cell-details-history-single-update-form">
+                  <h3 className="cell-details-history-single-section-title">Edit Cell</h3>
                   
                   {/* Value Field */}
                   <div className="cell-details-history-multi-field">
@@ -891,8 +1632,192 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                       rows={3}
                     />
                   </div>
+
+                  <h3 className="cell-details-history-single-section-title">Request or Provide Approvals</h3>
+                  <div className="cell-details-history-approval-toggle-group" role="tablist" aria-label="Request or provide approvals">
+                    <button
+                      type="button"
+                      className={`cell-details-history-approval-toggle-btn ${approvalActionMode === 'request' ? 'active' : ''}`}
+                      onClick={() => setApprovalActionMode('request')}
+                      role="tab"
+                      aria-selected={approvalActionMode === 'request'}
+                    >
+                      Request Approval
+                    </button>
+                    <button
+                      type="button"
+                      className={`cell-details-history-approval-toggle-btn ${approvalActionMode === 'provide' ? 'active' : ''}`}
+                      onClick={() => setApprovalActionMode('provide')}
+                      role="tab"
+                      aria-selected={approvalActionMode === 'provide'}
+                    >
+                      Provide Approval
+                    </button>
+                  </div>
+
+                  {/* Request Approval form — shown when 'request' mode is active */}
+                  {approvalActionMode === 'request' && (
+                    <>
+                      <div className="cell-details-history-multi-field">
+                        <label className="cell-details-history-multi-label">Submit to</label>
+                        <div className="cdh-submit-to-panel">
+                          <div className="cdh-submit-to-roles">
+                            {ALL_APPROVER_ROLES.map(role => (
+                              <label key={role} className="cdh-submit-to-role">
+                                <input
+                                  type="checkbox"
+                                  checked={submitToApprovers.includes(role)}
+                                  onChange={e => {
+                                    if (e.target.checked) {
+                                      setSubmitToApprovers(prev => [...prev, role]);
+                                    } else {
+                                      setSubmitToApprovers(prev => prev.filter(r => r !== role));
+                                    }
+                                  }}
+                                />
+                                <span
+                                  className="cdh-submit-to-role-initials"
+                                  style={{ background: role === 'Finance' ? '#dbeafe' : role === 'Supply Chain' ? '#d1fae5' : role === 'Sales Ops' ? '#fef3c7' : '#ede9fe' }}
+                                >
+                                  {APPROVER_ROSTER[role].initials}
+                                </span>
+                                <span className="cdh-submit-to-role-text">
+                                  <span className="cdh-submit-to-role-name">{APPROVER_ROSTER[role].name}</span>
+                                  <span className="cdh-submit-to-role-dept">{role}</span>
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="cell-details-history-multi-field">
+                        <label className="cell-details-history-multi-label">Request note</label>
+                        <textarea
+                          className="cell-details-history-multi-textarea"
+                          value={requestNote}
+                          onChange={(e) => setRequestNote(e.target.value)}
+                          placeholder="Add request note (optional)"
+                          rows={4}
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {approvalActionMode === 'provide' && (() => {
+                    const approvalCellKey = focusedValueCellKey;
+                    const approval = approvalCellKey ? approvalRequests.get(approvalCellKey) : undefined;
+                    const oldValue = approval?.oldValue ?? (singleCellNewValue ? Number(singleCellNewValue) * 0.92 : 0);
+                    const newValue = approval?.newValue ?? Number(singleCellNewValue || 0);
+                    const variancePct = approval?.variancePct ?? (oldValue ? ((newValue - oldValue) / oldValue) * 100 : 0);
+                    const absVariancePct = Math.abs(variancePct);
+
+                    const budgetVariancePct = variancePct - 3.5;
+                    const historical3mPct = variancePct - 1.8;
+                    const historical12mPct = variancePct + 2.1;
+                    const marginImpactPct = variancePct >= 0 ? Math.max(0.6, variancePct * 0.22) : variancePct * 0.14;
+                    const revenueImpact = (newValue - oldValue) * 125;
+                    const capacityUtilization = Math.min(99, Math.max(52, 72 + Math.round(absVariancePct * 0.9)));
+                    const leadTimeDays = Math.max(7, 14 + Math.round(absVariancePct * 0.2));
+                    const scheduleRisk = capacityUtilization > 90 ? 'High' : capacityUtilization > 80 ? 'Medium' : 'Low';
+
+                    const pros = [
+                      variancePct >= 0 && `Forecast vs prior: ${variancePct >= 0 ? '+' : ''}${variancePct.toFixed(1)}%`,
+                      budgetVariancePct >= 0 && `Forecast vs budget: ${budgetVariancePct >= 0 ? '+' : ''}${budgetVariancePct.toFixed(1)}%`,
+                      (historical3mPct >= 0 && historical12mPct >= 0) && `Historical trend positive (3M / 12M)`,
+                      marginImpactPct >= 0 && `Margin impact: +${marginImpactPct.toFixed(1)}%`,
+                      revenueImpact >= 0 && `Revenue impact: +$${Math.round(revenueImpact).toLocaleString('en-US')}`,
+                      capacityUtilization <= 85 && `Capacity within range (${capacityUtilization}%)`,
+                      leadTimeDays <= 18 && `Lead time acceptable (${leadTimeDays}d)`,
+                      scheduleRisk === 'Low' && `Schedule risk: Low`,
+                    ].filter(Boolean) as string[];
+
+                    const cons = [
+                      variancePct < 0 && `Forecast vs prior: ${variancePct.toFixed(1)}%`,
+                      budgetVariancePct < 0 && `Forecast vs budget: ${budgetVariancePct.toFixed(1)}%`,
+                      !(historical3mPct >= 0 && historical12mPct >= 0) && `Historical trend mixed or negative`,
+                      marginImpactPct < 0 && `Margin impact: ${marginImpactPct.toFixed(1)}%`,
+                      revenueImpact < 0 && `Revenue impact: -$${Math.abs(Math.round(revenueImpact)).toLocaleString('en-US')}`,
+                      capacityUtilization > 85 && `Capacity strained (${capacityUtilization}%)`,
+                      leadTimeDays > 18 && `Lead time extended (${leadTimeDays}d)`,
+                      scheduleRisk !== 'Low' && `Schedule risk: ${scheduleRisk}`,
+                    ].filter(Boolean) as string[];
+
+                    return (
+                      <div className="cdh-provide-approval-section">
+                        {/* Decision factors */}
+                        <div className="cdh-provide-factors">
+                          <div className="cdh-provide-factors-header-row">
+                            <span className="cdh-provide-factors-label">Decision factors</span>
+                            <button
+                              type="button"
+                              className="cell-details-history-approval-expand-btn"
+                              onClick={() => setIsProvideApprovalExpanded(prev => !prev)}
+                            >
+                              {isProvideApprovalExpanded ? 'Less details' : 'More details'}
+                            </button>
+                          </div>
+                          {isProvideApprovalExpanded && (
+                            <div className="cdh-provide-factors-body">
+                              {pros.length > 0 && (
+                                <div className="cdh-provide-factors-col">
+                                  <span className="cdh-provide-col-heading cdh-provide-col-heading--pro">
+                                    <svg width="11" height="11" viewBox="0 0 12 12" fill="currentColor"><path d="M6 1a5 5 0 1 1 0 10A5 5 0 0 1 6 1zm2.3 3.3a.6.6 0 0 0-.85-.85L5.5 5.4 4.55 4.45a.6.6 0 0 0-.85.85l1.37 1.37a.6.6 0 0 0 .85 0l2.38-2.37z"/></svg>
+                                    Supporting
+                                  </span>
+                                  <ul className="cdh-provide-bullet-list">
+                                    {pros.map((p, i) => <li key={i}>{p}</li>)}
+                                  </ul>
+                                </div>
+                              )}
+                              {cons.length > 0 && (
+                                <div className="cdh-provide-factors-col">
+                                  <span className="cdh-provide-col-heading cdh-provide-col-heading--con">
+                                    <svg width="11" height="11" viewBox="0 0 12 12" fill="currentColor"><path d="M6 1a5 5 0 1 1 0 10A5 5 0 0 1 6 1zm2.07 2.93a.6.6 0 0 0-.85 0L6 5.15 4.78 3.93a.6.6 0 0 0-.85.85L5.15 6 3.93 7.22a.6.6 0 0 0 .85.85L6 6.85l1.22 1.22a.6.6 0 0 0 .85-.85L6.85 6l1.22-1.22a.6.6 0 0 0 0-.85z"/></svg>
+                                    Concerns
+                                  </span>
+                                  <ul className="cdh-provide-bullet-list">
+                                    {cons.map((c, i) => <li key={i}>{c}</li>)}
+                                  </ul>
+                                </div>
+                              )}
+                              {pros.length === 0 && cons.length === 0 && (
+                                <span className="cdh-provide-empty">No factors available</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Decision */}
+                        <div className="cell-details-history-multi-field">
+                          <label className="cell-details-history-multi-label">Decision</label>
+                          <select
+                            className="cell-details-history-multi-input"
+                            value={provideApprovalDecision}
+                            onChange={e => setProvideApprovalDecision(e.target.value)}
+                          >
+                            <option value="">Select a decision</option>
+                            <option value="approved">Approve</option>
+                            <option value="approvedWithCondition">Approve with condition</option>
+                            <option value="rejected">Reject</option>
+                          </select>
+                        </div>
+
+                        {/* Note */}
+                        <div className="cell-details-history-multi-field">
+                          <label className="cell-details-history-multi-label">Note</label>
+                          <textarea
+                            className="cell-details-history-multi-textarea"
+                            value={provideApprovalNote}
+                            onChange={e => setProvideApprovalNote(e.target.value)}
+                            placeholder="Add a note (optional)"
+                            rows={3}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })()}
                   
-                {/* Update Button */}
+                {/* Action Buttons */}
                 <div className="cell-details-history-multi-actions">
                   <button 
                     className="cell-details-history-multi-cancel-btn"
@@ -900,13 +1825,40 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                   >
                     Cancel
                   </button>
-                  <button 
-                    className="cell-details-history-multi-update-btn"
-                    onClick={handleSingleCellUpdate}
-                    disabled={!singleCellNewValue.trim() || isNaN(parseFloat(singleCellNewValue))}
-                  >
-                    Update
-                  </button>
+                  {approvalActionMode === 'request' ? (
+                    <button
+                      className="cell-details-history-multi-update-btn"
+                      onClick={() => {
+                        if (!focusedValueCellKey || !onMassUpdate) return;
+                        onMassUpdate([focusedValueCellKey], 'Set to', 'pending', requestNote.trim() || undefined, undefined, submitToApprovers);
+                        setRequestNote('');
+                      }}
+                      disabled={submitToApprovers.length === 0 || !focusedValueCellKey}
+                    >
+                      Request
+                    </button>
+                  ) : approvalActionMode === 'provide' ? (
+                    <button
+                      className="cell-details-history-multi-update-btn"
+                      onClick={() => {
+                        if (!focusedValueCellKey || !onMassUpdate) return;
+                        onMassUpdate([focusedValueCellKey], 'Edit Approval Status', provideApprovalDecision, provideApprovalNote.trim() || undefined);
+                        setProvideApprovalDecision('');
+                        setProvideApprovalNote('');
+                      }}
+                      disabled={!provideApprovalDecision || !focusedValueCellKey}
+                    >
+                      Submit
+                    </button>
+                  ) : (
+                    <button 
+                      className="cell-details-history-multi-update-btn"
+                      onClick={handleSingleCellUpdate}
+                      disabled={!singleCellNewValue.trim() || isNaN(parseFloat(singleCellNewValue))}
+                    >
+                      Update
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -1052,7 +2004,9 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                         const relevantEdits = selectedCells.size === 0 
                           ? editHistory.slice().sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
                           : editHistory
-                              .filter(e => Array.from(selectedCells).some(cellKey => e.cellKey === cellKey))
+                              .filter((e) =>
+                                Array.from(selectedCells).some((ck) => editHistoryEntryAffectsCell(e, ck))
+                              )
                               .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
                         
                         // Helper to generate cell context from entry (Row · Column · Header)
@@ -1206,10 +2160,10 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                         // Get thread color based on dimension type
                         const getThreadColor = (dimType: 'account' | 'category' | 'product' | undefined): string => {
                           switch (dimType) {
-                            case 'account': return '#5867E8';
-                            case 'category': return '#396547';
-                            case 'product': return '#9050E9';
-                            default: return '#9050E9';
+                            case 'account': return 'var(--color-accent-blue)';
+                            case 'category': return 'var(--slds-g-color-success-1)';
+                            case 'product': return 'var(--color-dimension-product-icon)';
+                            default: return 'var(--slds-g-color-neutral-base-50)';
                           }
                         };
                         
@@ -1288,29 +2242,33 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
             {selectedCells.size === 0 && (
               <div className="cell-details-history-panel-footer">
                 <div className="cell-details-history-note-input-section">
-                  <label className="cell-details-history-note-label">Comments</label>
-                  <textarea
-                    className="cell-details-history-note-textarea"
-                    value={genericCommentText}
-                    onChange={(e) => setGenericCommentText(e.target.value)}
-                    placeholder="Enter a general comment"
-                    rows={2}
-                  />
-                </div>
-                <div className="cell-details-history-note-actions">
-                  <button className="cell-details-history-attach-btn">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
-                    </svg>
-                    Attach File
-                  </button>
-                  <button 
-                    className="cell-details-history-post-btn"
-                    onClick={handlePostGenericComment}
-                    disabled={!genericCommentText.trim()}
-                  >
-                    Post
-                  </button>
+                  <div className="cell-details-history-label-row">
+                    <label className="cell-details-history-note-label">Comments</label>
+                    <button className="cell-details-history-attach-btn-icon">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="cell-details-history-textarea-wrapper">
+                    <textarea
+                      className="cell-details-history-note-textarea"
+                      value={genericCommentText}
+                      onChange={(e) => setGenericCommentText(e.target.value)}
+                      placeholder="Enter a general comment"
+                      rows={1}
+                    />
+                    <button 
+                      className="cell-details-history-send-btn"
+                      onClick={handlePostGenericComment}
+                      disabled={!genericCommentText.trim()}
+                      type="button"
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -1362,8 +2320,85 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
               </div>
             )}
               <div className="cell-details-history-tab-content">
-                {/* Edit History Section */}
-                <div className="cell-details-history-notes-section">
+                {/* Approval timeline — only shown when opened from an approval cell */}
+                {isApprovalView && (() => {
+                  if (!focusedCell) return null;
+                  const approvalCellKey = focusedCell.monthKey
+                    ? `${focusedCell.rowId}-${focusedCell.monthKey}`
+                    : focusedCell.rowId;
+                  const approval = approvalRequests.get(approvalCellKey);
+                  if (!approval || approval.status === 'notSubmitted') return null;
+
+                  // Build synthetic history entries — one for the submission + one per approver
+                  const syntheticEntries: CellEditHistoryEntry[] = [];
+
+                  // 1. Submission entry (requester)
+                  syntheticEntries.push({
+                    id: `approval-submit-${approval.id}`,
+                    cellKey: approvalCellKey,
+                    rowId: focusedCell.rowId,
+                    timeKey: focusedCell.monthKey,
+                    note: `Not Submitted → Pending${approval.requesterNote ? ': ' + approval.requesterNote : ''}`,
+                    timestamp: new Date(approval.createdAt),
+                    userId: approval.requesterId,
+                    userName: approval.requesterName,
+                  });
+
+                  // 2. Per-approver entries
+                  const approverList = approval.approvers && approval.approvers.length > 0
+                    ? approval.approvers
+                    : [{
+                        role: '',
+                        name: approval.approverName || 'Approver',
+                        initials: approval.approverName
+                          ? approval.approverName.split(' ').map((p: string) => p[0]).join('').toUpperCase().slice(0, 2)
+                          : '?',
+                        status: approval.status as 'pending' | 'approved' | 'approvedWithCondition' | 'rejected',
+                        comment: approval.approverComment,
+                        resolvedAt: approval.resolvedAt,
+                      }];
+
+                  approverList.forEach((a: { role: string; name: string; initials: string; status: 'pending' | 'approved' | 'approvedWithCondition' | 'rejected'; comment?: string; resolvedAt?: Date }, idx: number) => {
+                    const statusLabel = a.status === 'approved' ? 'Approved' : a.status === 'approvedWithCondition' ? 'Approved with Condition' : a.status === 'rejected' ? 'Rejected' : 'Pending';
+                    const note = a.status === 'pending'
+                      ? 'Pending'
+                      : a.status === 'approvedWithCondition'
+                        ? `Pending → Approved with Condition${a.comment ? ': ' + a.comment : ''}`
+                        : `Pending → ${statusLabel}${a.comment ? ': ' + a.comment : ''}`;
+                    const ts = a.status !== 'pending' && a.resolvedAt
+                      ? new Date(a.resolvedAt)
+                      : new Date(new Date(approval.createdAt).getTime() + (idx + 1) * 3600000);
+                    syntheticEntries.push({
+                      id: `approval-approver-${approval.id}-${idx}`,
+                      cellKey: approvalCellKey,
+                      rowId: focusedCell.rowId,
+                      timeKey: focusedCell.monthKey,
+                      note,
+                      timestamp: ts,
+                      userId: `approver-${idx}`,
+                      userName: a.name + (a.role ? ` · ${a.role}` : ''),
+                    });
+                  });
+
+                  return (
+                    <div className="cdh-approval-timeline-section">
+                      <div className="cdh-approval-timeline-header">
+                        <span>Approval Status</span>
+                      </div>
+                      {syntheticEntries.map((entry, index) => (
+                        <CellEditHistoryCard
+                          key={entry.id}
+                          entry={entry}
+                          isFirst={index === 0}
+                          isLast={index === syntheticEntries.length - 1}
+                        />
+                      ))}
+                    </div>
+                  );
+                })()}
+
+                {/* Edit History Section — only shown when opened from a numerical cell */}
+                {!isApprovalView && (<div className="cell-details-history-notes-section">
                   {/* History List */}
                   <div className="cell-details-history-notes-list">
                     {cellEditHistory.length > 0 ? (
@@ -1454,7 +2489,7 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                       </div>
                     )}
                   </div>
-                </div>
+                </div>)}
               </div>
               </div>
         ) : null}
@@ -1463,34 +2498,58 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
         {selectedCells.size === 1 && activeTab === 'single' && (
           <div className="cell-details-history-panel-footer">
             <div className="cell-details-history-note-input-section">
-              <label className="cell-details-history-note-label">Comments</label>
-              <textarea
-                className="cell-details-history-note-textarea"
-                value={panelNoteText}
-                onChange={(e) => setPanelNoteText(e.target.value)}
-                placeholder="Enter a comment"
-                rows={2}
-              />
-            </div>
-            <div className="cell-details-history-note-actions">
-              <button className="cell-details-history-attach-btn">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
-                </svg>
-                Attach File
-              </button>
-              <button 
-                className="cell-details-history-post-btn"
-                onClick={handlePostNote}
-                disabled={!panelNoteText.trim()}
-              >
-                Post
-              </button>
+              <div className="cell-details-history-label-row">
+                <label className="cell-details-history-note-label">Comments</label>
+                <button className="cell-details-history-attach-btn-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+                  </svg>
+                </button>
+              </div>
+              <div className="cell-details-history-textarea-wrapper">
+                <textarea
+                  className="cell-details-history-note-textarea"
+                  value={panelNoteText}
+                  onChange={(e) => setPanelNoteText(e.target.value)}
+                  placeholder="Enter a comment"
+                  rows={1}
+                />
+                <button 
+                  className="cell-details-history-send-btn"
+                  onClick={handlePostNote}
+                  disabled={!panelNoteText.trim()}
+                  type="button"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
         )}
       </div>
     </div>
+    <RequestApprovalConfirmModal
+      isOpen={requestApprovalConfirmOpen}
+      cellCount={requestApprovalEligibleKeys.length}
+      onCancel={() => setRequestApprovalConfirmOpen(false)}
+      onConfirm={() => {
+        const orderedKeys = [...requestApprovalEligibleKeys];
+        if (!onMassUpdate || orderedKeys.length === 0) return;
+        setRequestApprovalConfirmOpen(false);
+        const approvalKeys = orderedKeys.map(key => (key.endsWith('-approval') ? key : `${key}-approval`));
+        onMassUpdate(
+          approvalKeys,
+          'Set to',
+          'pending',
+          requestNote.trim() || undefined,
+          undefined,
+          submitToApprovers
+        );
+      }}
+    />
+    </>
   );
 };
 

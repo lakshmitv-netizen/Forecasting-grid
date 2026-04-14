@@ -38,6 +38,34 @@ const CellEditHistoryCard: React.FC<CellEditHistoryCardProps> = ({ entry, replie
   const hasNote = !!(entry.note && entry.note.trim() !== '');
   const hasReplies = replies.length > 0;
   
+  const APPROVAL_STATUS_LABELS = ['Not Submitted', 'Pending', 'Approved', 'Rejected'];
+  // Check if this is an approval status change entry (note starts with a known status label followed by " →")
+  const isApprovalStatusChange = hasNote && APPROVAL_STATUS_LABELS.some(label => entry.note!.startsWith(`${label} →`));
+  
+  // Parse approval status change note
+  let approvalStatusChange: { oldStatus: string; newStatus: string; comment: string } | null = null;
+  if (isApprovalStatusChange && entry.note) {
+    // Match patterns like "Pending → Approved: comment" or "Info Req. → Rejected: comment"
+    const match = entry.note.match(/^([^→]+)\s*→\s*([^:]+)(?::\s*(.+))?$/);
+    if (match) {
+      approvalStatusChange = {
+        oldStatus: match[1].trim(),
+        newStatus: match[2].trim(),
+        comment: match[3] ? match[3].trim() : '',
+      };
+    }
+  }
+  
+  // Helper to normalize status name for CSS class
+  const normalizeStatusForClass = (status: string): string => {
+    const normalized = status.toLowerCase().replace(/\s+/g, '').replace(/\./g, '');
+    // Map legacy/invalid statuses to notSubmitted
+    if (normalized === 'needsmoreinfo' || normalized === 'modificationsuggested' || normalized === 'indiscussion') {
+      return 'notsubmitted';
+    }
+    return normalized;
+  };
+  
   // Only calculate delta if we have both values
   const delta = hasEdit ? (entry.newValue! - entry.oldValue!) : 0;
   const isIncrease = delta > 0;
@@ -327,6 +355,20 @@ const CellEditHistoryCard: React.FC<CellEditHistoryCardProps> = ({ entry, replie
                   <div className="sf-timeline-note-preview" style={{ marginTop: '4px' }}>
                     <span className="sf-timeline-note-text">{entry.note}</span>
                   </div>
+                )}
+              </div>
+            ) : isApprovalStatusChange && approvalStatusChange ? (
+              // Approval status change - show status badges
+              <div className="sf-timeline-approval-status-change">
+                <span className={`sf-timeline-approval-badge sf-timeline-approval-badge--${normalizeStatusForClass(approvalStatusChange.oldStatus)}`}>
+                  {approvalStatusChange.oldStatus}
+                </span>
+                <span className="sf-timeline-approval-arrow">→</span>
+                <span className={`sf-timeline-approval-badge sf-timeline-approval-badge--${normalizeStatusForClass(approvalStatusChange.newStatus)}`}>
+                  {approvalStatusChange.newStatus}
+                </span>
+                {approvalStatusChange.comment && (
+                  <span className="sf-timeline-approval-comment">{approvalStatusChange.comment}</span>
                 )}
               </div>
             ) : isNoteOnly ? (
