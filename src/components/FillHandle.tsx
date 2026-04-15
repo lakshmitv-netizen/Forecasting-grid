@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { useIsGrid264UpdatedExperience } from '../contexts/IndustryContext';
 import '../styles/components/FillHandle.css';
+
+const FILL_HANDLE_LABEL = 'Drag handle: drag to extend cell selection';
 
 interface FillHandleProps {
   cellKey: string;
@@ -15,7 +16,6 @@ const FillHandle: React.FC<FillHandleProps> = ({
   onDragMove,
   onDragEnd,
 }) => {
-  const isGrid264Ux = useIsGrid264UpdatedExperience();
   const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
@@ -71,24 +71,12 @@ const FillHandle: React.FC<FillHandleProps> = ({
     onDragStart?.(cellKey);
   };
 
-  if (isGrid264Ux) {
-    return (
-      <button
-        type="button"
-        className="fill-handle"
-        aria-label="Fill down drag handle"
-        onPointerDown={startDrag}
-        onMouseDown={(e) => {
-          if (typeof PointerEvent !== 'undefined') return;
-          startDrag(e);
-        }}
-      />
-    );
-  }
-
   return (
-    <div
+    <button
+      type="button"
       className="fill-handle"
+      aria-label={FILL_HANDLE_LABEL}
+      title={FILL_HANDLE_LABEL}
       onPointerDown={startDrag}
       onMouseDown={(e) => {
         if (typeof PointerEvent !== 'undefined') return;
