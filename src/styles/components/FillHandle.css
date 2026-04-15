@@ -1,4 +1,5 @@
 .fill-handle {
+  touch-action: none;
   /* Center of the circle sits on the cell’s bottom-right corner */
   position: absolute;
   right: 0;

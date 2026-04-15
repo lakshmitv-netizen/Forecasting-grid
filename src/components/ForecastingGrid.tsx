@@ -1023,34 +1023,40 @@ const ForecastingGrid: React.FC = () => {
     }
   }, []);
   
-  // Global mouse move and mouse up handlers for drag selection
+  // Global move/up for drag selection — Pointer events cover touch/pen; mouse-only fallback for old engines
   useEffect(() => {
-    const handleGlobalMouseMove = (e: MouseEvent) => {
-      // Only process if we have a starting cell (potential drag)
-      if (!dragStartCellRef.current) return;
-      
-      // Find the cell under the mouse cursor
-      const target = e.target as HTMLElement;
-      const cellElement = target.closest('.grid-cell');
-      if (cellElement) {
-        const cellKey = cellElement.getAttribute('data-cell-key');
-        if (cellKey) {
-          handleCellMouseMove(cellKey);
-        }
-      }
+    const cellKeyUnder = (clientX: number, clientY: number): string | null => {
+      const el = document.elementFromPoint(clientX, clientY);
+      const cellElement = el?.closest('.grid-cell');
+      return cellElement?.getAttribute('data-cell-key') ?? null;
     };
-    
-    const handleGlobalMouseUp = () => {
-      // Always clear drag state on mouse up
+
+    const handleGlobalMove = (e: PointerEvent | MouseEvent) => {
+      if (!dragStartCellRef.current) return;
+      const key = cellKeyUnder(e.clientX, e.clientY);
+      if (key) handleCellMouseMove(key);
+    };
+
+    const handleGlobalUp = () => {
       handleCellMouseUp();
     };
-    
-    document.addEventListener('mousemove', handleGlobalMouseMove);
-    document.addEventListener('mouseup', handleGlobalMouseUp);
-    
+
+    if (typeof window !== 'undefined' && window.PointerEvent) {
+      document.addEventListener('pointermove', handleGlobalMove, { capture: true });
+      document.addEventListener('pointerup', handleGlobalUp, { capture: true });
+      document.addEventListener('pointercancel', handleGlobalUp, { capture: true });
+      return () => {
+        document.removeEventListener('pointermove', handleGlobalMove, { capture: true });
+        document.removeEventListener('pointerup', handleGlobalUp, { capture: true });
+        document.removeEventListener('pointercancel', handleGlobalUp, { capture: true });
+      };
+    }
+
+    document.addEventListener('mousemove', handleGlobalMove, { capture: true });
+    document.addEventListener('mouseup', handleGlobalUp, { capture: true });
     return () => {
-      document.removeEventListener('mousemove', handleGlobalMouseMove);
-      document.removeEventListener('mouseup', handleGlobalMouseUp);
+      document.removeEventListener('mousemove', handleGlobalMove, { capture: true });
+      document.removeEventListener('mouseup', handleGlobalUp, { capture: true });
     };
   }, [handleCellMouseMove, handleCellMouseUp]);
   
@@ -1066,9 +1072,9 @@ const ForecastingGrid: React.FC = () => {
     setCurrentFocusedCell(null);
   }, []);
   
-  // Clear selection when clicking outside the grid
+  // Clear selection when clicking outside the grid (pointerdown + mousedown for touch vs mouse)
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
+    const handleClickOutside = (e: MouseEvent | PointerEvent) => {
       const target = e.target as HTMLElement;
       // Don't clear if clicking on a cell, dropdown, panel, toolbar buttons, or context menu
       if (
@@ -1081,7 +1087,8 @@ const ForecastingGrid: React.FC = () => {
         target.closest('.multi-cell-dropdown-list') ||
         target.closest('.grid-button-group') ||
         target.closest('.grid-button-group-item') ||
-        target.closest('.cell-context-menu')
+        target.closest('.cell-context-menu') ||
+        target.closest('.fill-handle')
       ) {
         return;
       }
@@ -1091,10 +1098,12 @@ const ForecastingGrid: React.FC = () => {
       setLastSelectedCell(null);
       shiftAnchorCellRef.current = null; // Clear Shift anchor
     };
-    
+
     document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('pointerdown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('pointerdown', handleClickOutside);
     };
   }, []);
   

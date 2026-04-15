@@ -21,41 +21,54 @@ const FillHandle: React.FC<FillHandleProps> = ({
   useEffect(() => {
     if (!isDragging) return;
 
-    const handleMouseMove = (e: MouseEvent) => {
-      // Find the cell under the mouse cursor
-      const target = e.target as HTMLElement;
-      const cellElement = target.closest('.grid-cell');
-      if (cellElement) {
-        const targetCellKey = cellElement.getAttribute('data-cell-key');
-        if (targetCellKey && targetCellKey !== cellKey && onDragMove) {
-          onDragMove(targetCellKey);
-        }
-      }
+    const cellKeyUnder = (clientX: number, clientY: number): string | null => {
+      const el = document.elementFromPoint(clientX, clientY);
+      const cellElement = el?.closest('.grid-cell');
+      return cellElement?.getAttribute('data-cell-key') ?? null;
     };
 
-    const handleMouseUp = () => {
+    const finish = () => {
       setIsDragging(false);
-      if (onDragEnd) {
-        onDragEnd();
+      onDragEnd?.();
+    };
+
+    const onMove = (e: PointerEvent | MouseEvent) => {
+      const targetCellKey = cellKeyUnder(e.clientX, e.clientY);
+      if (targetCellKey && targetCellKey !== cellKey && onDragMove) {
+        onDragMove(targetCellKey);
       }
     };
 
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
+    const onUp = () => finish();
 
+    if (typeof window !== 'undefined' && window.PointerEvent) {
+      document.addEventListener('pointermove', onMove, { capture: true });
+      document.addEventListener('pointerup', onUp, { capture: true });
+      document.addEventListener('pointercancel', onUp, { capture: true });
+      return () => {
+        document.removeEventListener('pointermove', onMove, { capture: true });
+        document.removeEventListener('pointerup', onUp, { capture: true });
+        document.removeEventListener('pointercancel', onUp, { capture: true });
+      };
+    }
+
+    document.addEventListener('mousemove', onMove, { capture: true });
+    document.addEventListener('mouseup', onUp, { capture: true });
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('mousemove', onMove, { capture: true });
+      document.removeEventListener('mouseup', onUp, { capture: true });
     };
   }, [isDragging, cellKey, onDragMove, onDragEnd]);
 
-  const handleMouseDown = (e: React.MouseEvent) => {
+  const startDrag = (
+    e:
+      | React.PointerEvent<HTMLButtonElement | HTMLDivElement>
+      | React.MouseEvent<HTMLButtonElement | HTMLDivElement>,
+  ) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(true);
-    if (onDragStart) {
-      onDragStart(cellKey);
-    }
+    onDragStart?.(cellKey);
   };
 
   if (isGrid264Ux) {
@@ -64,7 +77,11 @@ const FillHandle: React.FC<FillHandleProps> = ({
         type="button"
         className="fill-handle"
         aria-label="Fill down drag handle"
-        onMouseDown={handleMouseDown}
+        onPointerDown={startDrag}
+        onMouseDown={(e) => {
+          if (typeof PointerEvent !== 'undefined') return;
+          startDrag(e);
+        }}
       />
     );
   }
@@ -72,7 +89,11 @@ const FillHandle: React.FC<FillHandleProps> = ({
   return (
     <div
       className="fill-handle"
-      onMouseDown={handleMouseDown}
+      onPointerDown={startDrag}
+      onMouseDown={(e) => {
+        if (typeof PointerEvent !== 'undefined') return;
+        startDrag(e);
+      }}
     />
   );
 };
