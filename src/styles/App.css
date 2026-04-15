@@ -6,8 +6,13 @@
 
 /* Prevent any plugin or browser defaults from overriding our styles */
 
-/* Exclude grid fill handle — it needs visible fill/border (was a div before; button hit global reset) */
-button:not(.fill-handle) {
+/*
+ * Strip default button chrome. Use :where() so specificity stays 0 — otherwise
+ * `button:not(.fill-handle)` beats `.col-filter-icon-btn` / `.col-sort-icon-btn`
+ * and `color: inherit !important` overrides their electric-blue icon colors.
+ * Fill handle stays excluded so it can keep its own fill/border.
+ */
+:where(button:not(.fill-handle)) {
   background: none !important;
   border: none !important;
   font: inherit !important;

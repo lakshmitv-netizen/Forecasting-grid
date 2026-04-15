@@ -238,7 +238,7 @@
   cursor: pointer;
   padding: 3px;
   border-radius: 4px;
-  /* !important beats App.css `button { color: inherit !important }` */
+  /* !important + class beats App.css `:where(button:not(.fill-handle))` reset */
   color: var(--slds-g-color-accent-2-electric-blue-40) !important;
   transition: color 0.15s, background-color 0.15s, box-shadow 0.15s, border-color 0.15s, transform 0.12s;
   vertical-align: middle;
