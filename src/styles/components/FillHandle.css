@@ -18,11 +18,11 @@
   -webkit-user-select: none;
   -moz-user-select: none;
   -ms-user-select: none;
-  /* Slightly larger dot + easier tap target (esp. phones / Heroku in browser) */
-  width: 14px;
-  height: 14px;
-  min-width: 14px;
-  min-height: 14px;
+  /* Compact dot; still tappable (between original 10px and 14px) */
+  width: 11px;
+  height: 11px;
+  min-width: 11px;
+  min-height: 11px;
 }
 
 button.fill-handle {
