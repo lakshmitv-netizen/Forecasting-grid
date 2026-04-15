@@ -4289,8 +4289,15 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 ? 'cell-readonly-texture'
                 : '';
 
+          /** Mirrors FillHandle render — explicit class so clipping/z-index rules work without relying on :has() on td. */
+          const showFillHandleForActualCell =
+            lastSelectedCell === cellKey &&
+            selectedCells.has(cellKey) &&
+            (!planReviewGridLock || hasApproverOverrideThisCellTd) &&
+            !pendingApprovalLocksCellTd;
+
           // Shared className computation for the Actual cell
-          const actualCellClassName = `grid-cell cell-value-cell ${hasCfActive ? 'cell-cf-active' : ''} ${cfHasBg ? 'cell-cf-has-bg' : ''} ${cfHasGradient ? 'cell-cf-has-gradient' : ''} ${cfHasColor ? 'cell-cf-has-color' : ''} ${cfHasBorder ? 'cell-cf-has-border' : ''} ${isFocused ? 'cell-focused' : ''} ${valueCellTextureClass} ${!isCellRead && finalHasNote && !isSavedImpacted ? 'cell-has-note' : ''} ${isCellRead ? 'cell-marked-read' : ''} ${selectedCells.has(cellKey) ? 'cell-selected' : ''} ${(() => {
+          const actualCellClassName = `grid-cell cell-value-cell ${hasCfActive ? 'cell-cf-active' : ''} ${cfHasBg ? 'cell-cf-has-bg' : ''} ${cfHasGradient ? 'cell-cf-has-gradient' : ''} ${cfHasColor ? 'cell-cf-has-color' : ''} ${cfHasBorder ? 'cell-cf-has-border' : ''} ${isFocused ? 'cell-focused' : ''} ${valueCellTextureClass} ${!isCellRead && finalHasNote && !isSavedImpacted ? 'cell-has-note' : ''} ${isCellRead ? 'cell-marked-read' : ''} ${selectedCells.has(cellKey) ? 'cell-selected' : ''} ${showFillHandleForActualCell ? 'cell-has-fill-handle' : ''} ${(() => {
                 if (isCellRead) return '';
                 const cellKeyForCheck = `${row.id}-${key}`;
                 const editedOriginalValue = isDesignSystemRulesEnabled ? editedCells?.get(cellKeyForCheck) : undefined;
@@ -4464,7 +4471,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                         isCurrentUserApprovalRequester(approvalForValueCellTd, currentUser)
                     )
                   )}
-                  {lastSelectedCell === cellKey && selectedCells.has(cellKey) && (!planReviewGridLock || hasApproverOverrideThisCellTd) && !pendingApprovalLocksCellTd && (
+                  {showFillHandleForActualCell && (
                     <FillHandle
                       cellKey={cellKey}
                       onDragStart={onFillHandleDragStart}
@@ -4837,7 +4844,9 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                       (!isPending && !!(approval.approverComment && approval.approverComment.trim() !== ''))
                     );
                     const isApprovalCellRead = readCellsSet.has(approvalCellKey);
-                    const shouldShowApprovalTriangle = hasApprovalNote && !isApprovalCellRead;                    
+                    const shouldShowApprovalTriangle = hasApprovalNote && !isApprovalCellRead;
+                    const showFillHandleApproval =
+                      lastSelectedCell === approvalSelectionKey && isApprovalCellSelected && !planReviewGridLock;
                     return (
                       <td
                         {...gridCellA11y}
@@ -4851,7 +4860,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                           }
                         }}
                         data-cell-key={approvalSelectionKey}
-                        className={`grid-cell cell-value-cell sub-col-value-td approval-status-cell ${isLastSubCol ? 'sub-col-last-in-group' : ''} ${isLastColumnGroup && isLastSubCol ? 'sub-col-last-column-group' : ''} ${isApprovalCellSelected ? 'cell-selected' : ''} ${shouldShowApprovalTriangle ? 'approval-cell-has-comment' : ''}${planReviewStripeTexture ? ' cell-plan-review-requester-texture' : ''}`}
+                        className={`grid-cell cell-value-cell sub-col-value-td approval-status-cell ${isLastSubCol ? 'sub-col-last-in-group' : ''} ${isLastColumnGroup && isLastSubCol ? 'sub-col-last-column-group' : ''} ${isApprovalCellSelected ? 'cell-selected' : ''} ${shouldShowApprovalTriangle ? 'approval-cell-has-comment' : ''}${planReviewStripeTexture ? ' cell-plan-review-requester-texture' : ''} ${showFillHandleApproval ? 'cell-has-fill-handle' : ''}`}
                         style={{
                           minWidth: `${subColWidth}px`,
                           width: `${subColWidth}px`,
@@ -4898,7 +4907,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                         {shouldShowApprovalTriangle && (
                           <div className="approval-comment-indicator"></div>
                         )}
-                        {lastSelectedCell === approvalSelectionKey && isApprovalCellSelected && !planReviewGridLock && (
+                        {showFillHandleApproval && (
                           <FillHandle
                             cellKey={approvalSelectionKey}
                             onDragStart={onFillHandleDragStart}
@@ -5114,7 +5123,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                     isCurrentUserApprovalRequester(approvalForValueCellTd, currentUser)
                 )
               )}
-              {lastSelectedCell === cellKey && selectedCells.has(cellKey) && (!planReviewGridLock || hasApproverOverrideThisCellTd) && !pendingApprovalLocksCellTd && (
+              {showFillHandleForActualCell && (
                 <FillHandle
                   cellKey={cellKey}
                   onDragStart={onFillHandleDragStart}
