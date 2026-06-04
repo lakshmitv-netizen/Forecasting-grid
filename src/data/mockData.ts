@@ -379,7 +379,7 @@ const manufacturingData: MeasureData[] = [
   // Sales Agreement Quantity
   {
     id: 'measure-sa-qty',
-    name: 'Sales Agreement Quantity',
+    name: 'Sales Agreement Quantity (No.s)',
     values: monthlyValue(800),
     children: createManufacturingHierarchy('measure-sa-qty', 800, 400, 80),
   },
@@ -393,7 +393,7 @@ const manufacturingData: MeasureData[] = [
   // Opportunity Quantity
   {
     id: 'measure-opp-qty',
-    name: 'Opportunity Quantity',
+    name: 'Opportunity Quantity (No.s)',
     values: monthlyValue(1200),
     children: createManufacturingHierarchy('measure-opp-qty', 1200, 600, 120),
   },
@@ -407,7 +407,7 @@ const manufacturingData: MeasureData[] = [
   // Order Quantity
   {
     id: 'measure-order-qty',
-    name: 'Order Quantity',
+    name: 'Order Quantity (No.s)',
     values: monthlyValue(950),
     children: createManufacturingHierarchy('measure-order-qty', 950, 475, 95),
   },
@@ -421,7 +421,7 @@ const manufacturingData: MeasureData[] = [
   // Last Year Order Quantity
   {
     id: 'measure-ly-order-qty',
-    name: 'Last Year Order Quantity',
+    name: 'Last Year Order Quantity (No.s)',
     values: monthlyValue(750),
     children: createManufacturingHierarchy('measure-ly-order-qty', 750, 375, 75),
   },
@@ -435,7 +435,7 @@ const manufacturingData: MeasureData[] = [
   // Forecasted Quantity
   {
     id: 'measure-forecast-qty',
-    name: 'Forecasted Quantity',
+    name: 'Forecasted Quantity (No.s)',
     values: monthlyValue(1000),
     children: createManufacturingHierarchy('measure-forecast-qty', 1000, 500, 100),
   },
