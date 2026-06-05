@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { MeasureData, GridRow, ParentTotalsRollupMode } from '../types';
+
 import UnifiedFilterPopover from './UnifiedFilterPopover';
 import '../styles/components/FiltersPanel.css';
 
@@ -25,46 +26,6 @@ interface Filter {
   value: string;
   field?: string;
   operator?: string;
-}
-
-const FILTER_SETS_STORAGE_KEY = 'forecasting-saved-filter-sets-v1';
-
-interface FilterSetSnapshot {
-  filters: Filter[];
-  startPeriod: string;
-  endPeriod: string;
-  parentTotalsRollupMode: ParentTotalsRollupMode;
-  filterLogicValue: string;
-  showFilterLogic: boolean;
-}
-
-interface SavedFilterSet {
-  id: string;
-  name: string;
-  description: string;
-  snapshot: FilterSetSnapshot;
-}
-
-function loadSavedFilterSetsFromStorage(): SavedFilterSet[] {
-  try {
-    const raw = localStorage.getItem(FILTER_SETS_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as { version?: number; sets?: SavedFilterSet[] };
-    if (!parsed?.sets || !Array.isArray(parsed.sets)) return [];
-    return parsed.sets.filter(
-      s => s && typeof s.id === 'string' && typeof s.name === 'string' && s.snapshot?.filters,
-    );
-  } catch {
-    return [];
-  }
-}
-
-function persistSavedFilterSetsToStorage(sets: SavedFilterSet[]) {
-  try {
-    localStorage.setItem(FILTER_SETS_STORAGE_KEY, JSON.stringify({ version: 1, sets }));
-  } catch {
-    /* ignore quota / private mode */
-  }
 }
 
 interface BasicFilterMultiSelectProps {
@@ -171,111 +132,6 @@ const BasicFilterMultiSelect: React.FC<BasicFilterMultiSelectProps> = ({
   );
 };
 
-interface FilterSetSelectProps {
-  id: string;
-  labelId: string;
-  value: string;
-  savedSets: SavedFilterSet[];
-  onChange: (id: string) => void;
-}
-
-/** Single-select filter set with name + description shown inside each list row. */
-const FilterSetSelect: React.FC<FilterSetSelectProps> = ({
-  id,
-  labelId,
-  value,
-  savedSets,
-  onChange,
-}) => {
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [open]);
-
-  const onKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') setOpen(false);
-  }, []);
-
-  const selectedSet = value ? savedSets.find(s => s.id === value) : undefined;
-  const summary = value === '' ? 'Default' : (selectedSet?.name ?? 'Default');
-  const triggerTitle =
-    selectedSet?.description?.trim()
-      ? `${selectedSet.name} — ${selectedSet.description}`
-      : selectedSet?.name;
-
-  return (
-    <div
-      className={`filters-basic-ms filters-filter-set-ms${open ? ' filters-basic-ms--open' : ''}`}
-      ref={wrapRef}
-      onKeyDown={onKeyDown}
-    >
-      <button
-        type="button"
-        id={id}
-        className="filters-basic-ms-trigger"
-        aria-labelledby={labelId}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        title={triggerTitle}
-        onClick={() => setOpen(o => !o)}
-      >
-        <span className="filters-basic-ms-trigger-text">{summary}</span>
-        <svg className="filters-basic-ms-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
-          <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
-      {open && (
-        <div className="filters-filter-set-dd-panel" role="listbox" aria-labelledby={labelId}>
-          <button
-            type="button"
-            role="option"
-            aria-selected={value === ''}
-            className={`filters-filter-set-dd-option filters-filter-set-dd-option--none${value === '' ? ' filters-filter-set-dd-option--selected' : ''}`}
-            onClick={() => {
-              onChange('');
-              setOpen(false);
-            }}
-          >
-            <span className="filters-filter-set-dd-option-title">Default</span>
-          </button>
-          {savedSets.map(s => {
-            const desc = s.description?.trim();
-            return (
-              <button
-                key={s.id}
-                type="button"
-                role="option"
-                aria-selected={value === s.id}
-                className={`filters-filter-set-dd-option${value === s.id ? ' filters-filter-set-dd-option--selected' : ''}`}
-                onClick={() => {
-                  onChange(s.id);
-                  setOpen(false);
-                }}
-              >
-                <span className="filters-filter-set-dd-option-title">{s.name}</span>
-                {desc ? (
-                  <span className="filters-filter-set-dd-option-desc">{desc}</span>
-                ) : (
-                  <span className="filters-filter-set-dd-option-desc filters-filter-set-dd-option-desc--muted">
-                    No description
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-};
-
 interface FiltersPanelProps {
   isOpen: boolean;
   onClose: () => void;
@@ -297,6 +153,10 @@ interface FiltersPanelProps {
   onActiveFilterCountChange?: (count: number) => void;
   parentTotalsRollupMode?: ParentTotalsRollupMode;
   onParentTotalsRollupModeChange?: (mode: ParentTotalsRollupMode) => void;
+  propagateIntoNoMatchRows?: boolean;
+  onPropagateIntoNoMatchRowsChange?: (value: boolean) => void;
+  measureEditDisaggregateToVisibleChildrenOnly?: boolean;
+  onMeasureEditDisaggregateToVisibleChildrenOnlyChange?: (value: boolean) => void;
 }
 
 const FiltersPanel: React.FC<FiltersPanelProps> = ({ 
@@ -304,7 +164,7 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
   onClose,
   selectedMeasureSubgroup,
   onMeasureSubgroupChange: _onMeasureSubgroupChange,
-  selectedDimensionLevels: propSelectedDimensionLevels,
+  selectedDimensionLevels: _selectedDimensionLevels,
   onDimensionLevelsChange: _onDimensionLevelsChange,
   data = [],
   showAllPeriods = true,
@@ -317,6 +177,10 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
   onActiveFilterCountChange,
   parentTotalsRollupMode: parentTotalsRollupModeProp = 'fullHierarchy',
   onParentTotalsRollupModeChange,
+  propagateIntoNoMatchRows: propagateIntoNoMatchRowsProp = false,
+  onPropagateIntoNoMatchRowsChange,
+  measureEditDisaggregateToVisibleChildrenOnly: measureEditDisaggregateToVisibleChildrenOnlyProp = false,
+  onMeasureEditDisaggregateToVisibleChildrenOnlyChange,
 }) => {
   // Track original values for Cancel functionality (only for filter cards)
   const [originalFilters, setOriginalFilters] = useState<Filter[]>([
@@ -337,10 +201,17 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
 
   const [isDirty, setIsDirty] = useState(false);
 
-  const [localParentTotalsRollupMode, setLocalParentTotalsRollupMode] =
-    useState<ParentTotalsRollupMode>(parentTotalsRollupModeProp);
+  const [localPropagateIntoNoMatchRows, setLocalPropagateIntoNoMatchRows] = useState(propagateIntoNoMatchRowsProp);
+  const [originalPropagateIntoNoMatchRows, setOriginalPropagateIntoNoMatchRows] =
+    useState(propagateIntoNoMatchRowsProp);
+  const [localParentTotalsRollupMode, setLocalParentTotalsRollupMode] = useState(parentTotalsRollupModeProp);
   const [originalParentTotalsRollupMode, setOriginalParentTotalsRollupMode] =
-    useState<ParentTotalsRollupMode>(parentTotalsRollupModeProp);
+    useState(parentTotalsRollupModeProp);
+  const [localMeasureEditDisaggregateToVisibleChildrenOnly, setLocalMeasureEditDisaggregateToVisibleChildrenOnly] =
+    useState(measureEditDisaggregateToVisibleChildrenOnlyProp);
+  const [originalMeasureEditDisaggregateToVisibleChildrenOnly, setOriginalMeasureEditDisaggregateToVisibleChildrenOnly] =
+    useState(measureEditDisaggregateToVisibleChildrenOnlyProp);
+  const [adjustTotalsCardOpen, setAdjustTotalsCardOpen] = useState(true);
 
   // Track if Apply was clicked (to distinguish from Cancel/Close)
   const applyClickedRef = useRef(false);
@@ -352,9 +223,6 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
     { id: '4', type: 'products', label: 'Filter by Products', value: 'Equals All' },
     { id: '5', type: 'time', label: 'Filter by Time', value: 'Equals Jan 26 to Dec 26' },
   ]);
-
-  const [selectedFilterSetId, setSelectedFilterSetId] = useState('');
-  const [originalSelectedFilterSetId, setOriginalSelectedFilterSetId] = useState('');
 
   // Sync internal state with props
   useEffect(() => {
@@ -371,9 +239,12 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
       setOriginalFilters([...filters]);
       setOriginalStartPeriod(startPeriod);
       setOriginalEndPeriod(endPeriod);
+      setLocalPropagateIntoNoMatchRows(propagateIntoNoMatchRowsProp);
+      setOriginalPropagateIntoNoMatchRows(propagateIntoNoMatchRowsProp);
       setLocalParentTotalsRollupMode(parentTotalsRollupModeProp);
       setOriginalParentTotalsRollupMode(parentTotalsRollupModeProp);
-      setOriginalSelectedFilterSetId(selectedFilterSetId);
+      setLocalMeasureEditDisaggregateToVisibleChildrenOnly(measureEditDisaggregateToVisibleChildrenOnlyProp);
+      setOriginalMeasureEditDisaggregateToVisibleChildrenOnly(measureEditDisaggregateToVisibleChildrenOnlyProp);
       applyClickedRef.current = false;
     }
     // Intentionally depend only on isOpen: snapshot filters/periods/rollup when the panel opens.
@@ -387,10 +258,18 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
     const filtersChanged = JSON.stringify(filters) !== JSON.stringify(originalFilters);
     // Check period changes for dirty state
     const periodsChanged = localStartPeriod !== originalStartPeriod || localEndPeriod !== originalEndPeriod;
-    const rollupChanged = localParentTotalsRollupMode !== originalParentTotalsRollupMode;
-    const filterSetSelectionChanged = selectedFilterSetId !== originalSelectedFilterSetId;
+    const propagateChanged = localPropagateIntoNoMatchRows !== originalPropagateIntoNoMatchRows;
+    const rollupModeChanged = localParentTotalsRollupMode !== originalParentTotalsRollupMode;
+    const measureDisaggChanged =
+      localMeasureEditDisaggregateToVisibleChildrenOnly !== originalMeasureEditDisaggregateToVisibleChildrenOnly;
 
-    setIsDirty(filtersChanged || periodsChanged || rollupChanged || filterSetSelectionChanged);
+    setIsDirty(
+      filtersChanged ||
+        periodsChanged ||
+        propagateChanged ||
+        rollupModeChanged ||
+        measureDisaggChanged,
+    );
   }, [
     isOpen,
     filters,
@@ -399,10 +278,12 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
     localEndPeriod,
     originalStartPeriod,
     originalEndPeriod,
+    localPropagateIntoNoMatchRows,
+    originalPropagateIntoNoMatchRows,
     localParentTotalsRollupMode,
     originalParentTotalsRollupMode,
-    selectedFilterSetId,
-    originalSelectedFilterSetId,
+    localMeasureEditDisaggregateToVisibleChildrenOnly,
+    originalMeasureEditDisaggregateToVisibleChildrenOnly,
   ]);
 
   // Calculate and notify active filter count
@@ -418,11 +299,7 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
   }, [filters, onActiveFilterCountChange]);
 
   const [activeTab, setActiveTab] = useState<'basic' | 'advanced'>('basic');
-  const [savedFilterSets, setSavedFilterSets] = useState<SavedFilterSet[]>(() =>
-    loadSavedFilterSetsFromStorage(),
-  );
   const [editingFilterId, setEditingFilterId] = useState<string | null>(null);
-  const [saveDropOpen, setSaveDropOpen] = useState(false);
 
   // Derive unique measures (basic dropdown: only enabled measure categories), accounts, categories, and products from data
   const { basicMeasureFilterOptions, allAccounts, allCategories, allProducts } = useMemo(() => {
@@ -511,93 +388,9 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
       return [...prev, { id: 'basic-time', type: 'time', label: 'Filter by Time', value: newValue }];
     });
   };
-  const [showFilterSetModal, setShowFilterSetModal] = useState(false);
-  const [filterSetName, setFilterSetName] = useState('');
-  const [filterSetDesc, setFilterSetDesc] = useState('');
   const [showFilterLogic, setShowFilterLogic] = useState(false);
   const [filterLogicValue, setFilterLogicValue] = useState('');
   const filterCardRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
-  const saveDropRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (isOpen) setSavedFilterSets(loadSavedFilterSetsFromStorage());
-    else {
-      setShowFilterSetModal(false);
-      setFilterSetName('');
-      setFilterSetDesc('');
-      setSaveDropOpen(false);
-    }
-  }, [isOpen]);
-
-  const captureSnapshot = useCallback((): FilterSetSnapshot => ({
-    filters: JSON.parse(JSON.stringify(filters)) as Filter[],
-    startPeriod: localStartPeriod,
-    endPeriod: localEndPeriod,
-    parentTotalsRollupMode: localParentTotalsRollupMode,
-    filterLogicValue,
-    showFilterLogic,
-  }), [filters, localStartPeriod, localEndPeriod, localParentTotalsRollupMode, filterLogicValue, showFilterLogic]);
-
-  /** Load a saved set into the panel only; Apply commits to the grid and clears dirty state. */
-  const hydrateFromSnapshot = useCallback((snapshot: FilterSetSnapshot) => {
-    const f = JSON.parse(JSON.stringify(snapshot.filters)) as Filter[];
-    setFilters(f);
-    setLocalStartPeriod(snapshot.startPeriod);
-    setLocalEndPeriod(snapshot.endPeriod);
-    setLocalParentTotalsRollupMode(snapshot.parentTotalsRollupMode);
-    setFilterLogicValue(snapshot.filterLogicValue);
-    setShowFilterLogic(snapshot.showFilterLogic);
-  }, []);
-
-  const handleFilterSetSelectChange = useCallback(
-    (id: string) => {
-      setSelectedFilterSetId(id);
-      if (!id) return;
-      const fs = savedFilterSets.find(s => s.id === id);
-      if (fs) hydrateFromSnapshot(fs.snapshot);
-    },
-    [savedFilterSets, hydrateFromSnapshot],
-  );
-
-  const handleOverwriteCurrentFilterSet = useCallback(() => {
-    if (!selectedFilterSetId) return;
-    const snap = captureSnapshot();
-    const next = savedFilterSets.map(s =>
-      s.id === selectedFilterSetId ? { ...s, snapshot: snap } : s,
-    );
-    setSavedFilterSets(next);
-    persistSavedFilterSetsToStorage(next);
-    setSaveDropOpen(false);
-  }, [selectedFilterSetId, savedFilterSets, captureSnapshot]);
-
-  const handleSaveNewFilterSet = useCallback(() => {
-    const name = filterSetName.trim();
-    if (!name) return;
-    const snap = captureSnapshot();
-    const newId = `fs-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-    const newSet: SavedFilterSet = {
-      id: newId,
-      name,
-      description: filterSetDesc.trim(),
-      snapshot: snap,
-    };
-    const next = [...savedFilterSets, newSet];
-    setSavedFilterSets(next);
-    persistSavedFilterSetsToStorage(next);
-    setSelectedFilterSetId(newId);
-    setShowFilterSetModal(false);
-    setFilterSetName('');
-    setFilterSetDesc('');
-  }, [filterSetName, filterSetDesc, savedFilterSets, captureSnapshot]);
-
-  useEffect(() => {
-    if (!saveDropOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (!saveDropRef.current?.contains(e.target as Node)) setSaveDropOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [saveDropOpen]);
 
   const handleRemoveFilter = (filterId: string) => {
     setFilters(prev => prev.filter(f => f.id !== filterId));
@@ -658,8 +451,11 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
     if (onEndPeriodChange && localEndPeriod !== originalEndPeriod) {
       onEndPeriodChange(originalEndPeriod);
     }
+    setLocalPropagateIntoNoMatchRows(originalPropagateIntoNoMatchRows);
     setLocalParentTotalsRollupMode(originalParentTotalsRollupMode);
-    setSelectedFilterSetId(originalSelectedFilterSetId);
+    setLocalMeasureEditDisaggregateToVisibleChildrenOnly(originalMeasureEditDisaggregateToVisibleChildrenOnly);
+    onParentTotalsRollupModeChange?.(originalParentTotalsRollupMode);
+    onMeasureEditDisaggregateToVisibleChildrenOnlyChange?.(originalMeasureEditDisaggregateToVisibleChildrenOnly);
     setIsDirty(false);
   };
 
@@ -997,19 +793,6 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
     });
   };
 
-  useEffect(() => {
-    if (!showFilterSetModal) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setShowFilterSetModal(false);
-        setFilterSetName('');
-        setFilterSetDesc('');
-      }
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [showFilterSetModal]);
-
   if (!isOpen) return null;
 
   const basicTimeRange = getBasicTimeRange();
@@ -1022,64 +805,32 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
           <>
             <button type="button" className="filters-header-cancel-btn" onClick={handleClose}>Cancel</button>
             <div className="filters-panel-header-actions">
-              <div className="filters-header-save-wrap" ref={saveDropRef}>
-                <button
-                  type="button"
-                  className="filters-header-save-btn"
-                  onClick={() => {
-                    applyClickedRef.current = true;
-                    if (onStartPeriodChange && localStartPeriod !== originalStartPeriod) onStartPeriodChange(localStartPeriod);
-                    if (onEndPeriodChange && localEndPeriod !== originalEndPeriod) onEndPeriodChange(localEndPeriod);
-                    if (onApplyFilters && data.length > 0) {
-                      const ensureMeasureIdsVisible = collectMeasureIdsReferencedInFilters(filters, data);
-                      onApplyFilters(applyFilters(data), { ensureMeasureIdsVisible });
-                    }
-                    onParentTotalsRollupModeChange?.(localParentTotalsRollupMode);
-                    setOriginalParentTotalsRollupMode(localParentTotalsRollupMode);
-                    setOriginalFilters([...filters]);
-                    setOriginalStartPeriod(localStartPeriod);
-                    setOriginalEndPeriod(localEndPeriod);
-                    setOriginalSelectedFilterSetId(selectedFilterSetId);
-                    setIsDirty(false);
-                    onClose();
-                  }}
-                >
-                  Apply
-                </button>
-                <button
-                  type="button"
-                  className="filters-header-save-chevron"
-                  aria-label="Filter set save options"
-                  onClick={() => setSaveDropOpen(p => !p)}
-                >
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                    <path d="M3 5l4 4 4-4" stroke="var(--color-surface-white)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </button>
-                {saveDropOpen && (
-                  <div className="filters-save-dropdown">
-                    <button
-                      type="button"
-                      className="filters-save-dropdown-option"
-                      disabled={!selectedFilterSetId}
-                      title={!selectedFilterSetId ? 'Choose a filter set above, or use Save As to create one' : undefined}
-                      onClick={handleOverwriteCurrentFilterSet}
-                    >
-                      Save
-                    </button>
-                    <button
-                      type="button"
-                      className="filters-save-dropdown-option"
-                      onClick={() => {
-                        setSaveDropOpen(false);
-                        setShowFilterSetModal(true);
-                      }}
-                    >
-                      Save As
-                    </button>
-                  </div>
-                )}
-              </div>
+              <button
+                type="button"
+                className="filters-header-apply-only-btn"
+                onClick={() => {
+                  applyClickedRef.current = true;
+                  if (onStartPeriodChange && localStartPeriod !== originalStartPeriod) onStartPeriodChange(localStartPeriod);
+                  if (onEndPeriodChange && localEndPeriod !== originalEndPeriod) onEndPeriodChange(localEndPeriod);
+                  if (onApplyFilters && data.length > 0) {
+                    const ensureMeasureIdsVisible = collectMeasureIdsReferencedInFilters(filters, data);
+                    onApplyFilters(applyFilters(data), { ensureMeasureIdsVisible });
+                  }
+                  onParentTotalsRollupModeChange?.(localParentTotalsRollupMode);
+                  onPropagateIntoNoMatchRowsChange?.(localPropagateIntoNoMatchRows);
+                  onMeasureEditDisaggregateToVisibleChildrenOnlyChange?.(localMeasureEditDisaggregateToVisibleChildrenOnly);
+                  setOriginalParentTotalsRollupMode(localParentTotalsRollupMode);
+                  setOriginalPropagateIntoNoMatchRows(localPropagateIntoNoMatchRows);
+                  setOriginalMeasureEditDisaggregateToVisibleChildrenOnly(localMeasureEditDisaggregateToVisibleChildrenOnly);
+                  setOriginalFilters([...filters]);
+                  setOriginalStartPeriod(localStartPeriod);
+                  setOriginalEndPeriod(localEndPeriod);
+                  setIsDirty(false);
+                  onClose();
+                }}
+              >
+                Apply
+              </button>
             </div>
           </>
         ) : (
@@ -1099,52 +850,123 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
         )}
       </div>
 
-      <fieldset className="filters-parent-totals">
-        <legend className="filters-parent-totals-legend" id="parent-totals-legend">Parent row totals</legend>
-        <div
-          className="filters-parent-totals-radios"
-          role="radiogroup"
-          aria-labelledby="parent-totals-legend"
+      <section className="filters-adjust-totals-card" aria-label="Totals and splits with your filters">
+        <button
+          type="button"
+          className="filters-adjust-totals-card-header"
+          aria-expanded={adjustTotalsCardOpen}
+          aria-controls="filters-adjust-totals-card-body"
+          id="filters-adjust-totals-card-trigger"
+          onClick={() => setAdjustTotalsCardOpen((v) => !v)}
         >
-          <label className="filters-parent-totals-radio-label">
-            <input
-              type="radio"
-              name="parentTotalsRollup"
-              value="fullHierarchy"
-              className="filters-parent-totals-radio-input"
-              checked={localParentTotalsRollupMode === 'fullHierarchy'}
-              onChange={() => setLocalParentTotalsRollupMode('fullHierarchy')}
+          <svg
+            className={`filters-adjust-totals-card-chevron${adjustTotalsCardOpen ? ' filters-adjust-totals-card-chevron--open' : ''}`}
+            width="12"
+            height="12"
+            viewBox="0 0 12 12"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden
+          >
+            <path
+              d="M4.5 2.25L8.25 6 4.5 9.75"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             />
-            <span className="filters-parent-totals-radio-text">Include filtered-out row values in parent totals</span>
-          </label>
-          <label className="filters-parent-totals-radio-label">
-            <input
-              type="radio"
-              name="parentTotalsRollup"
-              value="visibleOnly"
-              className="filters-parent-totals-radio-input"
-              checked={localParentTotalsRollupMode === 'visibleOnly'}
-              onChange={() => setLocalParentTotalsRollupMode('visibleOnly')}
-            />
-            <span className="filters-parent-totals-radio-text">Exclude filtered-out row values in parent totals</span>
-          </label>
-        </div>
-      </fieldset>
+          </svg>
+          <span className="filters-adjust-totals-card-title body-fontScale-1-semibold">
+            Totals &amp; splits with your filters
+          </span>
+        </button>
+        {adjustTotalsCardOpen ? (
+          <div
+            id="filters-adjust-totals-card-body"
+            className="filters-adjust-totals-card-body"
+            role="region"
+            aria-labelledby="filters-adjust-totals-card-trigger"
+          >
+            <fieldset className="filters-adjust-totals-fieldset">
+              <legend className="filters-adjust-totals-legend">Parent totals</legend>
+              <div className="filters-parent-totals-radios" role="group" aria-label="Parent totals">
+                <label className="filters-parent-totals-radio-label">
+                  <input
+                    type="radio"
+                    className="filters-parent-totals-radio-input"
+                    name="filters-parent-totals-rollup-mode"
+                    value="fullHierarchy"
+                    checked={localParentTotalsRollupMode === 'fullHierarchy'}
+                    onChange={() => {
+                      setLocalParentTotalsRollupMode('fullHierarchy');
+                      onParentTotalsRollupModeChange?.('fullHierarchy');
+                    }}
+                  />
+                  <span className="filters-parent-totals-radio-text">
+                    <span className="filters-parent-totals-radio-title">All children</span>
+                  </span>
+                </label>
+                <label className="filters-parent-totals-radio-label">
+                  <input
+                    type="radio"
+                    className="filters-parent-totals-radio-input"
+                    name="filters-parent-totals-rollup-mode"
+                    value="visibleOnly"
+                    checked={localParentTotalsRollupMode === 'visibleOnly'}
+                    onChange={() => {
+                      setLocalParentTotalsRollupMode('visibleOnly');
+                      onParentTotalsRollupModeChange?.('visibleOnly');
+                    }}
+                  />
+                  <span className="filters-parent-totals-radio-text">
+                    <span className="filters-parent-totals-radio-title">Visible only</span>
+                  </span>
+                </label>
+              </div>
+            </fieldset>
 
-      <div className="filters-filter-set">
-        <div className="filters-filter-set-inner">
-          <label id="filters-filter-set-label" className="filters-basic-label" htmlFor="filters-filter-set-select">
-            Filter set
-          </label>
-          <FilterSetSelect
-            id="filters-filter-set-select"
-            labelId="filters-filter-set-label"
-            value={selectedFilterSetId}
-            savedSets={savedFilterSets}
-            onChange={handleFilterSetSelectChange}
-          />
-        </div>
-      </div>
+            <fieldset className="filters-adjust-totals-fieldset filters-adjust-totals-fieldset--tight-top">
+              <legend className="filters-adjust-totals-legend">Parent Disaggregation</legend>
+              <div
+                className="filters-parent-totals-radios"
+                role="group"
+                aria-label="Parent Disaggregation"
+              >
+                <label className="filters-parent-totals-radio-label">
+                  <input
+                    type="radio"
+                    className="filters-parent-totals-radio-input"
+                    name="filters-measure-disaggregate-mode"
+                    checked={!localMeasureEditDisaggregateToVisibleChildrenOnly}
+                    onChange={() => {
+                      setLocalMeasureEditDisaggregateToVisibleChildrenOnly(false);
+                      onMeasureEditDisaggregateToVisibleChildrenOnlyChange?.(false);
+                    }}
+                  />
+                  <span className="filters-parent-totals-radio-text">
+                    <span className="filters-parent-totals-radio-title">All child rows</span>
+                  </span>
+                </label>
+                <label className="filters-parent-totals-radio-label">
+                  <input
+                    type="radio"
+                    className="filters-parent-totals-radio-input"
+                    name="filters-measure-disaggregate-mode"
+                    checked={localMeasureEditDisaggregateToVisibleChildrenOnly}
+                    onChange={() => {
+                      setLocalMeasureEditDisaggregateToVisibleChildrenOnly(true);
+                      onMeasureEditDisaggregateToVisibleChildrenOnlyChange?.(true);
+                    }}
+                  />
+                  <span className="filters-parent-totals-radio-text">
+                    <span className="filters-parent-totals-radio-title">Visible rows only</span>
+                  </span>
+                </label>
+              </div>
+            </fieldset>
+          </div>
+        ) : null}
+      </section>
 
       {/* Tabs */}
       <div className="filters-tabs" role="tablist">
@@ -1364,76 +1186,6 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
           />
         );
       })()}
-
-      {showFilterSetModal && (
-        <div
-          className="filters-filterset-modal-backdrop"
-          role="presentation"
-          onMouseDown={e => {
-            if (e.target === e.currentTarget) {
-              setShowFilterSetModal(false);
-              setFilterSetName('');
-              setFilterSetDesc('');
-            }
-          }}
-        >
-          <div
-            className="filters-filterset-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="filters-filterset-modal-title"
-            onMouseDown={e => e.stopPropagation()}
-          >
-            <p className="filters-filterset-title" id="filters-filterset-modal-title">
-              Save As
-            </p>
-            <div className="filters-filterset-field">
-              <label className="filters-filterset-label" htmlFor="filters-filterset-name">Name</label>
-              <input
-                id="filters-filterset-name"
-                className="filters-filterset-input"
-                type="text"
-                placeholder="e.g. Q1 Engine Products"
-                value={filterSetName}
-                onChange={e => setFilterSetName(e.target.value)}
-                autoFocus
-              />
-            </div>
-            <div className="filters-filterset-field">
-              <label className="filters-filterset-label" htmlFor="filters-filterset-desc">Description (optional)</label>
-              <textarea
-                id="filters-filterset-desc"
-                className="filters-filterset-textarea"
-                placeholder="Brief description of this filter set"
-                value={filterSetDesc}
-                onChange={e => setFilterSetDesc(e.target.value)}
-                rows={2}
-              />
-            </div>
-            <div className="filters-filterset-actions">
-              <button
-                type="button"
-                className="filters-filterset-cancel"
-                onClick={() => {
-                  setShowFilterSetModal(false);
-                  setFilterSetName('');
-                  setFilterSetDesc('');
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="filters-filterset-save"
-                disabled={!filterSetName.trim()}
-                onClick={handleSaveNewFilterSet}
-              >
-                Save
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

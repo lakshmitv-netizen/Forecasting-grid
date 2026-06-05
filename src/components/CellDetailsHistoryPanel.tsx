@@ -10,6 +10,7 @@ import ScopedNotification from './ScopedNotification';
 import { getPlanWideValueCellKeys } from '../utils/planWideCellKeys';
 import { filterPlanWideKeysByAutoCriteria, hasActiveAutoCriteria } from '../utils/bulkCriteriaCellKeys';
 import '../styles/components/CellDetailsHistoryPanel.css';
+import '../styles/pages/PlanningForecastingPage.css';
 
 const BULK_TIME_PERIOD_OPTIONS: { key: string; label: string }[] = [
   { key: 'jan2026', label: 'Jan 2026' },
@@ -223,7 +224,7 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
   const [singleCellAdjustmentNote, setSingleCellAdjustmentNote] = useState<string>('');
   const [approvalActionMode, setApprovalActionMode] = useState<'request' | 'provide'>('request');
   const [isProvideApprovalExpanded, setIsProvideApprovalExpanded] = useState(false);
-  const [provideApprovalDecision, setProvideApprovalDecision] = useState<string>('');
+  const [provideApprovalDecision, setProvideApprovalDecision] = useState<string>('approved');
   const [provideApprovalNote, setProvideApprovalNote] = useState<string>('');
 
   useEffect(() => {
@@ -1787,19 +1788,52 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                           )}
                         </div>
 
-                        {/* Decision */}
-                        <div className="cell-details-history-multi-field">
-                          <label className="cell-details-history-multi-label">Decision</label>
-                          <select
-                            className="cell-details-history-multi-input"
-                            value={provideApprovalDecision}
-                            onChange={e => setProvideApprovalDecision(e.target.value)}
+                        {/* Decision — segmented control (same pattern as plan approver modal) */}
+                        <div className="planning-approver-decision-select-wrap" style={{ marginTop: 0 }}>
+                          <div
+                            className="planning-approver-decision-select-label"
+                            id="cdh-provide-approval-decision-label"
                           >
-                            <option value="">Select a decision</option>
-                            <option value="approved">Approve</option>
-                            <option value="approvedWithCondition">Approve with condition</option>
-                            <option value="rejected">Reject</option>
-                          </select>
+                            Your decision
+                          </div>
+                          <div
+                            className="planning-approver-decision-btn-group"
+                            role="group"
+                            aria-labelledby="cdh-provide-approval-decision-label"
+                          >
+                            <button
+                              type="button"
+                              className={`planning-approver-decision-btn planning-approver-decision-btn--approve${
+                                provideApprovalDecision === 'approved' ? ' planning-approver-decision-btn--selected' : ''
+                              }`}
+                              aria-pressed={provideApprovalDecision === 'approved'}
+                              onClick={() => setProvideApprovalDecision('approved')}
+                            >
+                              Approve
+                            </button>
+                            <button
+                              type="button"
+                              className={`planning-approver-decision-btn planning-approver-decision-btn--conditional${
+                                provideApprovalDecision === 'approvedWithCondition'
+                                  ? ' planning-approver-decision-btn--selected'
+                                  : ''
+                              }`}
+                              aria-pressed={provideApprovalDecision === 'approvedWithCondition'}
+                              onClick={() => setProvideApprovalDecision('approvedWithCondition')}
+                            >
+                              Conditionally Approve
+                            </button>
+                            <button
+                              type="button"
+                              className={`planning-approver-decision-btn planning-approver-decision-btn--reject${
+                                provideApprovalDecision === 'rejected' ? ' planning-approver-decision-btn--selected' : ''
+                              }`}
+                              aria-pressed={provideApprovalDecision === 'rejected'}
+                              onClick={() => setProvideApprovalDecision('rejected')}
+                            >
+                              Reject
+                            </button>
+                          </div>
                         </div>
 
                         {/* Note */}
@@ -1843,7 +1877,7 @@ const CellDetailsHistoryPanel: React.FC<CellDetailsHistoryPanelProps> = ({
                       onClick={() => {
                         if (!focusedValueCellKey || !onMassUpdate) return;
                         onMassUpdate([focusedValueCellKey], 'Edit Approval Status', provideApprovalDecision, provideApprovalNote.trim() || undefined);
-                        setProvideApprovalDecision('');
+                        setProvideApprovalDecision('approved');
                         setProvideApprovalNote('');
                       }}
                       disabled={!provideApprovalDecision || !focusedValueCellKey}

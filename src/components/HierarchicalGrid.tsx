@@ -9,13 +9,13 @@ import {
   propagateDownward,
   updateCrossMeasureDependencies,
   findRowById,
+  flattenHierarchy,
   distributeProportionally,
   childrenForParentRollup,
+  rollupChildrenForParentRow,
+  collectFilterBucketNoMatchSubtreeIds,
 } from '../utils/valuePropagation';
-import {
-  mergeColumnFilteredSiblingsIntoTree,
-  mergeGlobalTopBottomNMeasureChildren,
-} from '../utils/filterSummaryRows';
+import { mergeGlobalTopBottomNMeasureChildren, sumForest, unwrapColumnFilterBucketChildren } from '../utils/filterSummaryRows';
 import {
   extractSearchTerms,
   rowMatchesSearch,
@@ -29,6 +29,116 @@ import ColumnFilterPopover, { ColumnFilter } from './ColumnFilterPopover';
 import '../styles/components/Grid.css';
 
 type HierarchyDim = 'account' | 'category' | 'product';
+
+/** Time keys used when diffing pre/post recalc for impacted styling (must match calculateMeasureValues rollups). */
+const GRID_IMPACT_TIME_KEYS: (keyof GridRowType['values'])[] = [
+  'year', 'q1', 'q2', 'q3', 'q4',
+  'jan2026', 'feb2026', 'mar2026', 'apr2026', 'may2026', 'jun2026',
+  'jul2026', 'aug2026', 'sep2026', 'oct2026', 'nov2026', 'dec2026',
+];
+
+/** Resolve a row on the full (un-pruned) grid tree — measure roots are not in findRowById’s flattened walk. */
+function resolveFullGridNode(rowId: string, fullData: MeasureData[]): GridRowType | MeasureData | null {
+  const root = fullData.find(m => m.id === rowId);
+  if (root) return root;
+  return findRowById(rowId, fullData);
+}
+
+const MONTH_KEYS_FOR_ROLLUP: (keyof GridRowType['values'])[] = [
+  'jan2026', 'feb2026', 'mar2026', 'apr2026', 'may2026', 'jun2026',
+  'jul2026', 'aug2026', 'sep2026', 'oct2026', 'nov2026', 'dec2026',
+];
+
+function zeroMonthsRollup(): GridRowType['values'] {
+  const out = {} as GridRowType['values'];
+  for (const mk of MONTH_KEYS_FOR_ROLLUP) {
+    (out as Record<string, number>)[mk] = 0;
+  }
+  out.q1 = out.q2 = out.q3 = out.q4 = out.year = 0;
+  return out;
+}
+
+function addMonthsRollup(a: GridRowType['values'], b: GridRowType['values']): GridRowType['values'] {
+  const out = { ...a };
+  for (const mk of MONTH_KEYS_FOR_ROLLUP) {
+    (out as Record<string, number>)[mk] = Number(a[mk] ?? 0) + Number(b[mk] ?? 0);
+  }
+  out.q1 = out.jan2026 + out.feb2026 + out.mar2026;
+  out.q2 = out.apr2026 + out.may2026 + out.jun2026;
+  out.q3 = out.jul2026 + out.aug2026 + out.sep2026;
+  out.q4 = out.oct2026 + out.nov2026 + out.dec2026;
+  out.year = out.q1 + out.q2 + out.q3 + out.q4;
+  return out;
+}
+
+/**
+ * Column-filter display must show full logical totals. `calculateMeasureValues` can omit branches
+ * (e.g. "Does not match filter" buckets when propagateIntoNoMatchRows is false), so **do not**
+ * trust stored parent `values` — recompute from the structural tree, summing **recursive** child
+ * rollups; leaves use live `gridData` cells (edited values).
+ */
+function rollupValuesUsingStructure(
+  structNode: GridRowType | MeasureData,
+  liveData: MeasureData[],
+): GridRowType['values'] {
+  const resolveLive = (id: string) => resolveFullGridNode(id, liveData);
+  if (!structNode.children?.length) {
+    const live = resolveLive(structNode.id);
+    return live ? { ...live.values } : { ...structNode.values };
+  }
+  let acc = zeroMonthsRollup();
+  for (const ch of structNode.children) {
+    acc = addMonthsRollup(acc, rollupValuesUsingStructure(ch, liveData));
+  }
+  return acc;
+}
+
+function overlayFullSubtreeTotalsForColumnFilter(
+  rows: GridRowType[],
+  liveData: MeasureData[],
+  structureData: MeasureData[],
+): GridRowType[] {
+  const visit = (r: GridRowType): GridRowType => {
+    const structNode = resolveFullGridNode(r.id, structureData);
+    const values = structNode ? rollupValuesUsingStructure(structNode, liveData) : { ...r.values };
+    const children = r.children?.map(visit);
+    return { ...r, values, children };
+  };
+  return rows.map(visit);
+}
+
+/** After search / column filters prune the displayed tree, re-sum each parent from its visible children only. */
+function recomputeVisibleOnlyTotalsInTree(rows: GridRowType[]): GridRowType[] {
+  const visit = (r: GridRowType): GridRowType => {
+    if (!r.children?.length) return r;
+    const newChildren = r.children.map(visit);
+    let acc = zeroMonthsRollup();
+    for (const ch of newChildren) {
+      acc = addMonthsRollup(acc, ch.values);
+    }
+    return { ...r, children: newChildren, values: { ...r.values, ...acc } };
+  };
+  return rows.map(visit);
+}
+
+/** Snapshot every measure row and descendant so filter-summary / bucket rows can show impacted state after recalc. */
+function snapshotAllRowCellValues(data: MeasureData[]): Map<string, Map<keyof GridRowType['values'], number>> {
+  const out = new Map<string, Map<keyof GridRowType['values'], number>>();
+  const capture = (row: GridRowType) => {
+    const m = new Map<keyof GridRowType['values'], number>();
+    for (const key of GRID_IMPACT_TIME_KEYS) {
+      m.set(key, row.values[key]);
+    }
+    out.set(row.id, m);
+  };
+  for (const measure of data) {
+    capture(measure);
+    for (const r of flattenHierarchy([measure])) {
+      capture(r);
+    }
+  }
+  return out;
+}
 
 /** Single dimension targeted by active Top/Bottom N when hierarchy is not preserved (flat N mode). */
 function getGlobalTopBottomNFlatViewTargetDimension(
@@ -170,7 +280,16 @@ interface HierarchicalGridProps {
   onFillHandleDragStart?: (cellKey: string) => void; // Callback when fill handle drag starts
   onFillHandleDragMove?: (cellKey: string) => void; // Callback when fill handle is dragged
   onFillHandleDragEnd?: () => void; // Callback when fill handle drag ends
-  onCellChangeHandlerReady?: (handler: (rowId: string, monthKey: string, newValue: number, note?: string) => void) => void; // Callback to expose cell change handler for programmatic updates
+  onCellChangeHandlerReady?: (
+    handler: (
+      rowId: string,
+      monthKey: string,
+      newValue: number,
+      note?: string,
+      skipUndoOperation?: boolean,
+      disaggregateVisibleChildrenOnly?: boolean,
+    ) => void,
+  ) => void; // Callback to expose cell change handler for programmatic updates
   onGetCurrentCellValueReady?: (handler: (rowId: string, monthKey: string) => number) => void; // Callback to expose function to get current cell value
   onEditingCellChange?: (cellKey: string | null) => void; // Callback when editing cell changes (cellKey format: `${rowId}-${monthKey}`)
   onSavedImpactedCellsReady?: (cells: Set<string>) => void; // Callback to expose saved impacted cells
@@ -204,8 +323,16 @@ interface HierarchicalGridProps {
   /** Merge background "greater than" rules into one color scale by threshold. */
   conditionalFormattingColorScaleMerge?: boolean;
   isDesignSystemRulesEnabled?: boolean;
-  /** Parent totals: full hierarchy vs visible rows only (excludes synthetic filtered-out aggregates). */
+  /** Parent totals: full hierarchy vs visible children only vs legacy bucket layout. */
   parentTotalsRollupMode?: ParentTotalsRollupMode;
+  /**
+   * When parent totals use bucket mode: if false, downward propagation skips the synthetic
+   * "Does not match filter" bucket (edits inside that subtree still propagate within it).
+   * Omitted/true preserves legacy behavior (propagate into no-match).
+   */
+  propagateIntoNoMatchRows?: boolean;
+  /** When opening a measure cell edit, default “limit split to visible child rows” to this value. */
+  measureEditDisaggregateVisibleChildrenDefault?: boolean;
   /** Plan is Submitted — grid shows pending approval styling and blocks edits. */
   planReviewGridLock?: boolean;
   /** Plan submitter during Submitted — stripes all plan-locked value cells (read-only texture). */
@@ -221,10 +348,24 @@ interface HierarchicalGridProps {
   initialCellMapsSnapshot?: PlanningGridCellMapsSnapshot | null;
   /** Called when edit/impact/note maps change (debounced) so parent can persist across routes. */
   onCellMapsSnapshotChange?: (snapshot: PlanningGridCellMapsSnapshot) => void;
+  /**
+   * Full hierarchy shape (ids + nesting) for parent rollups — **values** still read from `rollupValueSourceData` / `gridData`.
+   * Use the session’s widest tree (e.g. `originalData`) so account totals include categories hidden by column filters.
+   */
+  rollupStructureData?: MeasureData[];
+  /**
+   * Full dimension tree with live `values` merged in (e.g. `mergeRowValuesIntoFullTree(originalData, data)`).
+   * Required when the Filters panel **prunes** rows from `data`: parent totals must still sum hidden branches.
+   */
+  rollupValueSourceData?: MeasureData[];
+  /** Column / quick filters in the grid that can hide rows from the visible hierarchy (for parent UI hints). */
+  onRowHidingFiltersChange?: (info: { hasColumnFilters: boolean; hasQuickFilters: boolean }) => void;
 }
 
 const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({ 
-  data, 
+  data,
+  rollupStructureData,
+  rollupValueSourceData,
   onDataChange, 
   selectedDimensionLevels, 
   selectedTimeGranularities,
@@ -293,6 +434,8 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   conditionalFormattingColorScaleMerge = false,
   isDesignSystemRulesEnabled = true,
   parentTotalsRollupMode = 'fullHierarchy',
+  propagateIntoNoMatchRows = true,
+  measureEditDisaggregateVisibleChildrenDefault = false,
   planReviewGridLock = false,
   planReviewRequesterStripes = false,
   approverMayOpenReviewPopover = false,
@@ -302,6 +445,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   onManagerOverrideForCell,
   initialCellMapsSnapshot = null,
   onCellMapsSnapshotChange,
+  onRowHidingFiltersChange,
 }) => {
   const readonlyMeasureIds = readonlyMeasureIdsProp;
   const { industry } = useIndustry();
@@ -316,11 +460,21 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   // Note: Debug logging for onEditHistory removed
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [gridData, setGridData] = useState<MeasureData[]>(data);
+  /** Latest filtered measure tree (for “disaggregate to visible children only” on measure edits). */
+  const filteredMeasureRowsRef = useRef<GridRowType[] | null>(null);
 
   // Sync gridData when the data prop reference changes (e.g. industry switch or HMR reload)
   useEffect(() => {
     setGridData(data);
   }, [data]);
+
+  /** Bucket row + every nested dimension under each "Does not match filter" (for scratch-out + read-only). */
+  const excludedNoMatchSubtreeRowIds = useMemo(() => {
+    if (parentTotalsRollupMode !== 'columnFilterBuckets' || propagateIntoNoMatchRows !== false) {
+      return undefined;
+    }
+    return collectFilterBucketNoMatchSubtreeIds(gridData);
+  }, [gridData, parentTotalsRollupMode, propagateIntoNoMatchRows]);
 
   // Pre-compute per-(timeKey, parentId) sibling value arrays for concentration ranking.
   // Grouping by parentId means products rank only vs siblings under the same category,
@@ -546,6 +700,14 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
 
   // Column-level filters: map of columnKey -> ColumnFilter
   const [columnFilters, setColumnFilters] = useState<Map<string, ColumnFilter>>(new Map());
+
+  useEffect(() => {
+    onRowHidingFiltersChange?.({
+      hasColumnFilters: columnFilters.size > 0,
+      hasQuickFilters: quickFilters.size > 0,
+    });
+  }, [columnFilters, quickFilters, onRowHidingFiltersChange]);
+
   const [openFilterKey, setOpenFilterKey] = useState<string | null>(null);
   const [filterAnchorEl, setFilterAnchorEl] = useState<HTMLElement | null>(null);
   const filterBtnRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
@@ -735,26 +897,8 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     return true;
   }, [columnFilters, approvalRequests, globalSortConfig]);
 
-  /** Measure id for synthetic filtered-out row ids (column-filter path). */
-  const getMeasureIdForFilteredOutRow = useCallback(
-    (row: GridRowType): string => {
-      if (row.type === 'measure') return row.id;
-      for (const m of gridData) {
-        if (findRowById(row.id, [m])) return m.id;
-      }
-      const parts = row.id.split('-');
-      const idx = parts.findIndex(p => p === 'measure');
-      if (idx >= 0 && idx < parts.length - 1) {
-        const cand = `measure-${parts.slice(idx + 1).join('-')}`;
-        if (gridData.some(m => m.id === cand)) return cand;
-      }
-      return gridData[0]?.id ?? row.id;
-    },
-    [gridData],
-  );
-
-  // Recursively apply column filters: excluded dimension siblings become "Filtered out (N)" rows
-  // (same shape as global panel filters) instead of disappearing; styling follows parentTotalsRollupMode.
+  // Recursively apply column filters: non-matching branches are omitted from the tree.
+  // Parent row values on gridData remain full-hierarchy rollups (matching + non-matching).
   const filterRowTree = useCallback((row: GridRowType): GridRowType | null => {
     if (columnFilters.size === 0) return row;
 
@@ -763,8 +907,16 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       globalSortConfig?.preserveHierarchy ?? true,
     );
     if (row.type === 'measure' && flatTopBottomDim) {
-      const children = mergeGlobalTopBottomNMeasureChildren(row, flatTopBottomDim, rowPassesFilters);
-      return { ...row, children };
+      const { children, hadHiddenTargets } = mergeGlobalTopBottomNMeasureChildren(
+        row,
+        flatTopBottomDim,
+        rowPassesFilters,
+      );
+      return {
+        ...row,
+        children,
+        ...(hadHiddenTargets ? { descendantsExcludedByColumnFilter: true } : {}),
+      };
     }
 
     const hasActiveConditionsForDimension = (dimension: 'account' | 'category' | 'product'): boolean => {
@@ -777,14 +929,15 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     };
 
     let filteredChildren: GridRowType[] | undefined;
+    let hadChildFilteredOut = false;
     if (row.children && row.children.length > 0) {
-      const mapped = row.children.map(filterRowTree);
-      filteredChildren = mergeColumnFilteredSiblingsIntoTree(
-        row,
-        row.children,
-        mapped,
-        getMeasureIdForFilteredOutRow(row),
-      );
+      const unwrapped = unwrapColumnFilterBucketChildren(row.children);
+      const baseChildren = unwrapped ?? row.children;
+      const mapped = baseChildren.map(filterRowTree);
+      for (const m of mapped) {
+        if (m === null) hadChildFilteredOut = true;
+      }
+      filteredChildren = mapped.filter((r): r is GridRowType => r !== null);
     }
     const selfPasses = rowPassesFilters(row);
     const hasMatchingChild = filteredChildren && filteredChildren.length > 0;
@@ -797,8 +950,12 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     if (row.type === 'product' && hasActiveConditionsForDimension('product') && !selfPasses) return null;
 
     if (!selfPasses && !hasMatchingChild) return null;
-    return { ...row, children: filteredChildren };
-  }, [columnFilters, rowPassesFilters, getMeasureIdForFilteredOutRow, globalSortConfig]);
+    const next: GridRowType = { ...row, children: filteredChildren };
+    if (hadChildFilteredOut) {
+      next.descendantsExcludedByColumnFilter = true;
+    }
+    return next;
+  }, [columnFilters, rowPassesFilters, globalSortConfig]);
   
   // Sync gridData with data prop changes (for mass updates from parent)
   // Use a ref to track if we're updating from internal changes vs external
@@ -1016,6 +1173,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     skipTimeAggregationForRows?: Set<string>,
     lockedCellsSet?: Set<string>,
     rollupMode: ParentTotalsRollupMode = parentTotalsRollupMode,
+    rollupPropagateIntoNoMatch: boolean = propagateIntoNoMatchRows,
   ): MeasureData[] => {
     const updated = JSON.parse(JSON.stringify(dataToCalculate));
     const skipSet = skipTimeAggregationForRows || new Set<string>();
@@ -1072,20 +1230,48 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
         // (If year/quarter was edited, we've already distributed to months, so don't recalculate)
         // Locked children contribute their current value to parent sums, but don't receive propagation
         if (!skipSet.has(row.id)) {
-          for (const monthKey of monthKeys) {
+          const isPassFailBucket =
+            row.type === 'filterSummary' &&
+            (row.filterSummaryRole === 'filterBucketMatch' ||
+              row.filterSummaryRole === 'filterBucketNoMatch') &&
+            row.children?.length;
+
+          if (isPassFailBucket) {
+            // Deepest-leaf sum matches injectPassFailBucketRows / refreshPassFailBucketAggregates
             const rowId = row.id;
-            // Skip if this parent cell itself is locked (don't recalculate locked parent cells)
-            if (isCellLocked(rowId, monthKey)) {
-              continue;
+            let anyMonthLocked = false;
+            for (const mk of monthKeys) {
+              if (isCellLocked(rowId, mk)) {
+                anyMonthLocked = true;
+                break;
+              }
             }
-            // Sum rollup children only (visibleOnly excludes synthetic filtered-out aggregates)
-            const rollupKids = childrenForParentRollup(row.children, rollupMode);
-            row.values[monthKey] = rollupKids.reduce(
-              (sum: number, child: GridRowType) => {
-                return sum + child.values[monthKey];
-              },
-              0
-            );
+            if (!anyMonthLocked) {
+              row.values = sumForest(row.children);
+            } else {
+              for (const monthKey of monthKeys) {
+                if (isCellLocked(rowId, monthKey)) continue;
+                const rollupKids = rollupChildrenForParentRow(row, rollupMode, rollupPropagateIntoNoMatch);
+                row.values[monthKey] = rollupKids.reduce(
+                  (sum: number, child: GridRowType) => sum + child.values[monthKey],
+                  0,
+                );
+              }
+            }
+          } else {
+            for (const monthKey of monthKeys) {
+              const rowId = row.id;
+              if (isCellLocked(rowId, monthKey)) {
+                continue;
+              }
+              const rollupKids = rollupChildrenForParentRow(row, rollupMode, rollupPropagateIntoNoMatch);
+              row.values[monthKey] = rollupKids.reduce(
+                (sum: number, child: GridRowType) => {
+                  return sum + child.values[monthKey];
+                },
+                0
+              );
+            }
           }
           // After summing months, calculate quarters and year from months
           calculateTimeAggregations(row);
@@ -1113,7 +1299,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     }
     
     return updated;
-  }, [lockedCells, parentTotalsRollupMode]);
+  }, [lockedCells, parentTotalsRollupMode, propagateIntoNoMatchRows]);
 
   // Update local state when prop changes and recalculate measure values
   React.useEffect(() => {
@@ -1123,7 +1309,13 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       skipSet.add(rowId);
     });
     
-    const calculatedData = calculateMeasureValues(data, skipSet, lockedCells, parentTotalsRollupMode);
+    const calculatedData = calculateMeasureValues(
+      data,
+      skipSet,
+      lockedCells,
+      parentTotalsRollupMode,
+      propagateIntoNoMatchRows,
+    );
     
     // After recalculation, restore preserved values ONLY for the currently edited cell
     // This ensures that when data prop changes (e.g., from external source),
@@ -1160,7 +1352,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     }
     
     setGridData(calculatedData);
-  }, [data, calculateMeasureValues, lockedCells, parentTotalsRollupMode]);
+  }, [data, calculateMeasureValues, lockedCells, parentTotalsRollupMode, propagateIntoNoMatchRows]);
 
   // Ensure edited measures are expanded at the measure row only (no auto-expand of nested children)
   // Runs on gridData/industry/cellEditHistory changes, not on every editedCells change
@@ -1996,7 +2188,8 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
     monthKey: keyof GridRowType['values'],
     newValue: number,
     note?: string,
-    skipUndoOperation?: boolean // Skip creating undo operation (for undo/redo)
+    skipUndoOperation?: boolean, // Skip creating undo operation (for undo/redo)
+    disaggregateVisibleChildrenOnly?: boolean,
   ) => {
     // CRITICAL: Clear all preserved values from previous edits
     preservedValuesRef.current.clear();
@@ -2294,7 +2487,11 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       if (editedRowForPropagation.parentId) {
         const parentRow = findRowById(editedRowForPropagation.parentId, gridData) || gridData.find(m => m.id === editedRowForPropagation.parentId);
         if (parentRow && parentRow.children) {
-          const rollupSiblings = childrenForParentRollup(parentRow.children, parentTotalsRollupMode);
+          const rollupSiblings = rollupChildrenForParentRow(
+            parentRow,
+            parentTotalsRollupMode,
+            propagateIntoNoMatchRows,
+          );
           // Calculate new parent value by summing rollup children (including the edited one)
           const childrenSum = rollupSiblings.reduce((sum, child) => {
             // Use the new value for the edited child, current value for others
@@ -2319,11 +2516,27 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       }
     }
 
+    const resolveMeasureRollupKidsForDisaggregation = (measureData: MeasureData): GridRowType[] => {
+      const measureSource =
+        rollupValueSourceData?.find((m) => m.id === measureData.id) ?? measureData;
+      const base = childrenForParentRollup(
+        measureSource.children,
+        parentTotalsRollupMode,
+        propagateIntoNoMatchRows,
+      );
+      if (!disaggregateVisibleChildrenOnly) return base;
+      const visibleRoot = filteredMeasureRowsRef.current?.find((m) => m.id === measureData.id);
+      if (!visibleRoot?.children?.length) return base;
+      const visibleIds = new Set(visibleRoot.children.map((c) => c.id));
+      const narrowed = base.filter((c) => visibleIds.has(c.id));
+      return narrowed.length > 0 ? narrowed : base;
+    };
+
     // 4. Propagate downward (to descendants) - for the edited time period
     // For measure rows, propagate to account level proportionally
     if (isMeasureRow) {
       const measureData = gridData.find(m => m.id === rowId);
-      const measureRollupKids = measureData ? childrenForParentRollup(measureData.children, parentTotalsRollupMode) : [];
+      const measureRollupKids = measureData ? resolveMeasureRollupKidsForDisaggregation(measureData) : [];
       if (measureData && measureRollupKids.length > 0) {
         const accountDistribution = distributeProportionally(delta, measureRollupKids, monthKey, lockedCells);
         for (const [accountId, accountDelta] of accountDistribution.entries()) {
@@ -2332,7 +2545,15 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
             const accountNewValue = account.values[monthKey] + accountDelta;
             storeOriginalValueIfImpacted(accountId, monthKey);
             allUpdates.push({ rowId: accountId, monthKey, newValue: accountNewValue });
-            const accountUpdates = propagateDownward(accountId, monthKey, accountDelta, gridData, lockedCells, parentTotalsRollupMode);
+            const accountUpdates = propagateDownward(
+              accountId,
+              monthKey,
+              accountDelta,
+              gridData,
+              lockedCells,
+              parentTotalsRollupMode,
+              propagateIntoNoMatchRows,
+            );
             accountUpdates.forEach(u => storeOriginalValueIfImpacted(u.rowId, u.monthKey));
             allUpdates.push(...accountUpdates);
           }
@@ -2340,7 +2561,15 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       }
     } else {
       // Propagate downward for the edited cell
-      const downwardUpdates = propagateDownward(rowId, monthKey, delta, gridData, lockedCells, parentTotalsRollupMode);
+      const downwardUpdates = propagateDownward(
+        rowId,
+        monthKey,
+        delta,
+        gridData,
+        lockedCells,
+        parentTotalsRollupMode,
+        propagateIntoNoMatchRows,
+      );
       downwardUpdates.forEach(u => storeOriginalValueIfImpacted(u.rowId, u.monthKey));
       allUpdates.push(...downwardUpdates);
       
@@ -2348,7 +2577,15 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       for (const timeUpdate of timeDistributionUpdates) {
         const timeDelta = timeUpdate.newValue - timeUpdate.oldValue;
         if (timeDelta !== 0) {
-          const timeDownwardUpdates = propagateDownward(rowId, timeUpdate.monthKey, timeDelta, gridData, lockedCells, parentTotalsRollupMode);
+          const timeDownwardUpdates = propagateDownward(
+            rowId,
+            timeUpdate.monthKey,
+            timeDelta,
+            gridData,
+            lockedCells,
+            parentTotalsRollupMode,
+            propagateIntoNoMatchRows,
+          );
           timeDownwardUpdates.forEach(u => storeOriginalValueIfImpacted(u.rowId, u.monthKey));
           allUpdates.push(...timeDownwardUpdates);
         }
@@ -2373,7 +2610,7 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
             
             if (isMeasureRow) {
               const measureData = gridData.find(m => m.id === rowId);
-              const aggRollupKids = measureData ? childrenForParentRollup(measureData.children, parentTotalsRollupMode) : [];
+              const aggRollupKids = measureData ? resolveMeasureRollupKidsForDisaggregation(measureData) : [];
               if (measureData && aggRollupKids.length > 0) {
                 const accountDistribution = distributeProportionally(aggDelta, aggRollupKids, aggKey, lockedCells);
                 for (const [accountId, accountDelta] of accountDistribution.entries()) {
@@ -2381,13 +2618,29 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                   if (account) {
                     const accountNewValue = account.values[aggKey] + accountDelta;
                     allUpdates.push({ rowId: accountId, monthKey: aggKey, newValue: accountNewValue });
-                    const accountUpdates = propagateDownward(accountId, aggKey, accountDelta, gridData, lockedCells, parentTotalsRollupMode);
+                    const accountUpdates = propagateDownward(
+                      accountId,
+                      aggKey,
+                      accountDelta,
+                      gridData,
+                      lockedCells,
+                      parentTotalsRollupMode,
+                      propagateIntoNoMatchRows,
+                    );
                     allUpdates.push(...accountUpdates);
                   }
                 }
               }
             } else {
-              const aggDownwardUpdates = propagateDownward(rowId, aggKey, aggDelta, gridData, lockedCells, parentTotalsRollupMode);
+              const aggDownwardUpdates = propagateDownward(
+                rowId,
+                aggKey,
+                aggDelta,
+                gridData,
+                lockedCells,
+                parentTotalsRollupMode,
+                propagateIntoNoMatchRows,
+              );
               allUpdates.push(...aggDownwardUpdates);
             }
           }
@@ -2682,9 +2935,18 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       }
     }
     
-    // Store the edited value to preserve it (for both measure and account/category year/quarter edits)
-    // ONLY preserve the currently edited cell - all other cells will be recalculated
-    const preservedValue = (isAccountOrCategoryYearQuarterEdit || isMeasureYearQuarterEdit) ? newValue : null;
+    // Store the edited value to preserve it after calculateMeasureValues.
+    // - Year/quarter on account/category or measure: those rows must not be overwritten by child rollups.
+    // - Direct measure month (etc.) edit **only** when splitting to visible children only: then
+    //   sum(visible children) can legitimately differ from the typed measure total, and recalc would
+    //   overwrite the driver. For normal splits, let calculateMeasureValues re-sum the measure so
+    //   parent totals stay consistent with children and with filter overlays.
+    const preservedValue =
+      isAccountOrCategoryYearQuarterEdit ||
+      isMeasureYearQuarterEdit ||
+      (editedMeasure && disaggregateVisibleChildrenOnly)
+        ? newValue
+        : null;
     
     // Apply all updates
     console.log('[GRID] Applying', allUpdates.length, 'updates');
@@ -2704,22 +2966,9 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       updatedData = updateValue(update.rowId, update.monthKey, update.newValue, updatedData);
     }
 
-    // Store original measure row values BEFORE recalculation
-    // This allows us to track measure rows as impacted when their children change
-    const originalMeasureValues = new Map<string, Map<keyof GridRowType['values'], number>>();
-    for (const measure of updatedData) {
-      const measureValues = new Map<keyof GridRowType['values'], number>();
-      const timeKeys: (keyof GridRowType['values'])[] = [
-        'year', 'q1', 'q2', 'q3', 'q4',
-        'jan2026', 'feb2026', 'mar2026', 'apr2026', 'may2026', 'jun2026',
-        'jul2026', 'aug2026', 'sep2026', 'oct2026', 'nov2026', 'dec2026',
-      ];
-      for (const key of timeKeys) {
-        measureValues.set(key, measure.values[key]);
-      }
-      originalMeasureValues.set(measure.id, measureValues);
-    }
-    
+    // Store original cell values for every row BEFORE recalculation (measures + nested rows, incl. filter buckets)
+    const originalRowValuesBeforeRecalc = snapshotAllRowCellValues(updatedData);
+
     // Recalculate measure values from children after all updates
     // Skip recalculating ONLY for the currently edited cell (if it's a year/quarter edit)
     // Do NOT skip for cross-measure updates - they should be recalculated
@@ -2732,44 +2981,51 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       console.log('[GRID] Skipping recalculation for currently edited measure row:', rowId);
     }
     
-    updatedData = calculateMeasureValues(updatedData, skipTimeAggregation, lockedCells, parentTotalsRollupMode);
-    
-    // Track measure row cells as impacted if their values changed due to children being impacted
-    for (const measure of updatedData) {
-      const originalValues = originalMeasureValues.get(measure.id);
-      if (originalValues) {
-        for (const [key, originalValue] of originalValues.entries()) {
-          const newValue = measure.values[key];
-          // Skip if this is the directly edited cell
-          if (measure.id === rowId && key === monthKey) {
+    updatedData = calculateMeasureValues(
+      updatedData,
+      skipTimeAggregation,
+      lockedCells,
+      parentTotalsRollupMode,
+      propagateIntoNoMatchRows,
+    );
+
+    // Track any row cell whose value changed from recalc (not only top-level measure rows), e.g. Matches filter bucket
+    for (const [snapshotRowId, originalValues] of originalRowValuesBeforeRecalc.entries()) {
+      const rowAfter = findRowById(snapshotRowId, updatedData);
+      if (!rowAfter) continue;
+      for (const [key, originalValue] of originalValues.entries()) {
+        if (snapshotRowId === rowId && key === monthKey) {
+          continue;
+        }
+        const newValue = rowAfter.values[key];
+        if (Math.abs(newValue - originalValue) > 0.01) {
+          const impactedKey = `${snapshotRowId}-${key}`;
+          if (lockedCells.has(impactedKey)) {
             continue;
           }
-          // If value changed, track as impacted
-          if (Math.abs(newValue - originalValue) > 0.01) { // Use small epsilon for floating point comparison
-            const measureCellKey = `${measure.id}-${key}`;
-            // Skip locked cells - they shouldn't be tracked as impacted
-            if (lockedCells.has(measureCellKey)) {
-              continue;
-            }
-            // Only add if not already tracked as edited
-            if (!editedCells.has(measureCellKey)) {
-              if (!originalValuesForImpacted.has(measureCellKey)) {
-                originalValuesForImpacted.set(measureCellKey, originalValue);
-                console.log('[GRID] Tracking measure row cell as impacted:', measureCellKey, 'original:', originalValue, 'new:', newValue);
-              }
-            }
+          if (!editedCells.has(impactedKey) && !originalValuesForImpacted.has(impactedKey)) {
+            originalValuesForImpacted.set(impactedKey, originalValue);
+            console.log('[GRID] Tracking row cell as impacted after recalc:', impactedKey, 'original:', originalValue, 'new:', newValue);
           }
         }
       }
     }
-    
-    // CRITICAL: After recalculation, restore ONLY the currently edited cell's value (if it's a year/quarter edit)
+
+    // CRITICAL: After recalculation, restore ONLY the currently edited cell's value when needed.
     // Do NOT restore cross-measure updated values - they should be recalculated
     if (preservedValue !== null) {
       console.log('[GRID] Restoring preserved value for currently edited cell:', preservedValue, 'for row:', rowId, 'monthKey:', monthKey);
       updatedData = updateValue(rowId, monthKey, preservedValue, updatedData);
       // Store in ref so it persists across recalculations triggered by useEffect
       preservedValuesRef.current.set(rowId, { monthKey, value: preservedValue });
+
+      // Direct measure month (or other non Y/Q) edit: restoring the month breaks Q/year until we roll up from months.
+      if (editedMeasure && !isYearQuarterEdit) {
+        const timeRollups = recalculateTimeAggregations(rowId, updatedData);
+        for (const u of timeRollups) {
+          updatedData = updateValue(u.rowId, u.monthKey, u.newValue, updatedData);
+        }
+      }
     } else {
       // Clear preserved value if this edit doesn't need preservation
       preservedValuesRef.current.delete(rowId);
@@ -2875,7 +3131,25 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       isInternalUpdateRef.current = true; // Mark as internal update to prevent sync loop
       onDataChange(finalData);
     }
-  }, [gridData, updateValue, onDataChange, calculateMeasureValues, recalculateTimeAggregations, distributeQuarterToMonths, distributeYearToQuarters, historyIndex, editedCells, handleExpandMeasure, selectedCells, focusedCell, findRowById, lockedCells, parentTotalsRollupMode]);
+  }, [
+    gridData,
+    updateValue,
+    onDataChange,
+    calculateMeasureValues,
+    recalculateTimeAggregations,
+    distributeQuarterToMonths,
+    distributeYearToQuarters,
+    historyIndex,
+    editedCells,
+    handleExpandMeasure,
+    selectedCells,
+    focusedCell,
+    findRowById,
+    lockedCells,
+    parentTotalsRollupMode,
+    propagateIntoNoMatchRows,
+    rollupValueSourceData,
+  ]);
 
   // Collect all visible rows in order for keyboard navigation
   const getAllVisibleRows = useCallback((): GridRowType[] => {
@@ -3297,8 +3571,22 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
   // Also expose a function to get current cell value from gridData
   useEffect(() => {
     if (onCellChangeHandlerReady) {
-      onCellChangeHandlerReady((rowId: string, monthKey: string, newValue: number, note?: string) => {
-        handleCellChange(rowId, monthKey as keyof GridRowType['values'], newValue, note);
+      onCellChangeHandlerReady((
+        rowId: string,
+        monthKey: string,
+        newValue: number,
+        note?: string,
+        skipUndo?: boolean,
+        disaggregateVisibleChildrenOnly?: boolean,
+      ) => {
+        handleCellChange(
+          rowId,
+          monthKey as keyof GridRowType['values'],
+          newValue,
+          note,
+          skipUndo,
+          disaggregateVisibleChildrenOnly,
+        );
       });
     }
   }, [handleCellChange, onCellChangeHandlerReady]);
@@ -3725,8 +4013,52 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
       rows = rows.map(r => flattenMeasureChildrenInTreeOrder(r));
     }
 
+    // Parent totals: full hierarchy / bucket modes recompute from widest structure + live values.
+    // `visibleOnly`: parents must sum only the row tree actually shown (search / column filters / depth).
+    if (
+      parentTotalsRollupMode !== 'visibleOnly' &&
+      (columnFilters.size > 0 || rollupValueSourceData)
+    ) {
+      const liveForRollup = rollupValueSourceData ?? gridData;
+      const structureForRollup = rollupStructureData ?? rollupValueSourceData ?? gridData;
+      return overlayFullSubtreeTotalsForColumnFilter(rows, liveForRollup, structureForRollup);
+    }
+    if (parentTotalsRollupMode === 'visibleOnly') {
+      return recomputeVisibleOnlyTotalsInTree(rows);
+    }
     return rows;
-  }, [memoizedMeasureRows, columnFilters, filterRowTree, sortConfig, sortRowTree, globalSortConfig, getMeasureAggregateValue, flattenMeasureChildrenInTreeOrder, getVisibleTimeKeys]);
+  }, [
+    memoizedMeasureRows,
+    columnFilters,
+    filterRowTree,
+    sortConfig,
+    sortRowTree,
+    globalSortConfig,
+    getMeasureAggregateValue,
+    flattenMeasureChildrenInTreeOrder,
+    getVisibleTimeKeys,
+    gridData,
+    rollupStructureData,
+    rollupValueSourceData,
+    parentTotalsRollupMode,
+  ]);
+
+  useEffect(() => {
+    filteredMeasureRowsRef.current = filteredMeasureRows ?? null;
+  }, [filteredMeasureRows]);
+
+  /** Column-filter “some children hidden” flag — collected here because filterRowsByType / quick-filter copies can drop `descendantsExcludedByColumnFilter` on row objects. */
+  const descendantColumnFilterRowIds = useMemo(() => {
+    const ids = new Set<string>();
+    const walk = (r: GridRowType) => {
+      if (r.descendantsExcludedByColumnFilter) ids.add(r.id);
+      r.children?.forEach(walk);
+    };
+    for (const m of filteredMeasureRows ?? []) {
+      walk(m);
+    }
+    return ids;
+  }, [filteredMeasureRows]);
 
   // Calculate impacted measures count
   const impactedMeasuresCount = useMemo(() => {
@@ -4372,6 +4704,10 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                 if (!measureRow) return null;
                 const measure = gridData.find(m => m.id === measureRow.id);
                 if (!measure) return null;
+                /** Logical child count for measure-row icon (panel filters prune `gridData` but rollup keeps full tree). */
+                const measureForUnderlyingChildCount =
+                  rollupValueSourceData?.find(m => m.id === measure.id) ?? measure;
+                const fullMeasureChildCountForIcon = measureForUnderlyingChildCount.children?.length ?? 0;
               
                 // Apply "Show Only Impacted KPI" filter first
                 const impactedFilteredRow = getFilteredRows(measureRow);
@@ -4416,8 +4752,8 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                       const measureName = rowName && gridData.find(m => m.name === rowName) ? rowName : measure.name;
                       return formatValue(value, isQuantity, measureName);
                     }}
-                    onCellChange={(rowId, monthKey, newValue, note) => {
-                      handleCellChange(rowId, monthKey, newValue, note);
+                    onCellChange={(rowId, monthKey, newValue, note, skipUndo, disaggregateVisibleChildrenOnly) => {
+                      handleCellChange(rowId, monthKey, newValue, note, skipUndo, disaggregateVisibleChildrenOnly);
                     }}
                     visibleTimeKeys={getVisibleTimeKeys()}
                     focusedCell={focusedCell}
@@ -4485,6 +4821,9 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                     allCellValues={allCellValues}
                     allCellValuesByType={allCellValuesByType}
                     parentTotalsRollupMode={parentTotalsRollupMode}
+                    propagateIntoNoMatchRows={propagateIntoNoMatchRows}
+                    measureEditDisaggregateVisibleChildrenDefault={measureEditDisaggregateVisibleChildrenDefault}
+                    excludedNoMatchSubtreeRowIds={excludedNoMatchSubtreeRowIds}
                     planReviewGridLock={planReviewGridLock}
                     planReviewRequesterStripes={planReviewRequesterStripes}
                     approverMayOpenReviewPopover={approverMayOpenReviewPopover}
@@ -4493,6 +4832,9 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                     onPendingApproverEditConsumed={onPendingApproverEditConsumed}
                     onManagerOverrideForCell={onManagerOverrideForCell}
                     flattenedSortShowAncestorPath={isFlattenedSortAncestorPathVisible}
+                    descendantColumnFilterRowIds={descendantColumnFilterRowIds}
+                    rollupValueSourceData={rollupValueSourceData}
+                    fullMeasureChildCount={fullMeasureChildCountForIcon}
                   />
               );
               }
@@ -4514,8 +4856,8 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                   expandedRows={expandedRows}
                   onToggleExpand={toggleExpand}
                   formatValue={formatValue}
-                  onCellChange={(rowId, monthKey, newValue, note) => {
-                    handleCellChange(rowId, monthKey, newValue, note);
+                  onCellChange={(rowId, monthKey, newValue, note, skipUndo, disaggregateVisibleChildrenOnly) => {
+                    handleCellChange(rowId, monthKey, newValue, note, skipUndo, disaggregateVisibleChildrenOnly);
                   }}
                   visibleTimeKeys={getVisibleTimeKeys()}
                   focusedCell={focusedCell}
@@ -4581,6 +4923,9 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                   allCellValues={allCellValues}
                   allCellValuesByType={allCellValuesByType}
                   parentTotalsRollupMode={parentTotalsRollupMode}
+                  propagateIntoNoMatchRows={propagateIntoNoMatchRows}
+                  measureEditDisaggregateVisibleChildrenDefault={measureEditDisaggregateVisibleChildrenDefault}
+                  excludedNoMatchSubtreeRowIds={excludedNoMatchSubtreeRowIds}
                   planReviewGridLock={planReviewGridLock}
                   planReviewRequesterStripes={planReviewRequesterStripes}
                   approverMayOpenReviewPopover={approverMayOpenReviewPopover}
@@ -4588,7 +4933,10 @@ const HierarchicalGrid: React.FC<HierarchicalGridProps> = ({
                   pendingApproverEdit={pendingApproverEdit}
                   onPendingApproverEditConsumed={onPendingApproverEditConsumed}
                     onManagerOverrideForCell={onManagerOverrideForCell}
-                    flattenedSortShowAncestorPath={isFlattenedSortAncestorPathVisible}
+                  flattenedSortShowAncestorPath={isFlattenedSortAncestorPathVisible}
+                  descendantColumnFilterRowIds={descendantColumnFilterRowIds}
+                  rollupValueSourceData={rollupValueSourceData}
+                  fullMeasureChildCount={fullMeasureChildCountForIcon}
                 />
               );
               })

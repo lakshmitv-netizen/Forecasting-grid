@@ -1,7 +1,11 @@
 export type RowType = 'measure' | 'account' | 'category' | 'product' | 'filterSummary';
 
 /** How parent row totals aggregate when panel filters inject "filtered out" summary siblings. */
-export type ParentTotalsRollupMode = 'fullHierarchy' | 'visibleOnly';
+export type ParentTotalsRollupMode =
+  | 'fullHierarchy'
+  | 'visibleOnly'
+  /** Hierarchical grid: under each parent, show synthetic "Matches filter" / "Does not match filter" rows for column dimension filters. */
+  | 'columnFilterBuckets';
 
 export interface GridRow {
   id: string;
@@ -11,10 +15,12 @@ export interface GridRow {
   type: RowType;
   children?: GridRow[];
   groupContext?: string; // Which measure group this row belongs to (for duplicated measures)
-  /** Synthetic rows: aggregate of nodes excluded by panel filters */
-  filterSummaryRole?: 'filteredOut';
+  /** Synthetic rows: aggregate of nodes excluded by panel filters, or column-filter pass/fail buckets */
+  filterSummaryRole?: 'filteredOut' | 'filterBucketMatch' | 'filterBucketNoMatch';
   /** Dimension level of excluded siblings (for icon / parity with real dimension rows) */
   filteredOutDimension?: 'account' | 'category' | 'product';
+  /** True when column filters hide at least one descendant; parent totals still reflect full hierarchy. */
+  descendantsExcludedByColumnFilter?: boolean;
   values: {
     year: number; // FY26 - sum of all months
     q1: number;   // Q1 - sum of Jan, Feb, Mar

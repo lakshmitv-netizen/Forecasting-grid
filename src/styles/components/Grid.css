@@ -1150,6 +1150,92 @@ button.frozen-col-resize-handle-vertical {
   background-color: var(--slds-g-color-surface-container-1) !important;
 }
 
+/* Column filter: parent still shown while some children are hidden from the tree */
+/* Column filter: white circle + accent funnel on parent row type icon */
+.grid-row-type-icon-with-filter-dot {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  vertical-align: middle;
+  overflow: visible;
+  z-index: 2;
+}
+
+.grid-row-filter-applied-dot {
+  position: absolute;
+  top: -12px;
+  right: -10px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--color-surface-white);
+  border: 2px solid var(--slds-g-color-accent-1);
+  box-sizing: border-box;
+  pointer-events: none;
+  z-index: 6;
+  box-shadow:
+    0 2px 8px color-mix(in srgb, var(--slds-g-color-neutral-base-10) 38%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--slds-g-color-accent-1) 28%, transparent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--slds-g-color-accent-1);
+  padding: 0;
+  line-height: 0;
+}
+
+.grid-row-filter-applied-dot__funnel {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: block;
+}
+
+/* Default .cell-content / .divided-frozen-row use overflow:hidden — badge sits outside icon bounds */
+.grid-row.row-has-descendants-column-filter .cell-content.cell-content-has-filter-badge {
+  overflow: visible;
+}
+
+.grid-row.row-has-descendants-column-filter .divided-frozen-row.divided-frozen-row--filter-badge {
+  overflow: visible;
+}
+
+/* First column is sticky; allow badge to paint outside cell padding */
+.grid-row.row-has-descendants-column-filter .grid-cell.frozen-column-cell:first-of-type {
+  overflow: visible;
+}
+
+/* Measure header rows: custom measure glyph (public/measure-row.svg) */
+.grid-row.measure-row .measure-row-hierarchy-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-right: 6px;
+  width: 20px;
+  height: 20px;
+}
+
+.grid-row.measure-row .measure-row-hierarchy-icon img {
+  display: block;
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+/* Wider asset (52×45) with built-in filter badge — keep aligned with row type column */
+.grid-row.measure-row .measure-row-hierarchy-icon--all-descendants-filtered {
+  width: 30px;
+  height: 29px;
+}
+
+.grid-row.measure-row .measure-row-hierarchy-icon--all-descendants-filtered img {
+  width: 30px;
+  height: 29px;
+}
+
 /* Panel “filtered out” aggregate rows — uniform grey circle + glyph (source SVGs use different brand fills) */
 .grid-row.grid-row-filtered-out-dimension .grid-row-filtered-out-dimension-icon {
   display: inline-flex;

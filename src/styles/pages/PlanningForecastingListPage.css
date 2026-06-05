@@ -412,12 +412,11 @@
   left: 0 !important;
   right: 0 !important;
   bottom: 0 !important;
-  background-color: var(--color-overlay-scrim) !important;
+  background-color: #000000 !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
   z-index: 99999 !important; /* Topmost layer - above everything including page header */
-  backdrop-filter: blur(4px) !important;
 }
 
 .list-page-modal-close-outside {
@@ -461,10 +460,10 @@
   z-index: 100000 !important; /* Topmost layer - above overlay */
 }
 
-/* Access control step: room for Person + Job role + dimension columns */
+/* Access control step: room for Person + Job role + access columns (measure scope) */
 .list-page-modal--access-wide {
-  width: min(1120px, 96vw) !important;
-  max-width: 96vw !important;
+  width: min(1280px, 98vw) !important;
+  max-width: 98vw !important;
 }
 
 .list-page-modal-expanded {
@@ -533,31 +532,6 @@
 .list-page-modal-body--access-step {
   min-height: 280px !important;
   max-height: calc(90vh - 220px) !important;
-}
-
-.list-page-modal-access-owner-kv {
-  display: flex !important;
-  align-items: baseline !important;
-  gap: 6px !important;
-  margin: 0 0 10px 0 !important;
-  font-family: var(--font-family-base, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif) !important;
-  font-size: var(--slds-g-font-size-4) !important;
-  line-height: var(--slds-g-line-height-4) !important;
-}
-
-.list-page-modal-access-owner-label {
-  font-size: inherit !important;
-  line-height: inherit !important;
-  font-weight: var(--slds-g-font-weight-6) !important;
-  color: var(--slds-g-color-on-surface-2) !important;
-  flex-shrink: 0 !important;
-}
-
-.list-page-modal-access-owner-value {
-  font-size: inherit !important;
-  line-height: inherit !important;
-  font-weight: var(--slds-g-font-weight-4) !important;
-  color: var(--slds-g-color-on-surface-1) !important;
 }
 
 /* Filters + table: one flex child of modal body so body gap-24 does not sit between toolbar and grid */
@@ -683,6 +657,14 @@
   font-weight: var(--slds-g-font-weight-4) !important;
   /* on-surface-1 → neutral-base-40 in variables.css */
   color: var(--slds-g-color-on-surface-1) !important;
+}
+
+.list-page-modal-access-bulk-popover-hint {
+  margin: 0 !important;
+  margin-top: -6px !important;
+  font-size: var(--slds-g-font-size-3) !important;
+  line-height: var(--slds-g-line-height-3) !important;
+  color: var(--slds-g-color-on-surface-2) !important;
 }
 
 .list-page-modal-access-bulk-popover-field {
@@ -1204,11 +1186,28 @@
 .list-page-modal-access-table tbody td:nth-child(4),
 .list-page-modal-access-table tbody td:nth-child(5),
 .list-page-modal-access-table tbody td:nth-child(6) {
-  width: 19% !important;
+  width: 20% !important;
 }
 
 .list-page-modal-access-table-role-col {
   min-width: 0 !important;
+}
+
+.list-page-modal-access-table-subset-col {
+  min-width: 0 !important;
+}
+
+.list-page-modal-access-table-measure-col {
+  min-width: 0 !important;
+}
+
+.list-page-modal-access-table-subset-cell,
+.list-page-modal-access-table-measure-name-cell {
+  color: var(--slds-g-color-neutral-base-20) !important;
+  font-size: 13px !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
 }
 
 .list-page-modal-access-table-role-cell {
@@ -1227,6 +1226,61 @@
   padding-left: 8px !important;
   padding-right: 28px !important;
   font-size: 12px !important;
+}
+
+.list-page-modal-access-header-plain {
+  vertical-align: bottom !important;
+  padding-top: 10px !important;
+}
+
+.list-page-modal-access-header-plain-text {
+  display: block !important;
+  font-size: 13px !important;
+  font-weight: var(--slds-g-font-weight-6, 600) !important;
+  color: var(--slds-g-color-on-surface-3) !important;
+  text-align: center !important;
+}
+
+.list-page-modal-access-scope-col {
+  min-width: 220px !important;
+  max-width: 380px !important;
+}
+
+.list-page-modal-access-scope-cell {
+  vertical-align: top !important;
+  padding: 8px 10px !important;
+}
+
+.list-page-modal-access-scope-stack {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  max-height: 380px !important;
+  overflow-y: auto !important;
+}
+
+.list-page-modal-access-scope-row {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 88px !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.list-page-modal-access-scope-label {
+  font-size: 11px !important;
+  line-height: 1.35 !important;
+  color: var(--slds-g-color-on-surface-2) !important;
+  overflow: hidden !important;
+}
+
+.list-page-modal-access-select--scope {
+  width: 88px !important;
+  max-width: 88px !important;
+  min-width: 88px !important;
+  height: 30px !important;
+  padding-left: 6px !important;
+  padding-right: 20px !important;
+  font-size: 11px !important;
 }
 
 .list-page-modal-section {

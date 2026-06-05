@@ -13,7 +13,7 @@ import AddRemoveChildNodesModal from './AddRemoveChildNodesModal';
 import ApprovalActionPopover from './ApprovalActionPopover';
 import ApprovalStatusChangePopover from './ApprovalStatusChangePopover';
 import ScopedNotification from './ScopedNotification';
-import { findRowById } from '../utils/valuePropagation';
+import { findRowById, isUnderFilterBucketNoMatchSubtree } from '../utils/valuePropagation';
 import { ApprovalRequest } from '../types';
 
 /** Tooltip when value cell is read-only after bulk Request Approval submit. */
@@ -169,8 +169,15 @@ const APPROVAL_STATUS_NOTE_RE = /^(Not Submitted|Pending|Approved|Approved with 
 const isApprovalStatusTransitionNote = (note?: string): boolean => !!note && APPROVAL_STATUS_NOTE_RE.test(note.trim());
 // Icon imports - using public folder paths (SVGs with built-in colored backgrounds)
 const AccountIcon = '/new_account.svg';
+/** Account row when column filters hide some descendant rows (e.g. categories); funnel baked into asset. */
+const AccountFilteredDescendantsIcon = '/account-filtered-descendants.svg';
 const CategoryIcon = '/category.svg';
+/** Category row when some product children are hidden by filters; funnel baked into asset. */
+const CategoryFilteredDescendantsIcon = '/category-filtered-descendants.svg';
 const ProductIcon = '/product.svg';
+const MeasureRowIcon = '/measure-row.svg';
+/** Measure row when expanded but every descendant is hidden by filters (badge baked into asset). */
+const MeasureRowFilteredDescendantsIcon = '/measure-row-filtered-descendants.svg';
 import '../styles/components/Grid.css';
 import '../styles/components/CellEditInfoPopover.css';
 
@@ -181,7 +188,14 @@ interface GridRowProps {
   expandedRows: Set<string>;
   onToggleExpand: (id: string) => void;
   formatValue: (value: number, isQuantity?: boolean, measureName?: string) => string;
-  onCellChange?: (rowId: string, monthKey: keyof GridRowType['values'], newValue: number, note?: string) => void;
+  onCellChange?: (
+    rowId: string,
+    monthKey: keyof GridRowType['values'],
+    newValue: number,
+    note?: string,
+    skipUndoOperation?: boolean,
+    disaggregateVisibleChildrenOnly?: boolean,
+  ) => void;
   visibleTimeKeys?: (keyof GridRowType['values'])[];
   focusedCell?: { rowId: string; monthKey: keyof GridRowType['values'] } | null;
   onCellFocus?: (cell: { rowId: string; monthKey: keyof GridRowType['values'] } | null) => void;
@@ -226,6 +240,8 @@ interface GridRowProps {
   onDeleteNode?: (rowId: string) => void; // Callback to delete a node
   onReparentNode?: (rowId: string, parentNodeId: string | null) => void; // Callback to reparent a node
   data?: MeasureData[]; // Full data structure for hierarchy operations
+  /** Widest dimension tree (e.g. merged from `originalData`) so account-row icons can detect children hidden only in the visible tree. */
+  rollupValueSourceData?: MeasureData[];
   frozenColumns?: Array<{ id: string; name: string }>; // Array of frozen columns to display
   showAdditionalFrozenColumns?: boolean; // Whether to show additional frozen columns divided in first cell
   subColumns?: Array<{ id: string; name: string; formula?: string; isCustom?: boolean; showOnGrid?: boolean }>; // Sub-columns to render within each time cell
@@ -241,8 +257,14 @@ interface GridRowProps {
   allCellValues?: Map<string, number[]>; // timeKey -> all values for that key across all visible rows (for topN etc)
   allCellValuesByType?: Map<string, Map<string, number[]>>; // timeKey -> rowType -> values[] (for same-dimension concentration)
   isDesignSystemRulesEnabled?: boolean;
-  /** When fullHierarchy, filtered-out aggregate rows are editable peers; when visibleOnly they stay read-only/muted. */
+  /** fullHierarchy: sum all children. visibleOnly: sum only children kept visible by filters. columnFilterBuckets: legacy bucket layout when data includes bucket rows. */
   parentTotalsRollupMode?: ParentTotalsRollupMode;
+  /** Bucket mode: when false, no-match branch is scratched out, omitted from parent totals, and not editable. */
+  propagateIntoNoMatchRows?: boolean;
+  /** Initial value for measure-row “limit split to visible children” when a cell edit opens. */
+  measureEditDisaggregateVisibleChildrenDefault?: boolean;
+  /** Precomputed row IDs in every "Does not match" subtree (bucket + nested rows); preferred over walking parentId. */
+  excludedNoMatchSubtreeRowIds?: Set<string>;
   /** Plan record is Submitted — value cells show pending styling, no edits, not-allowed cursor + tooltip. */
   planReviewGridLock?: boolean;
   /** Plan submitter view: add read-only stripe texture to all plan-locked value cells. */
@@ -258,6 +280,10 @@ interface GridRowProps {
   onManagerOverrideForCell?: (cellKey: string) => void;
   /** Flattened sort: show ancestor hierarchy under dimension names (from parentId + data) */
   flattenedSortShowAncestorPath?: boolean;
+  /** From HierarchicalGrid: row IDs with column-filter hidden descendants (stable when row copies drop the flag). */
+  descendantColumnFilterRowIds?: Set<string>;
+  /** Root measure only: child count on full `gridData` (used when filters hide every visible child but measure stays expanded). */
+  fullMeasureChildCount?: number;
 }
 
 /** Secondary line: full hierarchy path when sort is flattened (ellipsis + hover popover) */
@@ -1132,6 +1158,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
   onDeleteNode,
   onReparentNode,
   data = [],
+  rollupValueSourceData,
   frozenColumns = [],
   showAdditionalFrozenColumns = false,
   subColumns = [],
@@ -1147,6 +1174,9 @@ const GridRowComponent: React.FC<GridRowProps> = ({
   allCellValuesByType,
   isDesignSystemRulesEnabled = true,
   parentTotalsRollupMode = 'fullHierarchy',
+  propagateIntoNoMatchRows = true,
+  measureEditDisaggregateVisibleChildrenDefault = false,
+  excludedNoMatchSubtreeRowIds: excludedNoMatchSubtreeRowIdsProp,
   planReviewGridLock = false,
   planReviewRequesterStripes = false,
   approverMayOpenReviewPopover = false,
@@ -1155,6 +1185,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
   onPendingApproverEditConsumed,
   onManagerOverrideForCell,
   flattenedSortShowAncestorPath = false,
+  descendantColumnFilterRowIds,
+  fullMeasureChildCount,
 }) => {
   const isGrid264Ux = useIsGrid264UpdatedExperience();
   const rowA11y = isGrid264Ux ? { role: 'row' as const } : {};
@@ -1167,14 +1199,77 @@ const GridRowComponent: React.FC<GridRowProps> = ({
   const rowValues = row.values ?? {};
   const { currentUser } = useCurrentUser();
 
+  const hasDescendantColumnFilterBadge =
+    Boolean(row.descendantsExcludedByColumnFilter) || Boolean(descendantColumnFilterRowIds?.has(row.id));
+
+  /** Fewer category branches (or direct children) under this account than in the widest known tree. */
+  const accountHasHiddenChildCategoriesVsStructure = React.useMemo(() => {
+    if (row.type !== 'account') return false;
+    if (parentTotalsRollupMode === 'columnFilterBuckets') return false;
+    const structureSource =
+      rollupValueSourceData && rollupValueSourceData.length > 0 ? rollupValueSourceData : data;
+    if (!structureSource?.length) return false;
+    const full = findRowById(row.id, structureSource);
+    if (!full?.children?.length) return false;
+    const visible = row.children ?? [];
+    const fullCategoryChildIds = full.children.filter((c) => c.type === 'category').map((c) => c.id);
+    if (fullCategoryChildIds.length > 0) {
+      const visibleChildIds = new Set(visible.map((c) => c.id));
+      if (fullCategoryChildIds.some((id) => !visibleChildIds.has(id))) return true;
+    }
+    return full.children.length > visible.length;
+  }, [data, parentTotalsRollupMode, rollupValueSourceData, row.children, row.id, row.type]);
+
+  /** Fewer product branches under this category than in the widest known tree. */
+  const categoryHasHiddenChildProductsVsStructure = React.useMemo(() => {
+    if (row.type !== 'category') return false;
+    if (parentTotalsRollupMode === 'columnFilterBuckets') return false;
+    const structureSource =
+      rollupValueSourceData && rollupValueSourceData.length > 0 ? rollupValueSourceData : data;
+    if (!structureSource?.length) return false;
+    const full = findRowById(row.id, structureSource);
+    if (!full?.children?.length) return false;
+    const visible = row.children ?? [];
+    const fullProductChildIds = full.children.filter((c) => c.type === 'product').map((c) => c.id);
+    if (fullProductChildIds.length > 0) {
+      const visibleChildIds = new Set(visible.map((c) => c.id));
+      if (fullProductChildIds.some((id) => !visibleChildIds.has(id))) return true;
+    }
+    return full.children.length > visible.length;
+  }, [data, parentTotalsRollupMode, rollupValueSourceData, row.children, row.id, row.type]);
+
+  const noMatchBranchScratchedOut = React.useMemo(() => {
+    if (parentTotalsRollupMode !== 'columnFilterBuckets' || propagateIntoNoMatchRows !== false) {
+      return false;
+    }
+    if (excludedNoMatchSubtreeRowIdsProp !== undefined) {
+      return excludedNoMatchSubtreeRowIdsProp.has(row.id);
+    }
+    if (!data?.length) return false;
+    return isUnderFilterBucketNoMatchSubtree(row.id, data);
+  }, [parentTotalsRollupMode, propagateIntoNoMatchRows, row.id, excludedNoMatchSubtreeRowIdsProp, data]);
+
+  /** Column-filter bucket rows: editable in bucket mode; no-match bucket stays read-only when scratched out. */
+  const allowEditPassFailBucketAggregateRow =
+    row.type === 'filterSummary' &&
+    parentTotalsRollupMode === 'columnFilterBuckets' &&
+    (row.filterSummaryRole === 'filterBucketMatch' ||
+      (row.filterSummaryRole === 'filterBucketNoMatch' && !noMatchBranchScratchedOut));
+
   const allowEditFilteredOutAggregateRow =
     row.type === 'filterSummary' &&
     row.filterSummaryRole === 'filteredOut' &&
     parentTotalsRollupMode === 'fullHierarchy';
   const isFilterSummaryReadonly =
-    row.type === 'filterSummary' && !allowEditFilteredOutAggregateRow;
+    row.type === 'filterSummary' &&
+    !allowEditFilteredOutAggregateRow &&
+    !allowEditPassFailBucketAggregateRow;
   const isFilteredOutSummaryRow =
     row.type === 'filterSummary' && row.filterSummaryRole === 'filteredOut';
+  const isFilterBucketNoMatchMutedRow =
+    row.type === 'filterSummary' &&
+    row.filterSummaryRole === 'filterBucketNoMatch' &&
+    parentTotalsRollupMode === 'visibleOnly';
   const isFilteredOutMutedRow =
     isFilteredOutSummaryRow && parentTotalsRollupMode === 'visibleOnly';
   
@@ -1198,6 +1293,11 @@ const GridRowComponent: React.FC<GridRowProps> = ({
   }, [row.id, data, row.children?.length, quickFilter]);
   
   const hasChildren = row.children && row.children.length > 0;
+  /** Chevron when the visible tree has no rows but the measure still has rows in `gridData` (all filtered out). */
+  const hasExpandChevron =
+    row.type === 'measure'
+      ? hasChildren || (typeof fullMeasureChildCount === 'number' && fullMeasureChildCount > 0)
+      : hasChildren;
 
   const flattenedDimensionAncestorNames = React.useMemo(() => {
     if (!flattenedSortShowAncestorPath) return [];
@@ -1602,7 +1702,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
       if (planReviewGridLock && !approverOverrideCellKeys?.has(cellKeyInner)) {
         if (!(options?.fromApproverPencilInReview && approverMayOpenReviewPopover)) return;
       }
-      if (row.groupContext === 'Adjustment Measures Category') return;
+      if (row.groupContext === 'Adjustment Measures') return;
       if (onCellFocusWithHistory) onCellFocusWithHistory('', null);
       if (options?.fromApproverPencilInReview) {
         setPlanReviewPencilSessionCellKey(cellKeyInner);
@@ -1852,7 +1952,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
       // The parent component will handle deduplication if needed
       // Pass note to onCellChange so it can be saved with edit history
       const noteToSave = adjustmentNote.trim() || undefined;
-      onCellChange(currentRowId, monthKey, roundedValue, noteToSave);
+      const measureDisaggVisOnly = row.type === 'measure' && measureEditDisaggregateVisibleChildrenDefault;
+      onCellChange(currentRowId, monthKey, roundedValue, noteToSave, undefined, measureDisaggVisOnly);
 
       // Apply optional approval action selected in "Other Actions"
       if (onApprovalAction) {
@@ -1957,7 +2058,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
       const roundedValue = Math.round(numValue * 100) / 100;
       // Pass note to onCellChange so it can be saved with edit history
       const noteToSave = adjustmentNote.trim() || undefined;
-      onCellChange(currentRowId, monthKey, roundedValue, noteToSave);
+      const measureDisaggVisOnlySave = row.type === 'measure' && measureEditDisaggregateVisibleChildrenDefault;
+      onCellChange(currentRowId, monthKey, roundedValue, noteToSave, undefined, measureDisaggVisOnlySave);
 
       // Apply optional approval action selected in "Other Actions"
       if (onApprovalAction) {
@@ -2713,6 +2815,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 {!isApprovalRequestedForEditing && (() => {
                   const adjustmentNoteFieldId = `cell-adjustment-note-${row.id}-${monthKey}`;
                   return (
+                    <>
                     <div style={{ marginBottom: '8px' }}>
                       <label
                         htmlFor={adjustmentNoteFieldId}
@@ -2813,6 +2916,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                         }}
                       />
                     </div>
+                    </>
                   );
                 })()}
 
@@ -2945,59 +3049,86 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 )}
 
                 {moreAction === 'provide-approval-decision' && (
-                  <div style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '4px',
-                    marginBottom: '8px'
-                  }}>
-                    <label style={{
-                      display: 'block',
-                      fontSize: '12px',
-                      fontWeight: 600,
-                      color: 'var(--color-on-surface-strong)',
-                      marginBottom: '0'
-                    }}>
-                      Approval Action
-                    </label>
-                    <select
-                      value={provideApprovalDecision}
-                      onChange={(e) => setProvideApprovalDecision(e.target.value as 'approved' | 'rejected' | 'approvedWithCondition')}
-                      onMouseDown={(e) => {
-                        isInteractingWithPopoverControlRef.current = true;
-                        e.stopPropagation();
-                      }}
-                      onFocus={() => {
-                        isInteractingWithPopoverControlRef.current = true;
-                      }}
-                      onBlur={() => {
-                        setTimeout(() => {
-                          isInteractingWithPopoverControlRef.current = false;
-                        }, 120);
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                      style={{
-                        width: '100%',
-                        height: '32px',
-                        border: '1px solid var(--color-border-ui-strong)',
-                        borderRadius: '4px',
-                        padding: '0 10px',
-                        fontSize: '13px',
-                        color: 'var(--color-on-surface-strong)',
-                        backgroundColor: 'var(--color-surface-white)',
-                        outline: 'none'
-                      }}
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px',
+                      marginBottom: '8px',
+                    }}
+                  >
+                    <div className="planning-approver-decision-select-wrap" style={{ marginTop: 0 }}>
+                    <div
+                      className="planning-approver-decision-select-label"
+                      id={`grid-cell-approver-decision-label-${row.id}-${String(monthKey)}`}
                     >
-                      <option value="approved">Approve</option>
-                      <option value="rejected">Reject</option>
-                      <option value="approvedWithCondition">Conditional Approve</option>
-                    </select>
+                      Your decision
+                    </div>
+                    <div
+                      className="planning-approver-decision-btn-group"
+                      role="group"
+                      aria-labelledby={`grid-cell-approver-decision-label-${row.id}-${String(monthKey)}`}
+                    >
+                      <button
+                        type="button"
+                        className={`planning-approver-decision-btn planning-approver-decision-btn--approve${
+                          provideApprovalDecision === 'approved' ? ' planning-approver-decision-btn--selected' : ''
+                        }`}
+                        aria-pressed={provideApprovalDecision === 'approved'}
+                        onMouseDown={(e) => {
+                          isInteractingWithPopoverControlRef.current = true;
+                          e.stopPropagation();
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setProvideApprovalDecision('approved');
+                        }}
+                      >
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        className={`planning-approver-decision-btn planning-approver-decision-btn--conditional${
+                          provideApprovalDecision === 'approvedWithCondition'
+                            ? ' planning-approver-decision-btn--selected'
+                            : ''
+                        }`}
+                        aria-pressed={provideApprovalDecision === 'approvedWithCondition'}
+                        onMouseDown={(e) => {
+                          isInteractingWithPopoverControlRef.current = true;
+                          e.stopPropagation();
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setProvideApprovalDecision('approvedWithCondition');
+                        }}
+                      >
+                        Conditionally Approve
+                      </button>
+                      <button
+                        type="button"
+                        className={`planning-approver-decision-btn planning-approver-decision-btn--reject${
+                          provideApprovalDecision === 'rejected' ? ' planning-approver-decision-btn--selected' : ''
+                        }`}
+                        aria-pressed={provideApprovalDecision === 'rejected'}
+                        onMouseDown={(e) => {
+                          isInteractingWithPopoverControlRef.current = true;
+                          e.stopPropagation();
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setProvideApprovalDecision('rejected');
+                        }}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                    </div>
                     <label style={{
                       display: 'block',
                       fontSize: '12px',
                       fontWeight: 600,
                       color: 'var(--color-on-surface-strong)',
-                      marginTop: '2px',
                       marginBottom: '0'
                     }}>
                       Notes
@@ -3053,7 +3184,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
     const isReadonlyMeasure = row.id.includes('measure-ly-order') ||
       row.id.includes('-measure-ly-order') ||
       row.name?.includes('Last Year');
-    const isAdjustmentGroupCell = row.groupContext === 'Adjustment Measures Category';
+    const isAdjustmentGroupCell = row.groupContext === 'Adjustment Measures';
 
     const editedOriginalValue = isDesignSystemRulesEnabled ? editedCells?.get(cellKey) : undefined;
     const impactedOriginalValue = isDesignSystemRulesEnabled ? impactedCells?.get(cellKey) : undefined;
@@ -3147,7 +3278,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
       !isCellLocked &&
       !isReadonlyMeasure &&
       !isAdjustmentGroupCell &&
-      !isFilterSummaryReadonly;
+      !isFilterSummaryReadonly &&
+      !noMatchBranchScratchedOut;
     const isEditable = baseValueEditable && !isPlanReviewLockActive && !pendingApprovalLocksValueCell;
     const planReviewRequesterLockActive =
       planReviewRequesterStripes === true && isPlanReviewLockActive;
@@ -3425,15 +3557,45 @@ const GridRowComponent: React.FC<GridRowProps> = ({
   // Don't show when only Adjustment Measures Group is selected
   const showGroupSwitcher = isSharedMeasure && row.groupContext !== undefined;
 
+  /** Badge measure icon: expanded + (column filter hid some subtree, or panel/other pruning vs full rollup tree). */
+  const measureUsesFilteredDescendantsAsset =
+    row.type === 'measure' &&
+    isExpanded &&
+    (hasDescendantColumnFilterBadge ||
+      (typeof fullMeasureChildCount === 'number' &&
+        fullMeasureChildCount > (row.children?.length ?? 0)));
+
+  /** Account: hidden category branches vs widest tree, or column-filter badge on this row. */
+  const accountUsesFilteredDescendantsAsset =
+    row.type === 'account' &&
+    (hasDescendantColumnFilterBadge || accountHasHiddenChildCategoriesVsStructure);
+
+  /** Category: hidden product branches vs widest tree, or column-filter badge on this row. */
+  const categoryUsesFilteredDescendantsAsset =
+    row.type === 'category' &&
+    (hasDescendantColumnFilterBadge || categoryHasHiddenChildProductsVsStructure);
+
   // Helper function to render type icon
   const renderTypeIcon = () => {
     const iconStyle: React.CSSProperties = {
       display: 'inline-block',
       verticalAlign: 'middle',
-      marginRight: isFilteredOutMutedRow ? 0 : '6px',
+      marginRight:
+        isFilteredOutMutedRow || isFilterBucketNoMatchMutedRow || noMatchBranchScratchedOut ? 0 : '6px',
       flexShrink: 0,
       width: '20px',
-      height: '20px'
+      height: '20px',
+    };
+
+    const accountFilteredIconStyle: React.CSSProperties = {
+      ...iconStyle,
+      width: '28px',
+      height: '24px',
+    };
+    const categoryFilteredIconStyle: React.CSSProperties = {
+      ...iconStyle,
+      width: '28px',
+      height: '25px',
     };
 
     const dimForIcon =
@@ -3443,33 +3605,136 @@ const GridRowComponent: React.FC<GridRowProps> = ({
           ? row.type
           : null;
 
-    const wrapFilteredOutIcon = (node: React.ReactNode) =>
-      isFilteredOutMutedRow ? (
-        <span
-          className="grid-row-filtered-out-dimension-icon"
-          data-filtered-dimension={row.filteredOutDimension ?? ''}
-        >
-          {node}
-        </span>
-      ) : (
-        node
-      );
+    const wrapMutedDimensionIcon = (node: React.ReactNode) => {
+      if (isFilteredOutMutedRow) {
+        return (
+          <span
+            className="grid-row-filtered-out-dimension-icon"
+            data-filtered-dimension={row.filteredOutDimension ?? ''}
+          >
+            {node}
+          </span>
+        );
+      }
+      if (noMatchBranchScratchedOut && dimForIcon) {
+        return (
+          <span className="grid-row-filtered-out-dimension-icon" data-filtered-dimension={dimForIcon}>
+            {node}
+          </span>
+        );
+      }
+      return node;
+    };
 
     if (dimForIcon === 'account') {
-      return wrapFilteredOutIcon(<img src={AccountIcon} alt="Account" style={iconStyle} />);
+      const src = accountUsesFilteredDescendantsAsset ? AccountFilteredDescendantsIcon : AccountIcon;
+      const accountAlt = accountUsesFilteredDescendantsAsset
+        ? 'Account, some child rows hidden by filters'
+        : 'Account';
+      return wrapMutedDimensionIcon(
+        <img
+          key={accountUsesFilteredDescendantsAsset ? 'account-icon-filtered-descendants' : 'account-icon-default'}
+          src={src}
+          alt={accountAlt}
+          style={accountUsesFilteredDescendantsAsset ? accountFilteredIconStyle : iconStyle}
+          decoding="async"
+        />,
+      );
     }
     if (dimForIcon === 'category') {
-      return wrapFilteredOutIcon(<img src={CategoryIcon} alt="Category" style={iconStyle} />);
+      const src = categoryUsesFilteredDescendantsAsset ? CategoryFilteredDescendantsIcon : CategoryIcon;
+      const categoryAlt = categoryUsesFilteredDescendantsAsset
+        ? 'Category, some child rows hidden by filters'
+        : 'Category';
+      return wrapMutedDimensionIcon(
+        <img
+          key={categoryUsesFilteredDescendantsAsset ? 'category-icon-filtered-descendants' : 'category-icon-default'}
+          src={src}
+          alt={categoryAlt}
+          style={categoryUsesFilteredDescendantsAsset ? categoryFilteredIconStyle : iconStyle}
+          decoding="async"
+        />,
+      );
     }
     if (dimForIcon === 'product') {
-      return wrapFilteredOutIcon(<img src={ProductIcon} alt="Product" style={iconStyle} />);
+      return wrapMutedDimensionIcon(<img src={ProductIcon} alt="Product" style={iconStyle} />);
     }
+
+    if (row.type === 'measure') {
+      const src = measureUsesFilteredDescendantsAsset
+        ? MeasureRowFilteredDescendantsIcon
+        : MeasureRowIcon;
+      return (
+        <span
+          className={
+            measureUsesFilteredDescendantsAsset
+              ? 'measure-row-hierarchy-icon measure-row-hierarchy-icon--all-descendants-filtered'
+              : 'measure-row-hierarchy-icon'
+          }
+          aria-hidden
+        >
+          <img
+            key={measureUsesFilteredDescendantsAsset ? 'measure-icon-filtered-descendants' : 'measure-icon-default'}
+            src={src}
+            alt=""
+            width={measureUsesFilteredDescendantsAsset ? 30 : 20}
+            height={measureUsesFilteredDescendantsAsset ? 29 : 20}
+            decoding="async"
+          />
+        </span>
+      );
+    }
+
     return null;
   };
 
+  /** White circle + blue funnel on account / category / measure icon when column filter hides descendants (composite asset otherwise). */
+  const renderTypeIconWithFilterDot = () => {
+    const icon = renderTypeIcon();
+    if (!icon) return null;
+    if (
+      !hasDescendantColumnFilterBadge ||
+      measureUsesFilteredDescendantsAsset ||
+      accountUsesFilteredDescendantsAsset ||
+      categoryUsesFilteredDescendantsAsset
+    )
+      return icon;
+    return (
+      <span className="grid-row-type-icon-with-filter-dot">
+        {icon}
+        <span
+          className="grid-row-filter-applied-dot"
+          title="Filter applied — some child rows are hidden. Totals still include all rows."
+          role="img"
+          aria-label="Filter applied; some child rows hidden"
+        >
+          <svg className="grid-row-filter-applied-dot__funnel" viewBox="0 0 24 24" aria-hidden>
+            <path
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2.35}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707l-6.414 6.414A1 1 0 0113 13.414V19a1 1 0 01-.553.894l-2 1A1 1 0 019 20v-6.586a1 1 0 01-.293-.707L3.293 6.707A1 1 0 013 6V4z"
+            />
+          </svg>
+        </span>
+      </span>
+    );
+  };
+
+  const rowNameColumnDisplay =
+    row.type === 'filterSummary' &&
+    (row.filterSummaryRole === 'filterBucketMatch' || row.filterSummaryRole === 'filterBucketNoMatch')
+      ? `${row.name || ''} (${row.children?.length ?? 0})`
+      : row.name || '';
+
   return (
     <>
-      <tr {...rowA11y} className={`grid-row ${row.type === 'measure' ? 'measure-row' : ''} ${isFilteredOutMutedRow ? 'grid-row-filtered-out-dimension' : ''} ${isActualMeasureRow ? 'readonly-measure-row-actual' : ''} ${isDimensionUnderReadonlyMeasure ? 'readonly-dimension-row' : ''} ${isNewlyAdded ? 'newly-added-measure' : ''}`}>
+      <tr
+        {...rowA11y}
+        className={`grid-row ${row.type === 'measure' ? 'measure-row' : ''} ${isFilteredOutMutedRow || isFilterBucketNoMatchMutedRow || noMatchBranchScratchedOut ? 'grid-row-filtered-out-dimension' : ''} ${isActualMeasureRow ? 'readonly-measure-row-actual' : ''} ${isDimensionUnderReadonlyMeasure ? 'readonly-dimension-row' : ''} ${isNewlyAdded ? 'newly-added-measure' : ''} ${hasDescendantColumnFilterBadge ? 'row-has-descendants-column-filter' : ''}`}
+      >
         <td
           {...rowheaderA11y}
           className={`grid-cell frozen-column-cell ${frozenColumns.length > 0 && row.type !== 'measure' ? 'divided-frozen-cell' : ''}`}
@@ -3479,10 +3744,22 @@ const GridRowComponent: React.FC<GridRowProps> = ({
             maxWidth: `${frozenColWidth ?? (300 + frozenColumns.length * 140)}px`,
           } : undefined}
         >
-          <div className={frozenColumns.length > 0 && row.type !== 'measure' ? 'divided-frozen-row' : undefined}>
-          <div className={frozenColumns.length > 0 && row.type !== 'measure' ? 'divided-cell-content' : 'cell-content'}>
+          <div
+            className={
+              frozenColumns.length > 0 && row.type !== 'measure'
+                ? `divided-frozen-row${hasDescendantColumnFilterBadge ? ' divided-frozen-row--filter-badge' : ''}`
+                : undefined
+            }
+          >
+          <div
+            className={
+              frozenColumns.length > 0 && row.type !== 'measure'
+                ? `divided-cell-content${hasDescendantColumnFilterBadge ? ' cell-content-has-filter-badge' : ''}`
+                : `cell-content${hasDescendantColumnFilterBadge ? ' cell-content-has-filter-badge' : ''}`
+            }
+          >
             <span className={`cell-indent level-${level}`}></span>
-            {hasChildren && (
+            {hasExpandChevron && (
               <button
                 type="button"
                 className={`chevron-icon ${isExpanded ? 'expanded' : ''}`}
@@ -3495,17 +3772,17 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 </svg>
               </button>
             )}
-            {!hasChildren && <span style={{ width: '16px', display: 'inline-block' }}></span>}
-            {renderTypeIcon()}
+            {!hasExpandChevron && <span style={{ width: '16px', display: 'inline-block' }}></span>}
+            {renderTypeIconWithFilterDot()}
             <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0, flex: '1 1 0' }}>
               <span className="cell-name">
                 {searchTerm && searchTerm.trim() ? (
                   <SearchHighlight 
-                    text={row.name || ''} 
+                    text={rowNameColumnDisplay} 
                     searchTerms={extractSearchTerms(searchTerm)} 
                   />
                 ) : (
-                  row.name || ''
+                  rowNameColumnDisplay
                 )}
               </span>
               {/* Show measure group name for measures with groupContext */}
@@ -3644,7 +3921,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                         }}
                       >
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {row.groupContext === 'Adjustment Measures Category' ? 'Adjustment Mea...' : 'Revenue & Quantity Category'}
+                          {row.groupContext === 'Adjustment Measures' ? 'Adjustment…' : 'Revenue & Qty…'}
                         </span>
                         <svg width="16" height="16" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0, transform: isGroupDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} aria-hidden>
                           <path stroke="var(--slds-g-color-neutral-base-50)" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M6 8l4 4 4-4"/>
@@ -3666,12 +3943,12 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                           zIndex: 10001,
                           overflow: 'hidden'
                         }}>
-                          {/* Revenue & Quantity Category option */}
+                          {/* Revenue & Quantity Measures option */}
                           <button
                             type="button"
                             onClick={() => {
                               if (onMeasureGroupContextChange) {
-                                onMeasureGroupContextChange(row.id, 'Revenue & Quantity Category');
+                                onMeasureGroupContextChange(row.id, 'Revenue & Quantity Measures');
                               }
                               setIsGroupDropdownOpen(false);
                             }}
@@ -3679,7 +3956,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                               padding: '10px 12px',
                               fontSize: '13px',
                               cursor: 'pointer',
-                              backgroundColor: row.groupContext !== 'Adjustment Measures Category' ? 'var(--slds-g-color-neutral-base-95)' : 'var(--color-surface-white)',
+                              backgroundColor: row.groupContext !== 'Adjustment Measures' ? 'var(--slds-g-color-neutral-base-95)' : 'var(--color-surface-white)',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'space-between',
@@ -3691,22 +3968,22 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                               WebkitAppearance: 'none',
                             }}
                             onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--slds-g-color-neutral-base-95)'}
-                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = row.groupContext !== 'Adjustment Measures Category' ? 'var(--slds-g-color-neutral-base-95)' : 'var(--color-surface-white)'}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = row.groupContext !== 'Adjustment Measures' ? 'var(--slds-g-color-neutral-base-95)' : 'var(--color-surface-white)'}
                           >
-                            <span>Revenue & Quantity Category</span>
-                            {row.groupContext !== 'Adjustment Measures Category' && (
+                            <span>Revenue & Quantity Measures</span>
+                            {row.groupContext !== 'Adjustment Measures' && (
                               <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden>
                                 <path stroke="var(--color-accent-blue)" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 10l3 3 7-7"/>
                               </svg>
                             )}
                           </button>
                           
-                          {/* Adjustment Measures Category option */}
+                          {/* Adjustment Measures option */}
                           <button
                             type="button"
                             onClick={() => {
                               if (onMeasureGroupContextChange) {
-                                onMeasureGroupContextChange(row.id, 'Adjustment Measures Category');
+                                onMeasureGroupContextChange(row.id, 'Adjustment Measures');
                               }
                               setIsGroupDropdownOpen(false);
                             }}
@@ -3714,7 +3991,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                               padding: '10px 12px',
                               fontSize: '13px',
                               cursor: 'pointer',
-                              backgroundColor: row.groupContext === 'Adjustment Measures Category' ? 'var(--slds-g-color-neutral-base-95)' : 'var(--color-surface-white)',
+                              backgroundColor: row.groupContext === 'Adjustment Measures' ? 'var(--slds-g-color-neutral-base-95)' : 'var(--color-surface-white)',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'space-between',
@@ -3727,7 +4004,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                               WebkitAppearance: 'none',
                             }}
                             onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--slds-g-color-neutral-base-95)'}
-                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = row.groupContext === 'Adjustment Measures Category' ? 'var(--slds-g-color-neutral-base-95)' : 'var(--color-surface-white)'}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = row.groupContext === 'Adjustment Measures' ? 'var(--slds-g-color-neutral-base-95)' : 'var(--color-surface-white)'}
                           >
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
                               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Adjustment Mea...</span>
@@ -3743,7 +4020,7 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                                 READ ONLY
                               </span>
                             </div>
-                            {row.groupContext === 'Adjustment Measures Category' && (
+                            {row.groupContext === 'Adjustment Measures' && (
                               <svg width="16" height="16" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0 }} aria-hidden>
                                 <path stroke="var(--color-accent-blue)" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 10l3 3 7-7"/>
                               </svg>
@@ -4166,8 +4443,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                                         row.id.includes('-measure-ly-order') ||
                                         row.name?.includes('Last Year');
           
-          // Block editing for cells that belong to Adjustment Measures Category (read-only context)
-          const isAdjustmentGroupCell = row.type !== 'measure' && row.groupContext === 'Adjustment Measures Category';
+          // Block editing for cells that belong to Adjustment Measures (read-only context)
+          const isAdjustmentGroupCell = row.type !== 'measure' && row.groupContext === 'Adjustment Measures';
 
           const cfRowType: RowType =
             row.type === 'filterSummary' && row.filteredOutDimension
@@ -4181,7 +4458,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
             !isCellLocked &&
             !isReadonlyMeasureCell &&
             !isAdjustmentGroupCell &&
-            !isFilterSummaryReadonly;
+            !isFilterSummaryReadonly &&
+            !noMatchBranchScratchedOut;
           const isEditable = baseValueEditable && !isPlanReviewLock && !pendingApprovalLocksCellTd;
           const reviewLockHover = isPlanReviewLock && baseValueEditable;
           const pendingSubmissionHoverTd = pendingApprovalLocksCellTd && baseValueEditable;
@@ -5202,6 +5480,9 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 allCellValuesByType={allCellValuesByType}
                 isDesignSystemRulesEnabled={isDesignSystemRulesEnabled}
                 parentTotalsRollupMode={parentTotalsRollupMode}
+                propagateIntoNoMatchRows={propagateIntoNoMatchRows}
+                measureEditDisaggregateVisibleChildrenDefault={measureEditDisaggregateVisibleChildrenDefault}
+                excludedNoMatchSubtreeRowIds={excludedNoMatchSubtreeRowIdsProp}
                 planReviewGridLock={planReviewGridLock}
                 planReviewRequesterStripes={planReviewRequesterStripes}
                 approverMayOpenReviewPopover={approverMayOpenReviewPopover}
@@ -5210,6 +5491,8 @@ const GridRowComponent: React.FC<GridRowProps> = ({
                 onPendingApproverEditConsumed={onPendingApproverEditConsumed}
                 onManagerOverrideForCell={onManagerOverrideForCell}
                 flattenedSortShowAncestorPath={flattenedSortShowAncestorPath}
+                descendantColumnFilterRowIds={descendantColumnFilterRowIds}
+                rollupValueSourceData={rollupValueSourceData}
               />
             );
           })}

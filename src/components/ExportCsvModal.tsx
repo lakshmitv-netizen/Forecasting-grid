@@ -43,8 +43,8 @@ function buildPlanModalDimensionHierarchyGroups(): Record<string, PlanModalDimen
 const PLAN_MODAL_DIMENSION_HIERARCHY_GROUPS = buildPlanModalDimensionHierarchyGroups();
 
 const PLAN_MODAL_MEASURE_SUBGROUP_OPTIONS = [
-  { value: 'Revenue & Quantity Category' },
-  { value: 'Adjustment Measures Category' },
+  { value: 'Revenue & Quantity Measures' },
+  { value: 'Adjustment Measures' },
 ] as const;
 
 const COMBOBOX_INPUT_STYLE: React.CSSProperties = {

@@ -58,27 +58,27 @@ const ReorderMeasuresModal: React.FC<ReorderMeasuresModalProps> = ({
     
     // Check if measure is in Revenue & Quantity Group
     if (revenueQuantityData.some(m => m.id === measureId)) {
-      groupNames.push('Revenue & Quantity Category');
+      groupNames.push('Revenue & Quantity Measures');
       isInRevenueQuantityGroup = true;
     }
     
     // Check if measure is in Adjustment Measures Group
     if (adjustmentMeasuresData.some(m => m.id === measureId)) {
-      groupNames.push('Adjustment Measures Category');
+      groupNames.push('Adjustment Measures');
       isInAdjustmentGroup = true;
     }
     
     // Determine access status based on selected groups and conflict resolution
     // Rule: If measure is in both groups AND Adjustment Measures Group is selected, it's read-only
     // (Most restrictive wins: read-only access takes precedence)
-    const isAdjustmentGroupSelected = selectedMeasureSubgroups.has('Adjustment Measures Category');
+    const isAdjustmentGroupSelected = selectedMeasureSubgroups.has('Adjustment Measures');
     
     // Conflict resolution: If measure is in both groups and Adjustment Measures Group is selected, it's read-only
     if (isInAdjustmentGroup && isInRevenueQuantityGroup && isAdjustmentGroupSelected) {
       return {
         groupNames,
         accessStatus: 'read',
-        readOnlyReason: `This measure belongs to both categories. Since "Adjustment Measures Category" (read-only) is selected, the measure is read-only.`
+        readOnlyReason: `This measure belongs to both categories. Since "Adjustment Measures" (read-only) is selected, the measure is read-only.`
       };
     }
     
@@ -87,7 +87,7 @@ const ReorderMeasuresModal: React.FC<ReorderMeasuresModalProps> = ({
       return {
         groupNames,
         accessStatus: 'read',
-        readOnlyReason: `This measure belongs to "Adjustment Measures Category" which is marked as read-only.`
+        readOnlyReason: `This measure belongs to "Adjustment Measures" which is marked as read-only.`
       };
     }
     

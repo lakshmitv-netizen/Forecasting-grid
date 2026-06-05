@@ -22,7 +22,11 @@ import { useCurrentUser, APPROVER_USER_IDS } from '../contexts/UserContext';
 import { adjustmentMeasuresData } from '../data/adjustmentMeasuresData';
 import { findRowById, getChildren, propagateUpward } from '../utils/valuePropagation';
 import { getPlanWideValueCellKeys } from '../utils/planWideCellKeys';
-import { hasFilteredOutSummaryRows, injectFilterSummaryRows, stripFilterSummaryRows } from '../utils/filterSummaryRows';
+import {
+  refreshPassFailBucketAggregates,
+  stripFilterSummaryRows,
+} from '../utils/filterSummaryRows';
+import { mergeRowValuesIntoFullTree } from '../utils/mergeHierarchyValues';
 import HierarchicalGrid from './HierarchicalGrid';
 import DimensionsTimeGrid from './DimensionsTimeGrid';
 import TimeDimensionsGrid from './TimeDimensionsGrid';
@@ -92,21 +96,9 @@ const AVAILABLE_FROZEN_COLUMNS: FrozenColumn[] = [
 // Default visible measures: Sales Agreement Quantity, Sales Agreement Revenue, Opportunity Quantity, Opportunity Revenue, Order Quantity, Order Revenue
 const DEFAULT_VISIBLE_MEASURE_IDS = new Set(['measure-sa-qty', 'measure-sa-rev', 'measure-opp-qty', 'measure-opp-rev', 'measure-order-qty', 'measure-order-rev']);
 
-/** Count dimension nodes under a measure (for detecting panel-applied tree narrowing). */
-function countHierarchyNodes(children: GridRow[] | undefined): number {
-  if (!children?.length) return 0;
-  let total = 0;
-  const walk = (rows: GridRow[]) => {
-    for (const r of rows) {
-      total += 1;
-      if (r.children?.length) walk(r.children);
-    }
-  };
-  walk(children);
-  return total;
-}
-
 import '../styles/components/Grid.css';
+/* Segmented approver decision control (reused in GridRow edit popover) */
+import '../styles/pages/PlanningForecastingPage.css';
 
 // Cell focus types for different layouts
 type HierarchicalGridFocus = { rowId: string; monthKey: string } | null;
@@ -123,7 +115,7 @@ const ForecastingGrid: React.FC = () => {
     planStatus === 'Submitted' &&
     planSubmittedByUserId != null &&
     planSubmittedByUserId === currentUser.id;
-  const [selectedMeasureSubgroup, setSelectedMeasureSubgroup] = useState<Set<string>>(new Set(['Revenue & Quantity Category']));
+  const [selectedMeasureSubgroup, setSelectedMeasureSubgroup] = useState<Set<string>>(new Set(['Revenue & Quantity Measures']));
   const [selectedLayoutState, setSelectedLayoutState] = useState<string>('Measures / Dimensions x Time');
   
   // Get data based on current industry, default to manufacturing if not set
@@ -3079,8 +3071,8 @@ const ForecastingGrid: React.FC = () => {
     const measureMap = new Map<string, MeasureData>(); // Map to deduplicate by ID
     
     // Check if both groups are selected
-    const bothGroupsSelected = selectedMeasureSubgroup.has('Adjustment Measures Category') && 
-                               selectedMeasureSubgroup.has('Revenue & Quantity Category');
+    const bothGroupsSelected = selectedMeasureSubgroup.has('Adjustment Measures') && 
+                               selectedMeasureSubgroup.has('Revenue & Quantity Measures');
 
     // Shared measures - add first to appear at top
     const sharedMeasures: MeasureData[] = [];
@@ -3088,8 +3080,8 @@ const ForecastingGrid: React.FC = () => {
     // Process shared measures first when both groups are selected
     if (bothGroupsSelected) {
       sharedMeasureIds.forEach(measureId => {
-        // Get the selected context for this measure (default to Adjustment Measures Category - read-only)
-        const selectedContext = measureGroupContext.get(measureId) || 'Adjustment Measures Category';
+        // Get the selected context for this measure (default to Adjustment Measures - read-only)
+        const selectedContext = measureGroupContext.get(measureId) || 'Adjustment Measures';
         
         // Get measure data from the appropriate source
         const currentIndustry = industry || 'manufacturing';
@@ -3099,7 +3091,7 @@ const ForecastingGrid: React.FC = () => {
         const adjMeasure = adjustmentMeasuresData.find((m: MeasureData) => m.id === measureId);
         
         // Use the selected context version
-        const sourceMeasure = selectedContext === 'Adjustment Measures Category' ? adjMeasure : rqMeasure;
+        const sourceMeasure = selectedContext === 'Adjustment Measures' ? adjMeasure : rqMeasure;
         if (sourceMeasure) {
           const measureWithGroup = {
             ...sourceMeasure,
@@ -3110,8 +3102,8 @@ const ForecastingGrid: React.FC = () => {
       });
     }
     
-    // Add Revenue & Quantity Category if selected
-    if (selectedMeasureSubgroup.has('Revenue & Quantity Category')) {
+    // Add Revenue & Quantity Measures if selected
+    if (selectedMeasureSubgroup.has('Revenue & Quantity Measures')) {
       const currentIndustry = industry || 'manufacturing';
       const currentData = getMockData(currentIndustry);
       const dataWithHistory = applyInitialEditHistoryToData(currentData);
@@ -3122,8 +3114,8 @@ const ForecastingGrid: React.FC = () => {
       });
     }
     
-    // Add Adjustment Measures Category if selected
-    if (selectedMeasureSubgroup.has('Adjustment Measures Category')) {
+    // Add Adjustment Measures if selected
+    if (selectedMeasureSubgroup.has('Adjustment Measures')) {
       adjustmentMeasuresData.forEach((measure: MeasureData) => {
         // Add if not already present
         if (!measureMap.has(measure.id)) {
@@ -3140,7 +3132,7 @@ const ForecastingGrid: React.FC = () => {
     // Update allMeasureIds to include shared measures at the start
     const finalMeasureIds = [...sharedMeasures.map(m => m.id), ...allMeasureIds];
 
-      // If no subgroups selected, default to Revenue & Quantity Category
+      // If no subgroups selected, default to Revenue & Quantity Measures
     if (combinedData.length === 0) {
       const currentIndustry = industry || 'manufacturing';
       const currentData = getMockData(currentIndustry);
@@ -3202,24 +3194,19 @@ const ForecastingGrid: React.FC = () => {
     return data.filter(measure => visibleMeasureIds.has(measure.id));
   }, [data, visibleMeasureIds]);
 
-  const unfilteredForSummary = useMemo(() => {
-    if (visibleMeasureIds.size === 0) return originalData;
-    return originalData.filter(m => visibleMeasureIds.has(m.id));
-  }, [originalData, visibleMeasureIds]);
-
   // Determine which measures are read-only based on selected measure groups and per-measure context
   const readonlyMeasureIds = useMemo(() => {
     const readonlyIds = new Set<string>();
     
     // Check each measure's groupContext
     data.forEach(measure => {
-      if (measure.groupContext === 'Adjustment Measures Category') {
+      if (measure.groupContext === 'Adjustment Measures') {
         readonlyIds.add(measure.id);
       }
     });
     
-    // Also add original IDs for Adjustment Measures Category measures when only that category is selected
-    if (selectedMeasureSubgroup.has('Adjustment Measures Category') && !selectedMeasureSubgroup.has('Revenue & Quantity Category')) {
+    // Also add original IDs for Adjustment Measures measures when only that category is selected
+    if (selectedMeasureSubgroup.has('Adjustment Measures') && !selectedMeasureSubgroup.has('Revenue & Quantity Measures')) {
       adjustmentMeasuresData.forEach(measure => {
         readonlyIds.add(measure.id);
       });
@@ -3247,7 +3234,15 @@ const ForecastingGrid: React.FC = () => {
   const [cellDetailsFocusSection, setCellDetailsFocusSection] = useState<'approval' | 'explainability' | null>(null);
   const [isAlertsOpen, setIsAlertsOpen] = useState(false);
   const [activeFilterCount, setActiveFilterCount] = useState(0);
+  /** In-grid column / quick filters (from HierarchicalGrid) that can hide hierarchy rows. */
+  const [hierarchyRowHidingFromGrid, setHierarchyRowHidingFromGrid] = useState({
+    hasColumnFilters: false,
+    hasQuickFilters: false,
+  });
   const [parentTotalsRollupMode, setParentTotalsRollupMode] = useState<ParentTotalsRollupMode>('fullHierarchy');
+  const [propagateIntoNoMatchRows, setPropagateIntoNoMatchRows] = useState(false);
+  const [measureEditDisaggregateToVisibleChildrenOnly, setMeasureEditDisaggregateToVisibleChildrenOnly] =
+    useState(false);
   const [panelKey, setPanelKey] = useState(0); // Key to force panel remount when switching tabs
   const [isCellHistoryApprovalView, setIsCellHistoryApprovalView] = useState(false);
   const [bulkActionPreselect, setBulkActionPreselect] = useState<string | null>(null);
@@ -3330,40 +3325,26 @@ const ForecastingGrid: React.FC = () => {
     return MONTH_SORT_COLUMN_OPTIONS;
   }, [isHierarchicalLayout, allCalculatedFieldsForSort]);
 
-  // Inject summary rows whenever the grid tree is narrower than original (after Save on Filters),
-  // not only when the filter panel's badge count is > 0 (time range / sync edge cases).
-  const hierarchyNarrowedFromOriginal = useMemo(() => {
-    for (const m of filteredData) {
-      const orig = originalData.find(o => o.id === m.id);
-      if (!orig) continue;
-      if (countHierarchyNodes(orig.children) > countHierarchyNodes(m.children)) {
-        return true;
-      }
-    }
-    return false;
-  }, [filteredData, originalData]);
-
   const hierarchicalGridData = useMemo(() => {
-    if (!hierarchyNarrowedFromOriginal) return filteredData;
-    if (
-      parentTotalsRollupMode === 'fullHierarchy' &&
-      hasFilteredOutSummaryRows(filteredData)
-    ) {
-      return filteredData;
+    const stripped = stripFilterSummaryRows(filteredData);
+    if (parentTotalsRollupMode === 'columnFilterBuckets') {
+      return refreshPassFailBucketAggregates(stripped);
     }
-    return injectFilterSummaryRows(stripFilterSummaryRows(filteredData), unfilteredForSummary);
-  }, [hierarchyNarrowedFromOriginal, filteredData, unfilteredForSummary, parentTotalsRollupMode]);
+    return stripped;
+  }, [filteredData, parentTotalsRollupMode]);
+
+  /** Full hierarchy + current cell values — used so parent totals include branches hidden by the Filters panel. */
+  const hierarchicalRollupValueSource = useMemo(
+    () => mergeRowValuesIntoFullTree(originalData, data),
+    [originalData, data],
+  );
 
   const handleHierarchicalGridDataChange = useCallback((newData: MeasureData[]) => {
-    if (parentTotalsRollupMode === 'fullHierarchy') {
-      setData(newData);
-    } else {
-      setData(stripFilterSummaryRows(newData));
-    }
-  }, [parentTotalsRollupMode]);
+    setData(newData);
+  }, []);
 
   useEffect(() => {
-    if (parentTotalsRollupMode !== 'visibleOnly') return;
+    if (parentTotalsRollupMode !== 'columnFilterBuckets') return;
     setData(prev => stripFilterSummaryRows(prev));
   }, [parentTotalsRollupMode]);
 
@@ -4097,6 +4078,54 @@ const ForecastingGrid: React.FC = () => {
   
   // Search state
   const [gridSearch, setGridSearch] = useState<string>('');
+
+  const showHierarchicalParentTotalsHint = useMemo(() => {
+    const fullDimensionLevels = new Set(['account', 'category', 'product']);
+    const searchActive = gridSearch.trim().length > 0;
+    const filtersPanelActive = activeFilterCount > 0;
+    const dimensionLevelsHide =
+      selectedDimensionLevels.size < fullDimensionLevels.size ||
+      [...fullDimensionLevels].some((id) => !selectedDimensionLevels.has(id));
+    const globalSortFlattens =
+      (globalSortConfig.criteria?.length ?? 0) > 0 && !globalSortConfig.preserveHierarchy;
+
+    return (
+      filtersPanelActive ||
+      searchActive ||
+      dimensionLevelsHide ||
+      globalSortFlattens ||
+      hierarchyRowHidingFromGrid.hasColumnFilters ||
+      hierarchyRowHidingFromGrid.hasQuickFilters
+    );
+  }, [
+    activeFilterCount,
+    gridSearch,
+    selectedDimensionLevels,
+    globalSortConfig.criteria,
+    globalSortConfig.preserveHierarchy,
+    hierarchyRowHidingFromGrid,
+  ]);
+
+  /** Summary of Totals & splits (Filters card) for the banner above the hierarchical grid. */
+  const hierarchicalTotalsModeSummaryLine = useMemo(() => {
+    if (parentTotalsRollupMode === 'fullHierarchy' && !measureEditDisaggregateToVisibleChildrenOnly) {
+      return (
+        'Parent totals count every child row, including ones your filters hide from the list. ' +
+        'Changing a rolled-up parent value spreads to every child row not just the visible rows.'
+      );
+    }
+    const totalsPhrase: Record<ParentTotalsRollupMode, string> = {
+      fullHierarchy:
+        'Parent totals count every child row, including ones your filters hide from the list',
+      visibleOnly: 'Parent totals count only child rows you can still see after filters',
+      columnFilterBuckets:
+        'Parent totals are split into rows for what matches your column filters and what does not',
+    };
+    const editsPhrase = measureEditDisaggregateToVisibleChildrenOnly
+      ? 'Changing a rolled-up parent value only spreads to child rows you can still see'
+      : 'Changing a rolled-up parent value spreads to every child row';
+    return `${totalsPhrase[parentTotalsRollupMode]}. ${editsPhrase}.`;
+  }, [parentTotalsRollupMode, measureEditDisaggregateToVisibleChildrenOnly]);
   
   // Refs to store expand/collapse handlers from HierarchicalGrid
   const expandAllRef = useRef<(() => void) | null>(null);
@@ -4122,7 +4151,7 @@ const ForecastingGrid: React.FC = () => {
   });
 
   const headerSummaryText = useMemo(() => {
-    const allMeasureCategories = ['Revenue & Quantity Category', 'Adjustment Measures Category'];
+    const allMeasureCategories = ['Revenue & Quantity Measures', 'Adjustment Measures'];
     const selectedCategories = allMeasureCategories.filter(c => selectedMeasureSubgroup.has(c));
     const measureSummary =
       selectedCategories.length === allMeasureCategories.length
@@ -4448,11 +4477,38 @@ const ForecastingGrid: React.FC = () => {
             }}
           />
         ) : (
-          <HierarchicalGrid 
+          <>
+            {showHierarchicalParentTotalsHint && (
+            <div
+              className="hierarchical-grid-totals-hint-slot"
+              style={{
+                padding: 'var(--spacing-2, 8px) var(--spacing-2, 8px) 0',
+                flexShrink: 0,
+              }}
+            >
+              <ScopedNotification
+                variant="inline"
+                className="scoped-notification--grid-totals-hint"
+                message={hierarchicalTotalsModeSummaryLine}
+                ctaLabel="Edit Filter Settings"
+                onCtaClick={() => {
+                  setIsFiltersOpen(true);
+                  setIsSettingsOpen(false);
+                  setIsSortPanelOpen(false);
+                  setIsCellDetailsHistoryOpen(false);
+                  setIsAlertsOpen(false);
+                }}
+              />
+            </div>
+            )}
+            <HierarchicalGrid
             key={currentIndustry}
-            data={hierarchicalGridData} 
+            data={hierarchicalGridData}
+            rollupValueSourceData={hierarchicalRollupValueSource}
             onDataChange={handleHierarchicalGridDataChange} 
             parentTotalsRollupMode={parentTotalsRollupMode}
+            propagateIntoNoMatchRows={propagateIntoNoMatchRows}
+            measureEditDisaggregateVisibleChildrenDefault={measureEditDisaggregateToVisibleChildrenOnly}
             planReviewGridLock={planReviewGridLock}
             planReviewRequesterStripes={planReviewRequesterStripes}
             approverMayOpenReviewPopover={isCurrentUserApprover}
@@ -4518,7 +4574,7 @@ const ForecastingGrid: React.FC = () => {
               });
             }}
             readonlyMeasureIds={readonlyMeasureIds}
-            isAdjustmentGroupSelected={selectedMeasureSubgroup.has('Adjustment Measures Category')}
+            isAdjustmentGroupSelected={selectedMeasureSubgroup.has('Adjustment Measures')}
             onMeasureGroupChange={setSelectedMeasureSubgroup}
             measureGroupContext={measureGroupContext}
             onMeasureGroupContextChange={(measureId: string, groupContext: string) => {
@@ -4611,7 +4667,9 @@ const ForecastingGrid: React.FC = () => {
             conditionalFormattingRules={effectiveConditionalFormattingRules}
             conditionalFormattingColorScaleMerge={applyCfRulesAsColorScale}
             isDesignSystemRulesEnabled={isDesignSystemRulesEnabled}
+            onRowHidingFiltersChange={setHierarchyRowHidingFromGrid}
         />
+          </>
           )}
         </div>
         <SettingsPanel 
@@ -4707,6 +4765,10 @@ const ForecastingGrid: React.FC = () => {
           onActiveFilterCountChange={setActiveFilterCount}
           parentTotalsRollupMode={parentTotalsRollupMode}
           onParentTotalsRollupModeChange={setParentTotalsRollupMode}
+          propagateIntoNoMatchRows={propagateIntoNoMatchRows}
+          onPropagateIntoNoMatchRowsChange={setPropagateIntoNoMatchRows}
+          measureEditDisaggregateToVisibleChildrenOnly={measureEditDisaggregateToVisibleChildrenOnly}
+          onMeasureEditDisaggregateToVisibleChildrenOnlyChange={setMeasureEditDisaggregateToVisibleChildrenOnly}
         />
         <GlobalSortPanel
           isOpen={isSortPanelOpen}

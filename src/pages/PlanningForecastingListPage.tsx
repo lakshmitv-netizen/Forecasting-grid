@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import ExportCsvModal from '../components/ExportCsvModal';
-import { APP_USERS, useCurrentUser } from '../contexts/UserContext';
+import { APP_USERS } from '../contexts/UserContext';
 import { useIndustry, getGridPathForIndustry } from '../contexts/IndustryContext';
 import '../styles/pages/PlanningForecastingListPage.css';
 import '../styles/components/SettingsPanel.css';
@@ -12,28 +12,26 @@ import {
   granularitySingularLabel,
   type PlanGranularity,
 } from '../utils/planPeriodOptions';
+import { getMockData } from '../data/mockData';
+import { adjustmentMeasuresData } from '../data/adjustmentMeasuresData';
+import type { IndustryType } from '../contexts/IndustryContext';
+import type { MeasureData } from '../types';
 
-type AccessControlPermission = 'View' | 'Edit' | 'Approver';
-
-const ACCESS_DIMENSION_COLUMNS = [
-  { key: 'account', label: 'Account' },
-  { key: 'category', label: 'Categories' },
-  { key: 'product', label: 'Products' },
-] as const;
-
-const ACCESS_PERMISSION_OPTIONS: AccessControlPermission[] = ['View', 'Edit', 'Approver'];
-
-const ACCESS_DIMENSION_LEVEL_LABELS = ACCESS_DIMENSION_COLUMNS.map((c) => c.label);
-
-type AccessTableFilterColumn = 'person' | 'jobRole' | (typeof ACCESS_DIMENSION_COLUMNS)[number]['key'];
-type AccessTableSortColumn = AccessTableFilterColumn;
-
-function emptyAccessColumnPermissionFilters(): Record<
-  (typeof ACCESS_DIMENSION_COLUMNS)[number]['key'],
-  AccessControlPermission[]
-> {
-  return { account: [], category: [], product: [] };
+/** Root measures shown in Create Plan → Access: main grid tree plus adjustment pipeline measures. */
+function getAccessControlRootMeasures(industry: IndustryType | null): MeasureData[] {
+  const primary = getMockData(industry);
+  const seen = new Set(primary.map((m) => m.id));
+  const extra = adjustmentMeasuresData.filter((m) => !seen.has(m.id));
+  return [...primary, ...extra];
 }
+
+/** Per measure cell — View vs Edit only (access modal). */
+type AccessScopePermission = 'View' | 'Edit';
+
+const ACCESS_SCOPE_PERMISSION_OPTIONS: AccessScopePermission[] = ['View', 'Edit'];
+
+type AccessTableFilterColumn = 'person' | 'jobRole' | 'subset' | 'measure' | 'access';
+type AccessTableSortColumn = AccessTableFilterColumn;
 
 interface AccessControlPerson {
   id: string;
@@ -71,14 +69,13 @@ function buildAccessControlPeople(): AccessControlPerson[] {
   return [...fromAppUsers, ...ACCESS_CONTROL_EXTRA_PEOPLE];
 }
 
-function buildInitialAccessMatrix(): Record<string, AccessControlPermission> {
-  const initial: Record<string, AccessControlPermission> = {};
-  buildAccessControlPeople().forEach((person) => {
-    ACCESS_DIMENSION_COLUMNS.forEach((col) => {
-      initial[`${person.id}:${col.key}`] = 'View';
-    });
-  });
-  return initial;
+function accessMeasureCellKey(personId: string, measureId: string): string {
+  return `${personId}:measure:${measureId}`;
+}
+
+/** Stable key for flattened row selection (person × measure). */
+function accessFlattenedRowKey(personId: string, measureId: string): string {
+  return `${personId}|${measureId}`;
 }
 
 interface AccessSearchableMultiSelectProps {
@@ -377,11 +374,69 @@ function buildPlanModalDimensionHierarchyGroups(): Record<string, PlanModalDimen
 
 const PLAN_MODAL_DIMENSION_HIERARCHY_GROUPS = buildPlanModalDimensionHierarchyGroups();
 
-/** Same options as Settings → Measure category (SettingsPanel measureSubgroupOptions). */
+/** Plan wizard “Measure category” — two options only (unchanged for grid/settings). */
 const PLAN_MODAL_MEASURE_SUBGROUP_OPTIONS = [
-  { value: 'Revenue & Quantity Category' },
-  { value: 'Adjustment Measures Category' },
+  { value: 'Revenue & Quantity Measures' },
+  { value: 'Adjustment Measures' },
 ] as const;
+
+/**
+ * Demo-only labels for Create Plan → Access “Measure subset” column (does not affect hierarchical grid).
+ */
+const ACCESS_DEMO_MEASURE_SUBSET_LABELS = [
+  'Adjustment Measures',
+  'Planning Measures',
+  'Revenue & Quantity Measures',
+  'Revenue Measures',
+  'Volume Measures',
+] as const;
+
+type AccessMeasureSubsetLabel = (typeof ACCESS_DEMO_MEASURE_SUBSET_LABELS)[number];
+
+/** Consumer-style adjustment metrics → Adjustment bucket (demo access modal only). */
+const ACCESS_MEASURE_SUBSET_ADJUSTMENT_STYLE_IDS = new Set<string>([
+  'measure-promo-spend',
+  'measure-days-inventory',
+  'measure-trade-spend-roi',
+]);
+
+const ACCESS_MEASURE_SUBSET_PLANNING_IDS = new Set<string>(
+  adjustmentMeasuresData.map((m) => m.id),
+);
+
+function getAccessMeasureSubsetLabel(measureId: string, measureName: string): AccessMeasureSubsetLabel {
+  if (ACCESS_MEASURE_SUBSET_ADJUSTMENT_STYLE_IDS.has(measureId)) {
+    return 'Adjustment Measures';
+  }
+  if (ACCESS_MEASURE_SUBSET_PLANNING_IDS.has(measureId)) {
+    return 'Planning Measures';
+  }
+  const n = measureName.toLowerCase();
+  if (/\brevenue\b/.test(n) || /\broi\b/.test(n) || (n.includes('spend') && n.includes('%'))) {
+    return 'Revenue Measures';
+  }
+  if (
+    /\bquantity\b/.test(n) ||
+    /\bvolume\b/.test(n) ||
+    n.includes('market share') ||
+    (n.includes('days') && n.includes('inventory'))
+  ) {
+    return 'Volume Measures';
+  }
+  return 'Revenue & Quantity Measures';
+}
+
+function buildInitialAccessMatrix(industry: IndustryType | null): Record<string, AccessScopePermission> {
+  const initial: Record<string, AccessScopePermission> = {};
+  const people = buildAccessControlPeople();
+  const measures = getAccessControlRootMeasures(industry);
+  people.forEach((person) => {
+    measures.forEach((m) => {
+      initial[accessMeasureCellKey(person.id, m.id)] = 'View';
+    });
+  });
+  return initial;
+}
 
 const mockRecords: ForecastRecord[] = [
   { id: 'fy26', name: 'Planning & Forecasting FY26', adminTemplate: 'KAMPlanConfig', fiscalYear: '2026', rootRecord: 'Acme', status: 'Draft' },
@@ -424,7 +479,6 @@ const PlanningForecastingListPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { industry } = useIndustry();
-  const { currentUser } = useCurrentUser();
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [selectAll, setSelectAll] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -435,15 +489,14 @@ const PlanningForecastingListPage: React.FC = () => {
   const rowActionMenuRef = useRef<HTMLDivElement>(null);
   const [exportCsvModalOpen, setExportCsvModalOpen] = useState(false);
   const [isNextStepModalOpen, setIsNextStepModalOpen] = useState(false);
-  const [accessControlMatrix, setAccessControlMatrix] = useState<Record<string, AccessControlPermission>>(
-    () => buildInitialAccessMatrix(),
+  const [accessControlMatrix, setAccessControlMatrix] = useState<Record<string, AccessScopePermission>>(
+    () => buildInitialAccessMatrix(null),
   );
   const [accessFilterPersonNames, setAccessFilterPersonNames] = useState<string[]>([]);
   const [accessFilterJobRoles, setAccessFilterJobRoles] = useState<string[]>([]);
-  /** Per dimension column: permission values to include; empty = all. */
-  const [accessColumnPermissionFilters, setAccessColumnPermissionFilters] = useState<
-    Record<(typeof ACCESS_DIMENSION_COLUMNS)[number]['key'], AccessControlPermission[]>
-  >(() => emptyAccessColumnPermissionFilters());
+  const [accessFilterSubsetLabels, setAccessFilterSubsetLabels] = useState<string[]>([]);
+  const [accessFilterMeasureNames, setAccessFilterMeasureNames] = useState<string[]>([]);
+  const [accessFilterAccessLevels, setAccessFilterAccessLevels] = useState<AccessScopePermission[]>([]);
   const [accessColumnFilterPanel, setAccessColumnFilterPanel] = useState<{
     column: AccessTableFilterColumn;
     top: number;
@@ -453,13 +506,9 @@ const PlanningForecastingListPage: React.FC = () => {
   const accessColumnFilterPanelRef = useRef<HTMLDivElement>(null);
   const [accessSortColumn, setAccessSortColumn] = useState<AccessTableSortColumn | null>(null);
   const [accessSortDir, setAccessSortDir] = useState<'asc' | 'desc'>('asc');
-  const [accessBulkSelectedIds, setAccessBulkSelectedIds] = useState<Set<string>>(() => new Set());
+  const [accessBulkSelectedRowKeys, setAccessBulkSelectedRowKeys] = useState<Set<string>>(() => new Set());
   const [accessBulkPopoverOpen, setAccessBulkPopoverOpen] = useState(false);
-  /** Bulk edit: which dimension columns to update (labels match ACCESS_DIMENSION_COLUMNS). */
-  const [bulkEditDimensionLabels, setBulkEditDimensionLabels] = useState<string[]>(() => [
-    ...ACCESS_DIMENSION_LEVEL_LABELS,
-  ]);
-  const [bulkEditPermission, setBulkEditPermission] = useState<AccessControlPermission>('View');
+  const [bulkEditPermission, setBulkEditPermission] = useState<AccessScopePermission>('View');
   const bulkEditButtonRef = useRef<HTMLButtonElement>(null);
   const bulkPopoverRef = useRef<HTMLDivElement>(null);
   const accessHeaderSelectAllRef = useRef<HTMLInputElement>(null);
@@ -472,6 +521,21 @@ const PlanningForecastingListPage: React.FC = () => {
 
   const accessControlPeople = useMemo(() => buildAccessControlPeople(), []);
 
+  const accessMeasureRows = useMemo(
+    () =>
+      getAccessControlRootMeasures(industry).map((m) => ({
+        id: m.id,
+        name: m.name,
+        subsetLabel: getAccessMeasureSubsetLabel(m.id, m.name),
+      })),
+    [industry],
+  );
+
+  const accessSubsetFilterOptions = useMemo(
+    () => [...ACCESS_DEMO_MEASURE_SUBSET_LABELS].sort((a, b) => a.localeCompare(b)),
+    [],
+  );
+
   const accessPersonFilterOptions = useMemo(
     () => [...new Set(accessControlPeople.map((p) => p.name))].sort((a, b) => a.localeCompare(b)),
     [accessControlPeople],
@@ -482,79 +546,108 @@ const PlanningForecastingListPage: React.FC = () => {
     [accessControlPeople],
   );
 
+  const accessMeasureFilterOptions = useMemo(
+    () => accessMeasureRows.map((m) => m.name).sort((a, b) => a.localeCompare(b)),
+    [accessMeasureRows],
+  );
+
   const filteredAccessControlPeople = useMemo(() => {
     return accessControlPeople.filter((p) => {
       if (accessFilterPersonNames.length > 0 && !accessFilterPersonNames.includes(p.name)) return false;
       if (accessFilterJobRoles.length > 0 && !accessFilterJobRoles.includes(p.jobRole)) return false;
-      for (const col of ACCESS_DIMENSION_COLUMNS) {
-        const allowed = accessColumnPermissionFilters[col.key];
-        if (allowed.length === 0) continue;
-        const cellKey = `${p.id}:${col.key}`;
-        const v = accessControlMatrix[cellKey] ?? 'View';
-        if (!allowed.includes(v)) return false;
+      return true;
+    });
+  }, [accessControlPeople, accessFilterPersonNames, accessFilterJobRoles]);
+
+  type FlatAccessRow = {
+    person: (typeof accessControlPeople)[number];
+    measure: { id: string; name: string; subsetLabel: AccessMeasureSubsetLabel };
+    rowKey: string;
+  };
+
+  const baseFlattenedAccessRows = useMemo((): FlatAccessRow[] => {
+    const out: FlatAccessRow[] = [];
+    filteredAccessControlPeople.forEach((person) => {
+      accessMeasureRows.forEach((measure) => {
+        out.push({
+          person,
+          measure,
+          rowKey: accessFlattenedRowKey(person.id, measure.id),
+        });
+      });
+    });
+    return out;
+  }, [filteredAccessControlPeople, accessMeasureRows]);
+
+  const filteredFlattenedAccessRows = useMemo(() => {
+    return baseFlattenedAccessRows.filter((row) => {
+      if (
+        accessFilterSubsetLabels.length > 0 &&
+        !accessFilterSubsetLabels.includes(row.measure.subsetLabel)
+      ) {
+        return false;
+      }
+      if (accessFilterMeasureNames.length > 0 && !accessFilterMeasureNames.includes(row.measure.name)) {
+        return false;
+      }
+      const perm =
+        accessControlMatrix[accessMeasureCellKey(row.person.id, row.measure.id)] ?? 'View';
+      if (accessFilterAccessLevels.length > 0 && !accessFilterAccessLevels.includes(perm)) {
+        return false;
       }
       return true;
     });
   }, [
-    accessControlPeople,
-    accessFilterPersonNames,
-    accessFilterJobRoles,
+    baseFlattenedAccessRows,
+    accessFilterSubsetLabels,
+    accessFilterMeasureNames,
+    accessFilterAccessLevels,
     accessControlMatrix,
-    accessColumnPermissionFilters,
   ]);
 
-  const displayedAccessControlPeople = useMemo(() => {
-    const rows = [...filteredAccessControlPeople];
+  const sortedFlattenedAccessRows = useMemo(() => {
+    const rows = [...filteredFlattenedAccessRows];
     if (!accessSortColumn) return rows;
     const dir = accessSortDir === 'asc' ? 1 : -1;
-    const permRank = (perm: AccessControlPermission) =>
-      perm === 'View' ? 0 : perm === 'Edit' ? 1 : 2;
+    const permRank = (p: AccessScopePermission) => (p === 'View' ? 0 : 1);
     rows.sort((a, b) => {
       let cmp = 0;
       if (accessSortColumn === 'person') {
-        cmp = a.name.localeCompare(b.name);
+        cmp = a.person.name.localeCompare(b.person.name);
       } else if (accessSortColumn === 'jobRole') {
-        cmp = a.jobRole.localeCompare(b.jobRole);
+        cmp = a.person.jobRole.localeCompare(b.person.jobRole);
+      } else if (accessSortColumn === 'subset') {
+        cmp = a.measure.subsetLabel.localeCompare(b.measure.subsetLabel);
+      } else if (accessSortColumn === 'measure') {
+        cmp = a.measure.name.localeCompare(b.measure.name);
       } else {
-        const ka = `${a.id}:${accessSortColumn}`;
-        const kb = `${b.id}:${accessSortColumn}`;
+        const va =
+          accessControlMatrix[accessMeasureCellKey(a.person.id, a.measure.id)] ?? 'View';
+        const vb =
+          accessControlMatrix[accessMeasureCellKey(b.person.id, b.measure.id)] ?? 'View';
+        cmp = permRank(va) - permRank(vb);
+      }
+      if (cmp === 0) {
         cmp =
-          permRank(accessControlMatrix[ka] ?? 'View') - permRank(accessControlMatrix[kb] ?? 'View');
-        if (cmp === 0) cmp = a.name.localeCompare(b.name);
+          a.person.name.localeCompare(b.person.name) ||
+          a.measure.name.localeCompare(b.measure.name);
       }
       return cmp * dir;
     });
     return rows;
-  }, [filteredAccessControlPeople, accessSortColumn, accessSortDir, accessControlMatrix]);
+  }, [filteredFlattenedAccessRows, accessSortColumn, accessSortDir, accessControlMatrix]);
 
-  const accessColumnFiltersActive = useMemo(
-    () =>
-      accessFilterPersonNames.length > 0 ||
-      accessFilterJobRoles.length > 0 ||
-      ACCESS_DIMENSION_COLUMNS.some((col) => accessColumnPermissionFilters[col.key].length > 0),
-    [accessFilterPersonNames, accessFilterJobRoles, accessColumnPermissionFilters],
-  );
-
-  const accessBulkSelectedCount = accessBulkSelectedIds.size;
+  const accessBulkSelectedCount = accessBulkSelectedRowKeys.size;
 
   const bulkAccessSelectionLabel = useMemo(() => {
-    const maxNamesShown = 3;
-    if (accessBulkSelectedIds.size === 0) return '';
-    const orderedNames = accessControlPeople.filter((p) => accessBulkSelectedIds.has(p.id)).map((p) => p.name);
-    if (orderedNames.length === 0) {
-      return `${accessBulkSelectedIds.size} selected`;
-    }
-    const n = orderedNames.length;
-    if (n <= maxNamesShown) {
-      return n === 1 ? `${orderedNames[0]} selected` : `${orderedNames.join(', ')} selected`;
-    }
-    const head = orderedNames.slice(0, maxNamesShown).join(', ');
-    return `${head} + ${n - maxNamesShown} more selected`;
-  }, [accessBulkSelectedIds, accessControlPeople]);
+    const n = accessBulkSelectedRowKeys.size;
+    if (n === 0) return '';
+    return n === 1 ? '1 row selected' : `${n} rows selected`;
+  }, [accessBulkSelectedRowKeys]);
 
-  const visibleAccessIds = useMemo(
-    () => displayedAccessControlPeople.map((p) => p.id),
-    [displayedAccessControlPeople],
+  const visibleFlattenedRowKeys = useMemo(
+    () => sortedFlattenedAccessRows.map((r) => r.rowKey),
+    [sortedFlattenedAccessRows],
   );
 
   const toggleAccessColumnFilterPanel = useCallback((column: AccessTableFilterColumn, anchorEl: HTMLElement) => {
@@ -612,9 +705,12 @@ const PlanningForecastingListPage: React.FC = () => {
   }, [isNextStepModalOpen]);
 
   const allVisibleAccessSelected =
-    visibleAccessIds.length > 0 && visibleAccessIds.every((id) => accessBulkSelectedIds.has(id));
+    visibleFlattenedRowKeys.length > 0 &&
+    visibleFlattenedRowKeys.every((id) => accessBulkSelectedRowKeys.has(id));
 
-  const someVisibleAccessSelected = visibleAccessIds.some((id) => accessBulkSelectedIds.has(id));
+  const someVisibleAccessSelected = visibleFlattenedRowKeys.some((id) =>
+    accessBulkSelectedRowKeys.has(id),
+  );
 
   useEffect(() => {
     const el = accessHeaderSelectAllRef.current;
@@ -622,24 +718,25 @@ const PlanningForecastingListPage: React.FC = () => {
     el.indeterminate = someVisibleAccessSelected && !allVisibleAccessSelected;
   }, [someVisibleAccessSelected, allVisibleAccessSelected]);
 
-  const toggleAccessBulkSelectPerson = (personId: string) => {
-    setAccessBulkSelectedIds((prev) => {
+  const toggleAccessBulkSelectRow = (rowKey: string) => {
+    setAccessBulkSelectedRowKeys((prev) => {
       const next = new Set(prev);
-      if (next.has(personId)) next.delete(personId);
-      else next.add(personId);
+      if (next.has(rowKey)) next.delete(rowKey);
+      else next.add(rowKey);
       return next;
     });
   };
 
   const toggleAccessBulkSelectAllVisible = () => {
-    setAccessBulkSelectedIds((prev) => {
+    setAccessBulkSelectedRowKeys((prev) => {
       const next = new Set(prev);
       const everyVisibleSelected =
-        visibleAccessIds.length > 0 && visibleAccessIds.every((id) => next.has(id));
+        visibleFlattenedRowKeys.length > 0 &&
+        visibleFlattenedRowKeys.every((id) => next.has(id));
       if (everyVisibleSelected) {
-        visibleAccessIds.forEach((id) => next.delete(id));
+        visibleFlattenedRowKeys.forEach((id) => next.delete(id));
       } else {
-        visibleAccessIds.forEach((id) => next.add(id));
+        visibleFlattenedRowKeys.forEach((id) => next.add(id));
       }
       return next;
     });
@@ -715,17 +812,17 @@ const PlanningForecastingListPage: React.FC = () => {
   }, [accessBulkPopoverOpen, accessBulkSelectedCount]);
 
   const handleBulkAccessApply = () => {
-    if (accessBulkSelectedIds.size === 0) return;
-    const levelKeys = ACCESS_DIMENSION_COLUMNS.filter((c) => bulkEditDimensionLabels.includes(c.label)).map(
-      (c) => c.key,
-    );
-    if (levelKeys.length === 0) return;
+    if (accessBulkSelectedRowKeys.size === 0) return;
     setAccessControlMatrix((prev) => {
       const next = { ...prev };
-      accessBulkSelectedIds.forEach((personId) => {
-        levelKeys.forEach((levelKey) => {
-          next[`${personId}:${levelKey}`] = bulkEditPermission;
-        });
+      accessBulkSelectedRowKeys.forEach((rowKey) => {
+        const pipe = rowKey.indexOf('|');
+        if (pipe <= 0) return;
+        const personId = rowKey.slice(0, pipe);
+        const measureId = rowKey.slice(pipe + 1);
+        if (personId && measureId) {
+          next[accessMeasureCellKey(personId, measureId)] = bulkEditPermission;
+        }
       });
       return next;
     });
@@ -765,7 +862,7 @@ const PlanningForecastingListPage: React.FC = () => {
   const dimensionLevelsDropdownRef = useRef<HTMLDivElement>(null);
 
   const [selectedPlanMeasureSubgroups, setSelectedPlanMeasureSubgroups] = useState<Set<string>>(
-    () => new Set(['Revenue & Quantity Category']),
+    () => new Set(['Revenue & Quantity Measures']),
   );
   const [measureSubgroupModalDropdownOpen, setMeasureSubgroupModalDropdownOpen] = useState(false);
   const [measureSubgroupModalDropdownPosition, setMeasureSubgroupModalDropdownPosition] = useState<{
@@ -883,15 +980,18 @@ const PlanningForecastingListPage: React.FC = () => {
     if (!isNextStepModalOpen) {
       setAccessFilterPersonNames([]);
       setAccessFilterJobRoles([]);
-      setAccessColumnPermissionFilters(emptyAccessColumnPermissionFilters());
+      setAccessFilterSubsetLabels([]);
+      setAccessFilterMeasureNames([]);
+      setAccessFilterAccessLevels([]);
       setAccessColumnFilterPanel(null);
       setAccessSortColumn(null);
-      setAccessBulkSelectedIds(new Set());
+      setAccessBulkSelectedRowKeys(new Set());
       setAccessBulkPopoverOpen(false);
-      setBulkEditDimensionLabels([...ACCESS_DIMENSION_LEVEL_LABELS]);
-      setBulkEditPermission('View');
+      return;
     }
-  }, [isNextStepModalOpen]);
+    setAccessControlMatrix(buildInitialAccessMatrix(industry));
+    setBulkEditPermission('View');
+  }, [isNextStepModalOpen, industry]);
 
   useLayoutEffect(() => {
     if (!dimensionLevelsDropdownOpen) {
@@ -1287,7 +1387,7 @@ const PlanningForecastingListPage: React.FC = () => {
     setMeasureSubgroupModalDropdownOpen(false);
     setMeasureSubgroupModalDropdownPosition(null);
     setSelectedPlanDimensionLevels(new Set(['account', 'category', 'product']));
-    setSelectedPlanMeasureSubgroups(new Set(['Revenue & Quantity Category']));
+    setSelectedPlanMeasureSubgroups(new Set(['Revenue & Quantity Measures']));
     setClonePlanDescription('');
     setPlanModalMode('create');
   }, []);
@@ -1314,7 +1414,7 @@ const PlanningForecastingListPage: React.FC = () => {
     });
     setClonePlanDescription('');
     setSelectedPlanDimensionLevels(new Set(['account', 'category', 'product']));
-    setSelectedPlanMeasureSubgroups(new Set(['Revenue & Quantity Category']));
+    setSelectedPlanMeasureSubgroups(new Set(['Revenue & Quantity Measures']));
     setPlanConfigSearchTerm('');
     setWeekStartSearchTerm(startLabel);
     setWeekEndSearchTerm(endLabel);
@@ -1397,7 +1497,7 @@ const PlanningForecastingListPage: React.FC = () => {
                   resetPlanFormForCreate();
                   setIsModalOpen(true);
                   setSelectedValues(new Set());
-                  setAccessControlMatrix(buildInitialAccessMatrix());
+                  setAccessControlMatrix(buildInitialAccessMatrix(industry));
                 }}
               >
                 New
@@ -1572,7 +1672,7 @@ const PlanningForecastingListPage: React.FC = () => {
           <div className="list-page-modal" onClick={(e) => e.stopPropagation()}>
             <div className="list-page-modal-header">
               <h2 className="list-page-modal-title">
-                {planModalMode === 'clone' ? 'Clone plan' : 'Create New Plan'}
+                {planModalMode === 'clone' ? 'Clone plan' : 'Create New Plan Config'}
               </h2>
             </div>
             <div className="list-page-modal-body">
@@ -2298,15 +2398,11 @@ const PlanningForecastingListPage: React.FC = () => {
             >
             <div className="list-page-modal list-page-modal--access-wide" onClick={(e) => e.stopPropagation()}>
               <div className="list-page-modal-header">
-                <h2 className="list-page-modal-title">Create New Plan</h2>
+                <h2 className="list-page-modal-title">Create New Plan Config</h2>
               </div>
               <div className="list-page-modal-body list-page-modal-body--access-step" aria-label="Next step">
                 <div className="settings-section-header list-page-modal-access-control-section">
                   <p className="settings-section-title">Access control settings</p>
-                </div>
-                <div className="list-page-modal-access-owner-kv">
-                  <span className="list-page-modal-access-owner-label">Owner:</span>
-                  <span className="list-page-modal-access-owner-value">{currentUser.name}</span>
                 </div>
                 <div className="list-page-modal-access-grid-block">
                   <div
@@ -2315,7 +2411,7 @@ const PlanningForecastingListPage: React.FC = () => {
                     aria-label="Access table toolbar"
                   >
                     <p className="list-page-modal-access-toolbar-hint">
-                      Use the filter and sort icons in each column header.
+                      Use the filter and sort icons on Person, Job role, Measure subset, Measure, and Access.
                     </p>
                     <div className="list-page-modal-access-bulk-actions">
                       <button
@@ -2340,9 +2436,9 @@ const PlanningForecastingListPage: React.FC = () => {
                             type="checkbox"
                             className="list-page-modal-access-row-check"
                             checked={allVisibleAccessSelected}
-                            disabled={visibleAccessIds.length === 0}
+                            disabled={visibleFlattenedRowKeys.length === 0}
                             onChange={toggleAccessBulkSelectAllVisible}
-                            aria-label="Select all people shown in the table"
+                            aria-label="Select all rows shown in the table"
                           />
                         </th>
                         <th scope="col" className="list-page-modal-access-table-corner">
@@ -2369,72 +2465,100 @@ const PlanningForecastingListPage: React.FC = () => {
                             onSortClick={() => cycleAccessColumnSort('jobRole')}
                           />
                         </th>
-                        {ACCESS_DIMENSION_COLUMNS.map((col) => (
-                          <th key={col.key} scope="col">
-                            <AccessTableColumnHeader
-                              column={col.key}
-                              label={col.label}
-                              filterActive={accessColumnPermissionFilters[col.key].length > 0}
-                              filterPanelOpen={accessColumnFilterPanel?.column === col.key}
-                              sortColumn={accessSortColumn}
-                              sortDir={accessSortDir}
-                              onFilterClick={(anchor) => toggleAccessColumnFilterPanel(col.key, anchor)}
-                              onSortClick={() => cycleAccessColumnSort(col.key)}
-                            />
-                          </th>
-                        ))}
+                        <th scope="col" className="list-page-modal-access-table-subset-col">
+                          <AccessTableColumnHeader
+                            column="subset"
+                            label="Measure subset"
+                            filterActive={accessFilterSubsetLabels.length > 0}
+                            filterPanelOpen={accessColumnFilterPanel?.column === 'subset'}
+                            sortColumn={accessSortColumn}
+                            sortDir={accessSortDir}
+                            onFilterClick={(anchor) => toggleAccessColumnFilterPanel('subset', anchor)}
+                            onSortClick={() => cycleAccessColumnSort('subset')}
+                          />
+                        </th>
+                        <th scope="col" className="list-page-modal-access-table-measure-col">
+                          <AccessTableColumnHeader
+                            column="measure"
+                            label="Measure"
+                            filterActive={accessFilterMeasureNames.length > 0}
+                            filterPanelOpen={accessColumnFilterPanel?.column === 'measure'}
+                            sortColumn={accessSortColumn}
+                            sortDir={accessSortDir}
+                            onFilterClick={(anchor) => toggleAccessColumnFilterPanel('measure', anchor)}
+                            onSortClick={() => cycleAccessColumnSort('measure')}
+                          />
+                        </th>
+                        <th scope="col" className="list-page-modal-access-table-access-col">
+                          <AccessTableColumnHeader
+                            column="access"
+                            label="Access"
+                            filterActive={accessFilterAccessLevels.length > 0}
+                            filterPanelOpen={accessColumnFilterPanel?.column === 'access'}
+                            sortColumn={accessSortColumn}
+                            sortDir={accessSortDir}
+                            onFilterClick={(anchor) => toggleAccessColumnFilterPanel('access', anchor)}
+                            onSortClick={() => cycleAccessColumnSort('access')}
+                          />
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {displayedAccessControlPeople.length === 0 ? (
+                      {sortedFlattenedAccessRows.length === 0 ? (
                         <tr>
-                          <td colSpan={3 + ACCESS_DIMENSION_COLUMNS.length} className="list-page-modal-access-table-empty">
-                            {accessColumnFiltersActive
-                              ? 'No rows match the column filters. Open a column’s filter icon and clear selections to see more people.'
-                              : 'No people to show.'}
+                          <td colSpan={6} className="list-page-modal-access-table-empty">
+                            {filteredAccessControlPeople.length === 0
+                              ? accessFilterPersonNames.length > 0 || accessFilterJobRoles.length > 0
+                                ? 'No rows match the column filters. Open a column’s filter icon and clear selections to see more rows.'
+                                : 'No people to show.'
+                              : 'No rows match the column filters. Open a column’s filter icon and clear selections to see more rows.'}
                           </td>
                         </tr>
                       ) : (
-                        displayedAccessControlPeople.map((person) => (
-                          <tr key={person.id}>
-                            <td className="list-page-modal-access-table-check-cell">
-                              <input
-                                type="checkbox"
-                                className="list-page-modal-access-row-check"
-                                checked={accessBulkSelectedIds.has(person.id)}
-                                onChange={() => toggleAccessBulkSelectPerson(person.id)}
-                                aria-label={`Select ${person.name}`}
-                              />
-                            </td>
-                            <th scope="row">{person.name}</th>
-                            <td className="list-page-modal-access-table-role-cell">{person.jobRole}</td>
-                            {ACCESS_DIMENSION_COLUMNS.map((col) => {
-                              const cellKey = `${person.id}:${col.key}`;
-                              const value = accessControlMatrix[cellKey] ?? 'View';
-                              return (
-                                <td key={col.key}>
-                                  <select
-                                    className="list-page-modal-select list-page-modal-access-select"
-                                    aria-label={`${person.name} — ${col.label}`}
-                                    value={value}
-                                    onChange={(e) =>
-                                      setAccessControlMatrix((prev) => ({
-                                        ...prev,
-                                        [cellKey]: e.target.value as AccessControlPermission,
-                                      }))
-                                    }
-                                  >
-                                    {ACCESS_PERMISSION_OPTIONS.map((opt) => (
-                                      <option key={opt} value={opt}>
-                                        {opt}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        ))
+                        sortedFlattenedAccessRows.map((row) => {
+                          const cellKey = accessMeasureCellKey(row.person.id, row.measure.id);
+                          const perm = accessControlMatrix[cellKey] ?? 'View';
+                          return (
+                            <tr key={row.rowKey}>
+                              <td className="list-page-modal-access-table-check-cell">
+                                <input
+                                  type="checkbox"
+                                  className="list-page-modal-access-row-check"
+                                  checked={accessBulkSelectedRowKeys.has(row.rowKey)}
+                                  onChange={() => toggleAccessBulkSelectRow(row.rowKey)}
+                                  aria-label={`Select ${row.person.name} — ${row.measure.name}`}
+                                />
+                              </td>
+                              <th scope="row">{row.person.name}</th>
+                              <td className="list-page-modal-access-table-role-cell">{row.person.jobRole}</td>
+                              <td className="list-page-modal-access-table-subset-cell" title={row.measure.subsetLabel}>
+                                {row.measure.subsetLabel}
+                              </td>
+                              <td className="list-page-modal-access-table-measure-name-cell" title={row.measure.name}>
+                                {row.measure.name}
+                              </td>
+                              <td>
+                                <select
+                                  className="list-page-modal-select list-page-modal-access-select"
+                                  aria-label={`${row.person.name} — ${row.measure.name} — access`}
+                                  value={perm}
+                                  onChange={(e) =>
+                                    setAccessControlMatrix((prev) => ({
+                                      ...prev,
+                                      [cellKey]: e.target.value as AccessScopePermission,
+                                    }))
+                                  }
+                                >
+                                  {ACCESS_SCOPE_PERMISSION_OPTIONS.map((opt) => (
+                                    <option key={opt} value={opt}>
+                                      {opt}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+                            </tr>
+                          );
+                        })
                       )}
                     </tbody>
                   </table>
@@ -2499,7 +2623,11 @@ const PlanningForecastingListPage: React.FC = () => {
                         ? 'Person'
                         : accessColumnFilterPanel.column === 'jobRole'
                           ? 'Job role'
-                          : ACCESS_DIMENSION_COLUMNS.find((c) => c.key === accessColumnFilterPanel.column)?.label}
+                          : accessColumnFilterPanel.column === 'subset'
+                            ? 'Measure subset'
+                            : accessColumnFilterPanel.column === 'measure'
+                              ? 'Measure'
+                              : 'Access'}
                     </h3>
                     <button
                       type="button"
@@ -2545,31 +2673,54 @@ const PlanningForecastingListPage: React.FC = () => {
                         />
                       </>
                     )}
-                    {accessColumnFilterPanel.column !== 'person' &&
-                      accessColumnFilterPanel.column !== 'jobRole' && (
-                        <>
-                          <span className="list-page-modal-label" id="access-col-panel-dim-label">
-                            Include rows where access is
-                          </span>
-                          <AccessSearchableMultiSelect
-                            menuZIndex={100055}
-                            options={[...ACCESS_PERMISSION_OPTIONS]}
-                            values={accessColumnPermissionFilters[
-                              accessColumnFilterPanel.column as (typeof ACCESS_DIMENSION_COLUMNS)[number]['key']
-                            ].map(String)}
-                            onChange={(next) =>
-                              setAccessColumnPermissionFilters((prev) => ({
-                                ...prev,
-                                [accessColumnFilterPanel.column as (typeof ACCESS_DIMENSION_COLUMNS)[number]['key']]:
-                                  next as AccessControlPermission[],
-                              }))
-                            }
-                            placeholder="All access levels"
-                            ariaLabel="Access level filter"
-                            ariaLabelledby="access-col-panel-dim-label"
-                          />
-                        </>
-                      )}
+                    {accessColumnFilterPanel.column === 'subset' && (
+                      <>
+                        <span className="list-page-modal-label" id="access-col-panel-subset-label">
+                          Filter by measure subset
+                        </span>
+                        <AccessSearchableMultiSelect
+                          menuZIndex={100055}
+                          options={accessSubsetFilterOptions}
+                          values={accessFilterSubsetLabels}
+                          onChange={setAccessFilterSubsetLabels}
+                          placeholder="All subsets"
+                          ariaLabel="Measure subset filter"
+                          ariaLabelledby="access-col-panel-subset-label"
+                        />
+                      </>
+                    )}
+                    {accessColumnFilterPanel.column === 'measure' && (
+                      <>
+                        <span className="list-page-modal-label" id="access-col-panel-measure-label">
+                          Filter by measure
+                        </span>
+                        <AccessSearchableMultiSelect
+                          menuZIndex={100055}
+                          options={accessMeasureFilterOptions}
+                          values={accessFilterMeasureNames}
+                          onChange={setAccessFilterMeasureNames}
+                          placeholder="All measures"
+                          ariaLabel="Measure filter"
+                          ariaLabelledby="access-col-panel-measure-label"
+                        />
+                      </>
+                    )}
+                    {accessColumnFilterPanel.column === 'access' && (
+                      <>
+                        <span className="list-page-modal-label" id="access-col-panel-access-label">
+                          Filter by access level
+                        </span>
+                        <AccessSearchableMultiSelect
+                          menuZIndex={100055}
+                          options={[...ACCESS_SCOPE_PERMISSION_OPTIONS]}
+                          values={accessFilterAccessLevels}
+                          onChange={(v) => setAccessFilterAccessLevels(v as AccessScopePermission[])}
+                          placeholder="All access levels"
+                          ariaLabel="Access level filter"
+                          ariaLabelledby="access-col-panel-access-label"
+                        />
+                      </>
+                    )}
                   </div>
                 </div>,
                 document.body,
@@ -2600,20 +2751,9 @@ const PlanningForecastingListPage: React.FC = () => {
                   <p className="list-page-modal-access-bulk-popover-count" id="access-bulk-popover-title">
                     {bulkAccessSelectionLabel}
                   </p>
-                  <div className="list-page-modal-access-bulk-popover-field">
-                    <span className="list-page-modal-label" id="access-bulk-dimension-label">
-                      Dimension Level
-                    </span>
-                    <AccessSearchableMultiSelect
-                      menuZIndex={100060}
-                      options={[...ACCESS_DIMENSION_LEVEL_LABELS]}
-                      values={bulkEditDimensionLabels}
-                      onChange={setBulkEditDimensionLabels}
-                      placeholder="Select levels"
-                      ariaLabel="Dimension levels for bulk edit"
-                      ariaLabelledby="access-bulk-dimension-label"
-                    />
-                  </div>
+                  <p className="list-page-modal-access-bulk-popover-hint">
+                    Sets access for all selected person–measure rows.
+                  </p>
                   <div className="list-page-modal-access-bulk-popover-field">
                     <label className="list-page-modal-label" htmlFor="access-bulk-permission">
                       Access
@@ -2622,9 +2762,9 @@ const PlanningForecastingListPage: React.FC = () => {
                       id="access-bulk-permission"
                       className="list-page-modal-select"
                       value={bulkEditPermission}
-                      onChange={(e) => setBulkEditPermission(e.target.value as AccessControlPermission)}
+                      onChange={(e) => setBulkEditPermission(e.target.value as AccessScopePermission)}
                     >
-                      {ACCESS_PERMISSION_OPTIONS.map((opt) => (
+                      {ACCESS_SCOPE_PERMISSION_OPTIONS.map((opt) => (
                         <option key={opt} value={opt}>
                           {opt}
                         </option>
@@ -2643,7 +2783,7 @@ const PlanningForecastingListPage: React.FC = () => {
                   <button
                     type="button"
                     className="list-page-modal-create"
-                    disabled={bulkEditDimensionLabels.length === 0}
+                    disabled={accessBulkSelectedRowKeys.size === 0}
                     onClick={handleBulkAccessApply}
                   >
                     Apply

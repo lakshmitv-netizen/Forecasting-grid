@@ -172,6 +172,112 @@ function isDim(t: string): t is Dim {
  * counts/values into an existing FO row when present or appending a new one (ids use `-cf` suffix).
  * `mappedChildren[i]` is the result of filterRowTree(originalChildren[i]) or null when excluded.
  */
+function bumpSubtreeLevels(row: GridRow, delta: number): GridRow {
+  return {
+    ...row,
+    level: (row.level ?? 0) + delta,
+    children: row.children?.map(c => bumpSubtreeLevels(c, delta)),
+  };
+}
+
+/**
+ * When dimension column filters (multi-condition) are active: under each parent with dimension
+ * children, show "Matches filter" / "Does not match filter" bucket rows (single pair per parent;
+ * combined AND semantics come from `mappedChildren`). Omits the fail bucket when empty.
+ * Falls back to {@link mergeColumnFilteredSiblingsIntoTree} when this parent has no dimension children.
+ */
+export function mergeColumnFilteredIntoPassFailBuckets(
+  parentRow: GridRow,
+  originalChildren: GridRow[],
+  mappedChildren: (GridRow | null)[],
+  measureId: string,
+): GridRow[] {
+  const hasDimChild = originalChildren.some(c => isDim(c.type));
+  if (!hasDimChild) {
+    return mergeColumnFilteredSiblingsIntoTree(parentRow, originalChildren, mappedChildren, measureId);
+  }
+
+  const pass: GridRow[] = [];
+  const fail: GridRow[] = [];
+
+  for (let i = 0; i < originalChildren.length; i++) {
+    const c = originalChildren[i];
+    const fc = mappedChildren[i];
+    if (c.type === 'filterSummary') {
+      if (fc) pass.push(fc);
+      continue;
+    }
+    if (fc !== null) {
+      pass.push(fc);
+      continue;
+    }
+    if (isDim(c.type)) {
+      fail.push(deepCloneRow(c));
+    }
+  }
+
+  const childLevel =
+    originalChildren.length > 0 ? originalChildren[0].level ?? (parentRow.level ?? 0) + 1 : (parentRow.level ?? 0) + 1;
+
+  const out: GridRow[] = [];
+
+  if (pass.length > 0) {
+    const matchChildren = pass.map(r => bumpSubtreeLevels(r, 1));
+    const id = `fb-match-${parentRow.id}-${measureId}`.replace(/\s+/g, '-');
+    out.push({
+      id,
+      name: 'Matches filter',
+      parentId: parentRow.id,
+      level: childLevel,
+      type: 'filterSummary',
+      filterSummaryRole: 'filterBucketMatch',
+      values: sumForest(matchChildren),
+      children: matchChildren,
+    });
+  }
+
+  if (fail.length > 0) {
+    const failChildren = fail.map(r => bumpSubtreeLevels(r, 1));
+    const id = `fb-nomatch-${parentRow.id}-${measureId}`.replace(/\s+/g, '-');
+    out.push({
+      id,
+      name: 'Does not match filter',
+      parentId: parentRow.id,
+      level: childLevel,
+      type: 'filterSummary',
+      filterSummaryRole: 'filterBucketNoMatch',
+      values: sumForest(failChildren),
+      children: failChildren,
+    });
+  }
+
+  return out;
+}
+
+/**
+ * When column filters have already produced "Matches filter" / "Does not match filter" rows under a parent,
+ * children are only those synthetic buckets — not raw dimensions. Unwrap to dimension rows (levels un-bumped)
+ * so {@link mergeColumnFilteredIntoPassFailBuckets} can partition pass/fail correctly instead of falling back
+ * to {@link mergeColumnFilteredSiblingsIntoTree} (which flattens / breaks grouping after edits).
+ */
+export function unwrapColumnFilterBucketChildren(children: GridRow[]): GridRow[] | null {
+  if (!children?.length) return null;
+  const allColumnBuckets = children.every(
+    c =>
+      c.type === 'filterSummary' &&
+      (c.filterSummaryRole === 'filterBucketMatch' || c.filterSummaryRole === 'filterBucketNoMatch'),
+  );
+  if (!allColumnBuckets) return null;
+  const out: GridRow[] = [];
+  for (const b of children) {
+    for (const ch of b.children ?? []) {
+      out.push(bumpSubtreeLevels(ch, -1));
+    }
+  }
+  if (out.length === 0) return null;
+  return out;
+}
+
 export function mergeColumnFilteredSiblingsIntoTree(
   parentRow: GridRow,
   originalChildren: GridRow[],
@@ -249,13 +355,13 @@ type TopBottomDim = 'account' | 'category' | 'product';
 
 /**
  * When "preserve hierarchy" is off and Top/Bottom N applies globally: show only rows of `targetDim`
- * that pass `rowPassesFilters`, plus one aggregate "Filtered out (N)" for everything else under the measure.
+ * that pass `rowPassesFilters`. Non-matching rows are omitted from the tree (measure totals stay full hierarchy).
  */
 export function mergeGlobalTopBottomNMeasureChildren(
   measureRow: GridRow,
   targetDim: TopBottomDim,
   rowPassesFilters: (r: GridRow) => boolean,
-): GridRow[] {
+): { children: GridRow[]; hadHiddenTargets: boolean } {
   const collectOfDimension = (nodes: GridRow[] | undefined): GridRow[] => {
     if (!nodes?.length) return [];
     const out: GridRow[] = [];
@@ -269,13 +375,6 @@ export function mergeGlobalTopBottomNMeasureChildren(
   const allTarget = collectOfDimension(measureRow.children);
   const passing = allTarget.filter(rowPassesFilters);
 
-  const measureTotal = sumForest(measureRow.children ?? []);
-  let visibleSum = zeroValues();
-  for (const r of passing) {
-    visibleSum = addValues(visibleSum, sumDeepestLeafValues(r));
-  }
-  const foVals = subtractValues(measureTotal, visibleSum);
-
   /** Same-dimension rows that did not pass the filter (e.g. plants outside Top N), not total tree node count. */
   const excludedCount = Math.max(0, allTarget.length - passing.length);
 
@@ -286,25 +385,7 @@ export function mergeGlobalTopBottomNMeasureChildren(
     children: undefined,
   }));
 
-  if (excludedCount === 0) {
-    return visible;
-  }
-
-  const label = filteredOutLabelForType(targetDim, excludedCount);
-  if (!label) {
-    return visible;
-  }
-
-  const fo = makeFilteredOutRow(
-    `${measureRow.id}-filtered-out-global-topbottom`,
-    label,
-    measureRow.id,
-    1,
-    foVals,
-    targetDim,
-  );
-
-  return [...visible, fo];
+  return { children: visible, hadHiddenTargets: excludedCount > 0 };
 }
 
 export function injectFilterSummaryRows(
@@ -319,12 +400,149 @@ export function injectFilterSummaryRows(
   });
 }
 
-/** True if any measure tree contains a filtered-out aggregate (filter summary) row. */
+function augmentMergePairBuckets(unf: GridRow, fil: GridRow, measureId: string): GridRow {
+  const unfC = unf.children;
+  if (!unfC?.length) {
+    return { ...fil };
+  }
+  const filC = fil.children ?? [];
+  const newChildren = injectMergeBuckets(unfC, filC, fil.id, measureId);
+  return { ...fil, children: newChildren };
+}
+
+function augmentFilteredSubtreeBuckets(fil: GridRow, measureId: string): GridRow {
+  if (!fil.children?.length) return { ...fil };
+  const unf = deepCloneRow(fil);
+  const newChildren = injectMergeBuckets(unf.children ?? [], fil.children ?? [], fil.id, measureId);
+  return { ...fil, children: newChildren };
+}
+
+function augmentMeasureBuckets(unf: MeasureData, fil: MeasureData): MeasureData {
+  const unfC = unf.children ?? [];
+  const filC = fil.children ?? [];
+  if (unfC.length === 0) {
+    return { ...fil, children: filC.map(c => augmentFilteredSubtreeBuckets(c, fil.id)) };
+  }
+  const newChildren = injectMergeBuckets(unfC, filC, fil.id, fil.id);
+  return { ...fil, children: newChildren };
+}
+
+/**
+ * Panel (Basic) filters that narrow the hierarchy: same merge as {@link injectFilterSummaryRows},
+ * but excluded dimension siblings become a "Does not match filter" bucket with full row clones
+ * (and passing branches under "Matches filter") instead of a single "Filtered out (N)" aggregate.
+ */
+function injectMergeBuckets(
+  unfKids: GridRow[],
+  filKids: GridRow[],
+  parentRowId: string,
+  measureId: string,
+): GridRow[] {
+  if (unfKids.length === 0) {
+    return filKids.map(f => augmentFilteredSubtreeBuckets(f, measureId));
+  }
+
+  const filSet = new Set(filKids.map(f => f.id));
+  const unfById = new Map(unfKids.map(u => [u.id, u]));
+
+  const pass: GridRow[] = filKids.map(fk => {
+    const u = unfById.get(fk.id);
+    if (!u) return augmentFilteredSubtreeBuckets(fk, measureId);
+    return augmentMergePairBuckets(u, fk, measureId);
+  });
+
+  const excluded = unfKids.filter(u => !filSet.has(u.id));
+  const dimExcluded = excluded.filter(u => isDim(u.type));
+  if (dimExcluded.length === 0) {
+    return pass;
+  }
+
+  const childLevel =
+    pass.length > 0 ? pass[0].level ?? 1 : dimExcluded[0].level ?? 1;
+
+  const out: GridRow[] = [];
+
+  if (pass.length > 0) {
+    const matchChildren = pass.map(r => bumpSubtreeLevels(r, 1));
+    out.push({
+      id: `fb-panel-match-${parentRowId}-${measureId}`.replace(/\s+/g, '-'),
+      name: 'Matches filter',
+      parentId: parentRowId,
+      level: childLevel,
+      type: 'filterSummary',
+      filterSummaryRole: 'filterBucketMatch',
+      values: sumForest(matchChildren),
+      children: matchChildren,
+    });
+  }
+
+  const failChildren = dimExcluded.map(u => bumpSubtreeLevels(deepCloneRow(u), 1));
+  out.push({
+    id: `fb-panel-nomatch-${parentRowId}-${measureId}`.replace(/\s+/g, '-'),
+    name: 'Does not match filter',
+    parentId: parentRowId,
+    level: childLevel,
+    type: 'filterSummary',
+    filterSummaryRole: 'filterBucketNoMatch',
+    values: sumForest(failChildren),
+    children: failChildren,
+  });
+
+  return out;
+}
+
+/**
+ * Recompute "Matches filter" / "Does not match filter" aggregate rows from the current child subtrees
+ * (deepest-leaf sum via {@link sumForest}). Keeps bucket cells in sync after child edits or re-merge.
+ */
+export function refreshPassFailBucketAggregates(measures: MeasureData[]): MeasureData[] {
+  const visit = (rows: GridRow[]): GridRow[] =>
+    rows.map(row => {
+      const children = row.children?.length ? visit(row.children) : row.children;
+      let next: GridRow = children !== row.children ? { ...row, children } : { ...row };
+      if (
+        next.type === 'filterSummary' &&
+        (next.filterSummaryRole === 'filterBucketMatch' ||
+          next.filterSummaryRole === 'filterBucketNoMatch') &&
+        children?.length
+      ) {
+        next = { ...next, values: sumForest(children) };
+      }
+      return next;
+    });
+
+  return measures.map(m => ({
+    ...m,
+    children: m.children ? visit(m.children) : m.children,
+  }));
+}
+
+export function injectPassFailBucketRows(
+  filtered: MeasureData[],
+  unfiltered: MeasureData[],
+): MeasureData[] {
+  const unfMap = new Map(unfiltered.map(m => [m.id, m]));
+  const merged = filtered.map(fm => {
+    const um = unfMap.get(fm.id);
+    if (!um) return fm;
+    return augmentMeasureBuckets(um, fm);
+  });
+  return refreshPassFailBucketAggregates(merged);
+}
+
+/** True if any measure tree contains a synthetic filter summary (filtered-out or column-filter buckets). */
 export function hasFilteredOutSummaryRows(measures: MeasureData[]): boolean {
   const walk = (rows: GridRow[] | undefined): boolean => {
     if (!rows?.length) return false;
     for (const r of rows) {
-      if (r.type === 'filterSummary' && r.filterSummaryRole === 'filteredOut') return true;
+      if (
+        r.type === 'filterSummary' &&
+        (r.filterSummaryRole === 'filteredOut' ||
+          r.filterSummaryRole === 'filterBucketMatch' ||
+          r.filterSummaryRole === 'filterBucketNoMatch')
+      ) {
+        return true;
+      }
       if (walk(r.children)) return true;
     }
     return false;
@@ -343,6 +561,15 @@ export function stripFilterSummaryRows(measures: MeasureData[]): MeasureData[] {
 function stripGridRows(children: GridRow[]): GridRow[] {
   return children.flatMap(c => {
     if (c.type === 'filterSummary') {
+      // Column/panel pass-fail buckets wrap real rows (+1 level). Promote them when stripping so
+      // persistence and parent re-inject keep edited values; dropping the wrapper would delete the subtree.
+      if (
+        c.filterSummaryRole === 'filterBucketMatch' ||
+        c.filterSummaryRole === 'filterBucketNoMatch'
+      ) {
+        const lifted = (c.children ?? []).map(ch => bumpSubtreeLevels(ch, -1));
+        return stripGridRows(lifted);
+      }
       return [];
     }
     return [stripGridRowDeep(c)];

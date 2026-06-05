@@ -2,18 +2,107 @@ import { MeasureData, GridRow, ParentTotalsRollupMode } from '../types';
 
 type MonthKey = keyof GridRow['values'];
 
-/** Children included when summing or distributing from a parent (excludes synthetic filtered-out rows in visibleOnly mode). */
+/**
+ * Children included when summing or distributing from a parent.
+ * `visibleOnly` excludes filtered-out and no-match bucket rows from parent totals.
+ * `columnFilterBuckets` normally includes both buckets (match + no match).
+ * When `propagateIntoNoMatchRows === false` in bucket mode, exclude the synthetic no-match bucket
+ * (same idea as visibleOnly — that branch is scratched out and omitted from parent totals).
+ */
 export const childrenForParentRollup = (
   children: GridRow[] | undefined,
   mode: ParentTotalsRollupMode | undefined,
+  propagateIntoNoMatchRows?: boolean,
 ): GridRow[] => {
   if (!children?.length) return [];
   if (mode === 'visibleOnly') {
     return children.filter(
-      c => !(c.type === 'filterSummary' && c.filterSummaryRole === 'filteredOut'),
+      c =>
+        !(
+          c.type === 'filterSummary' &&
+          (c.filterSummaryRole === 'filteredOut' || c.filterSummaryRole === 'filterBucketNoMatch')
+        ),
+    );
+  }
+  if (mode === 'columnFilterBuckets' && propagateIntoNoMatchRows === false) {
+    return children.filter(
+      c => !(c.type === 'filterSummary' && c.filterSummaryRole === 'filterBucketNoMatch'),
     );
   }
   return children;
+};
+
+/**
+ * Children to sum for a parent's month totals. Match / no-match **bucket** rows must always aggregate
+ * every direct child (dimension rows under the bucket). `childrenForParentRollup` is for higher parents
+ * (e.g. account excluding the no-match bucket when propagate is off) and must not strip children **inside**
+ * the bucket, or the "Does not match filter" row never updates when leaves are edited.
+ */
+export const rollupChildrenForParentRow = (
+  parentRow: GridRow | MeasureData,
+  mode: ParentTotalsRollupMode | undefined,
+  propagateIntoNoMatchRows?: boolean,
+): GridRow[] => {
+  const children = parentRow.children;
+  if (!children?.length) return [];
+  if (
+    'type' in parentRow &&
+    parentRow.type === 'filterSummary' &&
+    (parentRow.filterSummaryRole === 'filterBucketMatch' ||
+      parentRow.filterSummaryRole === 'filterBucketNoMatch')
+  ) {
+    return children;
+  }
+  return childrenForParentRollup(children, mode, propagateIntoNoMatchRows);
+};
+
+/** True if this row is the no-match bucket or a descendant under it (walks parentId chain). */
+export const isUnderFilterBucketNoMatchSubtree = (rowId: string, data: MeasureData[]): boolean => {
+  let currentId: string | undefined = rowId;
+  for (let depth = 0; depth < 200; depth++) {
+    if (!currentId) return false;
+    const measure = data.find(m => m.id === currentId);
+    const row = measure ?? findRowById(currentId, data);
+    if (!row) return false;
+    if (
+      'type' in row &&
+      row.type === 'filterSummary' &&
+      row.filterSummaryRole === 'filterBucketNoMatch'
+    ) {
+      return true;
+    }
+    currentId = ('parentId' in row ? row.parentId : null) ?? undefined;
+  }
+  return false;
+};
+
+/** DFS: every row ID under each `filterBucketNoMatch` node (including the bucket row). */
+const collectDescendantIds = (rows: GridRow[], into: Set<string>) => {
+  for (const r of rows) {
+    into.add(r.id);
+    if (r.children?.length) collectDescendantIds(r.children, into);
+  }
+};
+
+/**
+ * All row IDs that belong to a "Does not match filter" bucket subtree (bucket + nested accounts/categories/products).
+ * Used for scratch-out styling and edit guards when that branch is excluded from totals.
+ */
+export const collectFilterBucketNoMatchSubtreeIds = (data: MeasureData[]): Set<string> => {
+  const out = new Set<string>();
+  const visit = (rows: GridRow[]) => {
+    for (const r of rows) {
+      if (r.type === 'filterSummary' && r.filterSummaryRole === 'filterBucketNoMatch') {
+        out.add(r.id);
+        if (r.children?.length) collectDescendantIds(r.children, out);
+      }
+      if (r.children?.length) visit(r.children);
+    }
+  };
+  for (const m of data) {
+    if (m.children?.length) visit(m.children);
+  }
+  return out;
 };
 
 // Flatten the hierarchy to make searching easier
@@ -176,9 +265,10 @@ export const propagateDownward = (
   data: MeasureData[],
   lockedCells?: Set<string>,
   parentRollupMode?: ParentTotalsRollupMode,
+  propagateIntoNoMatchRows?: boolean,
 ): { rowId: string; monthKey: MonthKey; newValue: number }[] => {
   const updates: { rowId: string; monthKey: MonthKey; newValue: number }[] = [];
-  const children = childrenForParentRollup(getChildren(rowId, data), parentRollupMode);
+  const children = childrenForParentRollup(getChildren(rowId, data), parentRollupMode, propagateIntoNoMatchRows);
   
   if (children.length === 0) return updates;
   
@@ -199,7 +289,15 @@ export const propagateDownward = (
     updates.push({ rowId: childId, monthKey, newValue });
     
     // Recursively propagate to grandchildren (pass lockedCells and rollup mode down)
-    const grandchildUpdates = propagateDownward(childId, monthKey, childDelta, data, lockedCells, parentRollupMode);
+    const grandchildUpdates = propagateDownward(
+      childId,
+      monthKey,
+      childDelta,
+      data,
+      lockedCells,
+      parentRollupMode,
+      propagateIntoNoMatchRows,
+    );
     updates.push(...grandchildUpdates);
   }
   

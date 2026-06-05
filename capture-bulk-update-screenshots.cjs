@@ -68,7 +68,7 @@ async function captureBulkUpdateScreenshots() {
     }
     
     // Open Cell Details panel
-    const cellDetailsButton = await page.$('button[title="Edit Information"], button[title="Cell Details and History"]');
+    const cellDetailsButton = await page.$('button[title="Actions"], button[title="Cell Details and History"]');
     if (cellDetailsButton) {
       await cellDetailsButton.click();
       await delay(1000);

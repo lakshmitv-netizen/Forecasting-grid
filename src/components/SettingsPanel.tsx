@@ -73,10 +73,10 @@ const layoutOptions = [
 
 const measureSubgroupOptions = [
   {
-    value: 'Revenue & Quantity Category'
+    value: 'Revenue & Quantity Measures'
   },
   {
-    value: 'Adjustment Measures Category'
+    value: 'Adjustment Measures'
   }
 ];
 
@@ -358,16 +358,16 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     let total = 0;
     const currentIndustry = industry || 'manufacturing';
     
-    if (selectedMeasureSubgroup.has('Revenue & Quantity Category')) {
+    if (selectedMeasureSubgroup.has('Revenue & Quantity Measures')) {
       const revenueQuantityData = getMockData(currentIndustry);
       total += revenueQuantityData.length;
     }
     
-    if (selectedMeasureSubgroup.has('Adjustment Measures Category')) {
+    if (selectedMeasureSubgroup.has('Adjustment Measures')) {
       total += adjustmentMeasuresData.length;
     }
     
-    // If no categories selected, default to Revenue & Quantity Category total
+    // If no categories selected, default to Revenue & Quantity Measures total
     if (total === 0) {
       const revenueQuantityData = getMockData(currentIndustry);
       total = revenueQuantityData.length;
@@ -376,10 +376,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     return total;
   }, [selectedMeasureSubgroup, industry]);
 
-  // Calculate count of measures that would become read-only (measures in Adjustment Measures Category)
+  // Calculate count of measures that would become read-only (measures in Adjustment Measures)
   // Note: Currently unused but kept for potential future use
   // const measuresInBothGroupsCount = useMemo(() => {
-  //   if (!selectedMeasureSubgroup.has('Adjustment Measures Category')) {
+  //   if (!selectedMeasureSubgroup.has('Adjustment Measures')) {
   //     return 0;
   //   }
   //   
@@ -390,7 +390,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
   // Get affected measures data for the details modal
   const affectedMeasures = useMemo(() => {
-    if (!selectedMeasureSubgroup.has('Adjustment Measures Category')) {
+    if (!selectedMeasureSubgroup.has('Adjustment Measures')) {
       return [];
     }
     

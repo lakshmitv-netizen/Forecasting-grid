@@ -121,6 +121,118 @@
   box-shadow: none;
 }
 
+/* Full-width hint above hierarchical grid: wrap text, link pinned to the right */
+.scoped-notification--grid-totals-hint.scoped-notification--inline {
+  box-sizing: border-box;
+}
+
+.scoped-notification--grid-totals-hint .scoped-notification-content {
+  align-items: flex-start;
+  gap: var(--slds-g-spacing-3, 12px);
+}
+
+.scoped-notification--grid-totals-hint .scoped-notification-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: normal;
+  line-height: 1.4;
+  font-weight: 400;
+}
+
+.scoped-notification--grid-totals-hint .scoped-notification-cta-btn {
+  margin-left: auto;
+  flex-shrink: 0;
+  align-self: flex-start;
+  padding-top: 1px;
+  font-weight: 400;
+}
+
+/* Body = children only (e.g. single toggle row in cell editor) */
+.scoped-notification--children-only {
+  box-sizing: border-box;
+}
+
+.scoped-notification--stack {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.scoped-notification--stack .scoped-notification-content {
+  align-items: flex-start;
+}
+
+.scoped-notification-slot {
+  width: 100%;
+  margin-top: var(--slds-g-spacing-2, 8px);
+  padding-top: var(--slds-g-spacing-2, 8px);
+  border-top: 1px solid rgba(1, 118, 211, 0.12);
+  box-sizing: border-box;
+}
+
+/* Inline switch (cell edit popover, etc.) */
+.scoped-notification-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--slds-g-spacing-3, 12px);
+  width: 100%;
+}
+
+.scoped-notification-toggle-label {
+  font-family: var(--font-family-base);
+  font-size: var(--slds-g-font-size-3, 12px);
+  font-weight: 600;
+  color: var(--slds-g-color-neutral-base-20);
+  line-height: 1.25;
+  flex: 1;
+  min-width: 0;
+}
+
+.scoped-notification-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.scoped-notification-toggle:focus-visible {
+  outline: 2px solid var(--slds-g-color-accent-1);
+  outline-offset: 2px;
+  border-radius: 999px;
+}
+
+.scoped-notification-toggle-track {
+  display: block;
+  width: 32px;
+  height: 18px;
+  background: var(--slds-g-color-neutral-base-80);
+  border-radius: 999px;
+  position: relative;
+  transition: background-color 0.2s ease;
+}
+
+.scoped-notification-toggle--on .scoped-notification-toggle-track {
+  background: var(--slds-g-color-accent-1);
+}
+
+.scoped-notification-toggle-thumb {
+  display: block;
+  width: 14px;
+  height: 14px;
+  background: var(--color-surface-white);
+  border-radius: 50%;
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  transition: transform 0.2s ease;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--slds-g-color-neutral-base-10) 25%, transparent);
+}
+
+.scoped-notification-toggle--on .scoped-notification-toggle-thumb {
+  transform: translateX(14px);
+}
+
 .scoped-notification--inline .scoped-notification-text {
   white-space: normal;
 }
